@@ -1,5 +1,9 @@
 import os
+
 import miles.utils.external_utils.command_utils as U
+from tests.ci.ci_register import register_cuda_ci
+
+register_cuda_ci(est_time=900, suite="stage-c-megatron-8-gpu", num_gpus=8)
 
 ENABLE_EVAL = bool(int(os.environ.get("MILES_TEST_ENABLE_EVAL", "1")))
 TIGHT_HOST_MEMORY = bool(int(os.environ.get("MILES_TEST_TIGHT_HOST_MEMORY", "1")))
@@ -47,7 +51,7 @@ def execute():
     )
 
     perf_args = (
-        "--tensor-model-parallel-size 2 "
+        "--tensor-model-parallel-size 4 "
         "--sequence-parallel "
         "--pipeline-model-parallel-size 1 "
         "--context-parallel-size 2 "
@@ -80,7 +84,9 @@ def execute():
     )
 
     sglang_args = (
-        "--rollout-num-gpus-per-engine 2 " "--sglang-mem-fraction-static 0.8 " "--sglang-max-running-requests 512 "
+        "--rollout-num-gpus-per-engine 2 "
+        f"--sglang-mem-fraction-static {0.7 if TIGHT_HOST_MEMORY else 0.8} "
+        "--sglang-max-running-requests 512 "
     )
 
     ci_args = "--ci-test "

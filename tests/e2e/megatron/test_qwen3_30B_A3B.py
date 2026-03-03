@@ -1,12 +1,14 @@
 import os
 
 import miles.utils.external_utils.command_utils as U
+from tests.ci.ci_register import register_cuda_ci
 
+register_cuda_ci(est_time=900, suite="stage-c-megatron-8-gpu", num_gpus=8)
 
 ENABLE_EVAL = bool(int(os.environ.get("MILES_TEST_ENABLE_EVAL", "1")))
 TIGHT_HOST_MEMORY = bool(int(os.environ.get("MILES_TEST_TIGHT_HOST_MEMORY", "1")))
-USE_DEEPEP = bool(int(os.environ.get("MILES_TEST_USE_DEEPEP", "1")))
-USE_FP8_ROLLOUT = bool(int(os.environ.get("MILES_TEST_USE_FP8_ROLLOUT", "1")))
+USE_DEEPEP = True
+USE_FP8_ROLLOUT = True
 
 MODEL_NAME = "Qwen3-30B-A3B"
 MODEL_TYPE = "qwen3-30B-A3B"
@@ -93,7 +95,7 @@ def execute():
 
     sglang_args = (
         "--rollout-num-gpus-per-engine 8 "
-        "--sglang-mem-fraction-static 0.8 "
+        f"--sglang-mem-fraction-static {0.7 if TIGHT_HOST_MEMORY else 0.8} "
         "--sglang-max-running-requests 512 "
         "--sglang-enable-metrics "
     )
