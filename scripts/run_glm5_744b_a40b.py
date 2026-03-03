@@ -86,7 +86,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     extra_args: str = ""
     data_dir: str = "/root/datasets"
     model_dir: str = "/root/models"
-    model_local_dir: str = "/root/local_data"
+    model_local_dir: str = "/root/models"
     megatron_path: str = "/root/Megatron-LM"
     hardware: Literal["H200", "B200", "GB300"] = "H200"
 
@@ -327,7 +327,7 @@ def _execute_train(args: ScriptArgs):
         "--sglang-moe-dense-tp-size 1 "
         "--sglang-enable-dp-lm-head "
     )
-    if args.fp8_rollout:
+    if args.fp8_rollout and args.use_deepep:
         sglang_args += "--sglang-moe-a2a-backend deepep " "--sglang-deepep-mode auto "
     if args.enable_mtp:
         sglang_args += (
@@ -352,6 +352,7 @@ def _execute_train(args: ScriptArgs):
     )
     sglang_extra_env_vars = {
         "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": f"{32 if args.enable_pd else 256}",
+        "SGLANG_NSA_FORCE_MLA": "1",
     }
 
     misc_args = (
@@ -370,9 +371,6 @@ def _execute_train(args: ScriptArgs):
         f"--actor-num-gpus-per-node {args.num_gpus_per_node} "
         f"--num-gpus-per-node {args.num_gpus_per_node} "
         "--colocate "
-        "--use-fault-tolerance "
-        f"--dump-details {args.output_dir}/{args.run_id}/dump_details "
-        "--disable-weights-backuper "
     )
     
     if args.megatron_use_deepep:
