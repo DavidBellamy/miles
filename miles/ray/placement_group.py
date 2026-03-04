@@ -8,8 +8,8 @@ import ray
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-from .actor_group import RayTrainGroup
-from .rollout import RolloutManager
+from miles.ray.actor_group import RayTrainGroup
+from miles.ray.rollout import RolloutManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class InfoActor:
         return ray.util.get_node_ip_address(), ray.get_gpu_ids()[0]
 
 
-def sort_key(x):
+def _sort_key(x: tuple[int, str, str]) -> tuple[list[int], str]:
     index, node_identifier, gpu_id = x
     # Sort by node IP number and then by GPU ID
     try:
@@ -85,7 +85,7 @@ def _check_placement_has_excluded_nodes(
     return assigned_nodes & excluded
 
 
-def _create_placement_group_once(num_gpus):
+def _create_placement_group_once(num_gpus: int):
     """Create a single placement group and return (pg, reordered_indices, reordered_gpu_ids, gpu_ids)."""
     bundles = [{"GPU": 1, "CPU": 1} for _ in range(num_gpus)]
     pg = placement_group(bundles, strategy="PACK")
@@ -108,7 +108,7 @@ def _create_placement_group_once(num_gpus):
         ray.kill(actor)
 
     bundle_infos = [(i, gpu_ids[i][0], gpu_ids[i][1]) for i in range(num_bundles)]
-    sorted_bundle_infos = sorted(bundle_infos, key=sort_key)
+    sorted_bundle_infos = sorted(bundle_infos, key=_sort_key)
     pg_reordered_bundle_indices = [info[0] for info in sorted_bundle_infos]
     pg_reordered_gpu_ids = [gpu_ids[info[0]][1] for info in sorted_bundle_infos]
 
