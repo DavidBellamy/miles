@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from miles.utils.ft.models import ActionType, Decision, DiagnosticResult
+
+logger = logging.getLogger(__name__)
+
+
+class DiagnosticScheduler:
+    """Layered progressive diagnostic pipeline.
+
+    Runs registered diagnostic steps in order on all agents (nodes)
+    in parallel. Failed nodes are excluded from subsequent steps.
+    """
+
+    def __init__(
+        self,
+        agents: dict[str, Any],
+        pipeline: list[str] | None = None,
+        default_timeout_seconds: int = 120,
+    ) -> None:
+        self._agents = agents
+        self._pipeline = pipeline or []
+        self._default_timeout_seconds = default_timeout_seconds
+
+    async def run_diagnostic_pipeline(
+        self,
+        trigger_reason: str,
+        suspect_node_ids: list[str] | None = None,
+    ) -> Decision:
+        logger.info(
+            "diagnostic_pipeline_start trigger=%s suspect_nodes=%s pipeline=%s",
+            trigger_reason, suspect_node_ids, self._pipeline,
+        )
+
+        if not self._pipeline:
+            logger.info("diagnostic_pipeline_empty — all pass by default")
+            return Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="all diagnostics passed (empty pipeline)",
+            )
+
+        remaining_agents = dict(self._agents)
+        all_bad_node_ids: list[str] = []
+
+        for diagnostic_type in self._pipeline:
+            if not remaining_agents:
+                break
+
+            bad_node_ids, remaining_agents = await self._run_step(
+                diagnostic_type=diagnostic_type,
+                agents=remaining_agents,
+                timeout_seconds=self._default_timeout_seconds,
+            )
+
+            if bad_node_ids:
+                all_bad_node_ids.extend(bad_node_ids)
+                logger.info(
+                    "diagnostic_step_found_bad step=%s bad_nodes=%s",
+                    diagnostic_type, bad_node_ids,
+                )
+                return Decision(
+                    action=ActionType.MARK_BAD_AND_RESTART,
+                    bad_node_ids=sorted(set(all_bad_node_ids)),
+                    reason=f"diagnostic '{diagnostic_type}' failed on nodes: {bad_node_ids}",
+                )
+
+        logger.info("diagnostic_pipeline_all_passed trigger=%s", trigger_reason)
+        return Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="all diagnostics passed — no bad nodes found",
+        )
+
+    async def _run_step(
+        self,
+        diagnostic_type: str,
+        agents: dict[str, Any],
+        timeout_seconds: int,
+    ) -> tuple[list[str], dict[str, Any]]:
+        """Run one diagnostic step on all agents.
+
+        Returns (bad_node_ids, remaining_agents_without_bad_nodes).
+        """
+        logger.info(
+            "diagnostic_step_start type=%s nodes=%s",
+            diagnostic_type, list(agents.keys()),
+        )
+
+        tasks: dict[str, asyncio.Task[DiagnosticResult]] = {}
+        for node_id, agent in agents.items():
+            coro = self._call_agent_diagnostic(
+                agent=agent,
+                node_id=node_id,
+                diagnostic_type=diagnostic_type,
+                timeout_seconds=timeout_seconds,
+            )
+            tasks[node_id] = asyncio.ensure_future(coro)
+
+        results: dict[str, DiagnosticResult] = {}
+        for node_id, task in tasks.items():
+            results[node_id] = await task
+
+        bad_node_ids: list[str] = []
+        remaining: dict[str, Any] = {}
+        for node_id, result in results.items():
+            if result.passed:
+                remaining[node_id] = agents[node_id]
+            else:
+                bad_node_ids.append(node_id)
+                logger.info(
+                    "diagnostic_node_failed type=%s node=%s details=%s",
+                    diagnostic_type, node_id, result.details,
+                )
+
+        return bad_node_ids, remaining
+
+    async def _call_agent_diagnostic(
+        self,
+        agent: Any,
+        node_id: str,
+        diagnostic_type: str,
+        timeout_seconds: int,
+    ) -> DiagnosticResult:
+        try:
+            return await agent.run_diagnostic(
+                diagnostic_type, timeout_seconds=timeout_seconds,
+            )
+        except Exception:
+            logger.warning(
+                "diagnostic_agent_call_failed node=%s type=%s",
+                node_id, diagnostic_type,
+                exc_info=True,
+            )
+            return DiagnosticResult(
+                diagnostic_type=diagnostic_type,
+                node_id=node_id,
+                passed=False,
+                details="agent call raised exception",
+            )

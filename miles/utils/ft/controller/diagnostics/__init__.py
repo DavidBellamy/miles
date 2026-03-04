@@ -1,3 +1,4 @@
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 
-__all__ = ["BaseDiagnostic"]
+__all__ = ["BaseDiagnostic", "DiagnosticScheduler"]

@@ -1,10 +1,24 @@
 """Tests for DiagnosticScheduler and BaseDiagnostic."""
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.models import DiagnosticResult
+from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.models import ActionType, DiagnosticResult
+from tests.fast.utils.ft.conftest import (
+    FailingDiagnostic,
+    FakeNodeAgent,
+    SlowDiagnostic,
+    StubDiagnostic,
+)
+
+
+# ---------------------------------------------------------------------------
+# BaseDiagnostic tests
+# ---------------------------------------------------------------------------
 
 
 class _ConcreteDiagnostic(BaseDiagnostic):
@@ -34,3 +48,224 @@ class TestBaseDiagnostic:
     def test_cannot_instantiate_abstract(self) -> None:
         with pytest.raises(TypeError):
             BaseDiagnostic()  # type: ignore[abstract]
+
+
+# ---------------------------------------------------------------------------
+# Helper: build FakeNodeAgent with diagnostic results for scheduler tests
+# ---------------------------------------------------------------------------
+
+
+def _make_agent(
+    node_id: str,
+    results: dict[str, bool],
+) -> FakeNodeAgent:
+    """Create a FakeNodeAgent with pre-configured diagnostic results."""
+    diagnostic_results = {
+        diag_type: DiagnosticResult(
+            diagnostic_type=diag_type,
+            node_id=node_id,
+            passed=passed,
+            details="pass" if passed else "fail",
+        )
+        for diag_type, passed in results.items()
+    }
+    return FakeNodeAgent(diagnostic_results=diagnostic_results)
+
+
+# ---------------------------------------------------------------------------
+# DiagnosticScheduler tests
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnosticSchedulerEmptyPipeline:
+    @pytest.mark.asyncio
+    async def test_empty_pipeline_returns_notify_human(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {}),
+        }
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+
+    @pytest.mark.asyncio
+    async def test_no_pipeline_arg_returns_notify_human(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {}
+        scheduler = DiagnosticScheduler(agents=agents)
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="hang")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+
+
+class TestDiagnosticSchedulerSingleStep:
+    @pytest.mark.asyncio
+    async def test_all_pass_returns_notify_human(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": True}),
+            "node-1": _make_agent("node-1", {"gpu": True}),
+        }
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+
+    @pytest.mark.asyncio
+    async def test_one_node_fails_returns_mark_bad(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": True}),
+            "node-1": _make_agent("node-1", {"gpu": False}),
+        }
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-1" in decision.bad_node_ids
+        assert "node-0" not in decision.bad_node_ids
+
+    @pytest.mark.asyncio
+    async def test_all_nodes_fail_returns_mark_bad(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": False}),
+            "node-1": _make_agent("node-1", {"gpu": False}),
+        }
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
+
+
+class TestDiagnosticSchedulerMultiStep:
+    @pytest.mark.asyncio
+    async def test_first_step_catches_bad_node(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": False, "intra": True}),
+            "node-1": _make_agent("node-1", {"gpu": True, "intra": True}),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents, pipeline=["gpu", "intra"],
+        )
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.bad_node_ids == ["node-0"]
+        assert "gpu" in decision.reason
+
+    @pytest.mark.asyncio
+    async def test_first_passes_second_catches(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": True, "intra": True}),
+            "node-1": _make_agent("node-1", {"gpu": True, "intra": False}),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents, pipeline=["gpu", "intra"],
+        )
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.bad_node_ids == ["node-1"]
+        assert "intra" in decision.reason
+
+    @pytest.mark.asyncio
+    async def test_all_steps_pass_returns_notify(self) -> None:
+        agents: dict[str, FakeNodeAgent] = {
+            "node-0": _make_agent("node-0", {"gpu": True, "intra": True}),
+            "node-1": _make_agent("node-1", {"gpu": True, "intra": True}),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents, pipeline=["gpu", "intra"],
+        )
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+
+
+class TestDiagnosticSchedulerErrorHandling:
+    @pytest.mark.asyncio
+    async def test_agent_exception_treated_as_failure(self) -> None:
+        class _RaisingAgent:
+            async def run_diagnostic(
+                self, diagnostic_type: str, timeout_seconds: int = 120,
+            ) -> DiagnosticResult:
+                raise RuntimeError("agent crashed")
+
+        agents = {
+            "node-0": _make_agent("node-0", {"gpu": True}),
+            "node-1": _RaisingAgent(),
+        }
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-1" in decision.bad_node_ids
+
+    @pytest.mark.asyncio
+    async def test_trigger_reason_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+        agents: dict[str, FakeNodeAgent] = {}
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
+
+        with caplog.at_level(logging.INFO):
+            await scheduler.run_diagnostic_pipeline(
+                trigger_reason="hang",
+                suspect_node_ids=["node-0"],
+            )
+
+        assert "hang" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_agents_returns_notify(self) -> None:
+        scheduler = DiagnosticScheduler(agents={}, pipeline=["gpu"])
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+
+
+class TestDiagnosticSchedulerLiveAgents:
+    """Test scheduler with real FtNodeAgent instances (not FakeNodeAgent)."""
+
+    @pytest.mark.asyncio
+    async def test_scheduler_with_real_node_agents(self) -> None:
+        from miles.utils.ft.agents.node_agent import FtNodeAgent
+
+        stub = StubDiagnostic(passed=True, details="all good")
+        agent0 = FtNodeAgent(node_id="node-0", diagnostics=[stub])
+        agent1 = FtNodeAgent(node_id="node-1", diagnostics=[stub])
+
+        agents = {"node-0": agent0, "node-1": agent1}
+        scheduler = DiagnosticScheduler(agents=agents, pipeline=["stub"])
+
+        try:
+            decision = await scheduler.run_diagnostic_pipeline(
+                trigger_reason="crash",
+            )
+            assert decision.action == ActionType.NOTIFY_HUMAN
+        finally:
+            await agent0.stop()
+            await agent1.stop()
+
+    @pytest.mark.asyncio
+    async def test_scheduler_with_failing_real_diagnostic(self) -> None:
+        from miles.utils.ft.agents.node_agent import FtNodeAgent
+
+        good = StubDiagnostic(passed=True)
+        bad = FailingDiagnostic(details="gpu broken")
+        agent0 = FtNodeAgent(node_id="node-0", diagnostics=[good])
+        agent1 = FtNodeAgent(node_id="node-1", diagnostics=[bad])
+
+        agents = {"node-0": agent0, "node-1": agent1}
+        scheduler = DiagnosticScheduler(
+            agents=agents, pipeline=["stub"],
+        )
+
+        try:
+            decision = await scheduler.run_diagnostic_pipeline(
+                trigger_reason="crash",
+            )
+            # node-1 has FailingDiagnostic with type "failing", not "stub"
+            # so it will get "unknown diagnostic type" → fail
+            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert "node-1" in decision.bad_node_ids
+        finally:
+            await agent0.stop()
+            await agent1.stop()
