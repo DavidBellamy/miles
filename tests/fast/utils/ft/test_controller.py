@@ -8,13 +8,14 @@ from prometheus_client import CollectorRegistry
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     FixedDecisionDetector,
     get_sample_value,
+    make_detector_context,
     make_test_controller,
 )
 
@@ -34,7 +35,8 @@ class TestTickEmptyDetectorChain:
     async def test_tick_returns_none_decision(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.NONE
 
 
@@ -294,7 +296,8 @@ class TestDetectorChain:
             detectors=[none_detector, bad_detector],
         )
 
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert none_detector.call_count == 1
         assert bad_detector.call_count == 1
@@ -306,7 +309,8 @@ class TestDetectorChain:
             detectors=[bad_detector, trailing_detector],
         )
 
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert bad_detector.call_count == 1
         assert trailing_detector.call_count == 0
@@ -394,7 +398,7 @@ class TestExecuteDecision:
     async def test_enter_recovery_does_not_raise(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
+            trigger=TriggerType.CRASH,
             reason="test recovery",
         ))
         harness = make_test_controller(detectors=[detector])
@@ -448,7 +452,7 @@ class TestExecuteDecision:
     async def test_enter_recovery_does_not_notify(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
+            trigger=TriggerType.CRASH,
             reason="test recovery",
         ))
         harness = make_test_controller(detectors=[detector])

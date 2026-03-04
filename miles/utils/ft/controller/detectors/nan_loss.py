@@ -3,7 +3,7 @@ from miles.utils.ft.controller.detectors.base import (
     DetectorContext,
     _get_non_finite_loss,
 )
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 
 
 class NanLossDetector(BaseFaultDetector):
@@ -14,7 +14,7 @@ class NanLossDetector(BaseFaultDetector):
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
                 reason=f"loss is {bad_loss}",
-                trigger="nan_loss",
+                trigger=TriggerType.NAN_LOSS,
             )
 
         return Decision(action=ActionType.NONE, reason="loss is normal")

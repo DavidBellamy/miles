@@ -8,6 +8,7 @@ from miles.utils.ft.models import (
     DiagnosticResult,
     FtBaseModel,
     MetricSample,
+    TriggerType,
 )
 
 
@@ -76,7 +77,7 @@ class TestDecision:
     def test_default_fields(self) -> None:
         decision = Decision(action=ActionType.NONE, reason="all clear")
         assert decision.bad_node_ids == []
-        assert decision.trigger == ""
+        assert decision.trigger == TriggerType.NONE
 
     def test_mark_bad_with_nodes(self) -> None:
         decision = Decision(

@@ -6,7 +6,7 @@ from miles.utils.ft.metric_names import (
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 
 _PHASE_CHECKPOINT_SAVING: float = 2.0
@@ -41,7 +41,7 @@ class HangDetector(BaseFaultDetector):
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
                 reason=f"iteration stalled for {timeout_minutes}min during {phase_info}",
-                trigger="hang",
+                trigger=TriggerType.HANG,
             )
 
         return Decision(action=ActionType.NONE, reason="iteration progressing normally")

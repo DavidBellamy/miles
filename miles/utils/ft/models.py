@@ -26,6 +26,16 @@ class ActionType(str, Enum):
     NOTIFY_HUMAN = "notify_human"
 
 
+class TriggerType(str, Enum):
+    NONE = ""
+    HANG = "hang"
+    NAN_LOSS = "nan_loss"
+    CRASH = "crash"
+    HARDWARE = "hardware"
+    NETWORK = "network"
+    MFU_DECLINE = "mfu_decline"
+
+
 class NodeFault(FtBaseModel):
     node_id: str
     reason: str
@@ -35,7 +45,7 @@ class Decision(FtBaseModel):
     action: ActionType
     bad_node_ids: list[str] = []
     reason: str
-    trigger: str = ""
+    trigger: TriggerType = TriggerType.NONE
 
     @classmethod
     def from_node_faults(
