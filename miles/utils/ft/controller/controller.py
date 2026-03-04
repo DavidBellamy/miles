@@ -65,10 +65,14 @@ class FtController:
 
     async def run(self) -> None:
         logger.info("controller_start tick_interval=%s", self._tick_interval)
-        while not self._shutting_down:
-            await self._tick()
-            if not self._shutting_down:
-                await asyncio.sleep(self._tick_interval)
+        scrape_task = await self._start_scrape_loop()
+        try:
+            while not self._shutting_down:
+                await self._tick()
+                if not self._shutting_down:
+                    await asyncio.sleep(self._tick_interval)
+        finally:
+            await self._stop_scrape_loop(scrape_task)
         logger.info("controller_stopped")
 
     async def shutdown(self) -> None:
@@ -204,6 +208,42 @@ class FtController:
         loss = self._mini_wandb.latest(metric_name="loss", rank=0)
         mfu = self._mini_wandb.latest(metric_name="mfu", rank=0)
         self._controller_exporter.update_training_metrics(loss=loss, mfu=mfu)
+
+    # -------------------------------------------------------------------
+    # Internal: scrape loop lifecycle
+    # -------------------------------------------------------------------
+
+    async def _start_scrape_loop(self) -> asyncio.Task[None] | None:
+        start_fn = getattr(self._metric_store, "start", None)
+        if start_fn is None or not callable(start_fn):
+            return None
+
+        async def _run_scrape() -> None:
+            try:
+                await start_fn()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.error("scrape_loop_crashed", exc_info=True)
+
+        task = asyncio.create_task(_run_scrape())
+        logger.info("scrape_loop_started")
+        return task
+
+    async def _stop_scrape_loop(self, task: asyncio.Task[None] | None) -> None:
+        if task is None:
+            return
+
+        stop_fn = getattr(self._metric_store, "stop", None)
+        if stop_fn is not None and callable(stop_fn):
+            await stop_fn()
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        logger.info("scrape_loop_stopped")
 
     # -------------------------------------------------------------------
     # Internal: decision execution (skeleton stubs)
