@@ -12,7 +12,7 @@ from miles.utils.ft.platform.protocols import (
     TrainingJobProtocol,
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 _JOB_STATUS_TO_NUMERIC: dict[JobStatus, int] = {
     JobStatus.RUNNING: 1,
@@ -45,6 +45,7 @@ class FtController:
         self._tick_interval = tick_interval
 
         self._active_run_id: str | None = None
+        self._expected_world_size: int | None = None
         self._rank_placement: dict[int, str] = {}
         self._shutting_down: bool = False
         self._tick_count: int = 0
@@ -54,15 +55,15 @@ class FtController:
     # -------------------------------------------------------------------
 
     async def run(self) -> None:
-        log.info("controller_start tick_interval=%s", self._tick_interval)
+        logger.info("controller_start tick_interval=%s", self._tick_interval)
         while not self._shutting_down:
             await self._tick()
             if not self._shutting_down:
                 await asyncio.sleep(self._tick_interval)
-        log.info("controller_stopped")
+        logger.info("controller_stopped")
 
     async def shutdown(self) -> None:
-        log.info("controller_shutdown_requested")
+        logger.info("controller_shutdown_requested")
         self._shutting_down = True
 
     # -------------------------------------------------------------------
@@ -77,7 +78,7 @@ class FtController:
         metrics: dict[str, float],
     ) -> None:
         if self._active_run_id is not None and run_id != self._active_run_id:
-            log.debug(
+            logger.debug(
                 "log_step_discarded run_id=%s active_run_id=%s",
                 run_id, self._active_run_id,
             )
@@ -99,18 +100,20 @@ class FtController:
         exporter_address: str,
     ) -> None:
         if run_id != self._active_run_id:
-            log.info(
+            logger.info(
                 "new_run_registered run_id=%s previous_run_id=%s",
                 run_id, self._active_run_id,
             )
             self._active_run_id = run_id
+            self._expected_world_size = None
             self._mini_wandb.set_active_run_id(run_id)
             self._mini_wandb.clear()
             self._remove_old_scrape_targets()
             self._rank_placement = {}
 
+        self._expected_world_size = world_size
         self._rank_placement[rank] = node_id
-        log.info(
+        logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
             run_id, rank, world_size, node_id,
         )
@@ -134,11 +137,20 @@ class FtController:
     async def _tick(self) -> None:
         self._tick_count += 1
 
+        if (
+            self._expected_world_size is not None
+            and len(self._rank_placement) < self._expected_world_size
+        ):
+            logger.warning(
+                "incomplete_rank_registration registered=%d expected=%d run_id=%s",
+                len(self._rank_placement), self._expected_world_size, self._active_run_id,
+            )
+
         await self._inject_training_job_status()
 
         decision = self._evaluate_detectors()
 
-        log.info(
+        logger.info(
             "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
             self._tick_count, self._active_run_id,
             decision.action.value, decision.reason,
@@ -187,21 +199,21 @@ class FtController:
             return
 
         if decision.action == ActionType.MARK_BAD_AND_RESTART:
-            log.warning(
+            logger.warning(
                 "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
                 decision.bad_node_ids, decision.reason,
             )
             return
 
         if decision.action == ActionType.ENTER_RECOVERY:
-            log.warning(
+            logger.warning(
                 "decision_enter_recovery trigger=%s reason=%s",
                 decision.trigger, decision.reason,
             )
             return
 
         if decision.action == ActionType.NOTIFY_HUMAN:
-            log.warning(
+            logger.warning(
                 "decision_notify_human reason=%s",
                 decision.reason,
             )
