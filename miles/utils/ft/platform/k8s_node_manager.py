@@ -34,44 +34,36 @@ class K8sNodeManager:
         return self._core_v1
 
     async def mark_node_bad(self, node_id: str, reason: str) -> None:
-        core_v1 = await self._ensure_client()
-        body = {
-            "metadata": {
-                "labels": {
-                    LABEL_KEY: "true",
-                    REASON_LABEL_KEY: reason,
-                }
-            }
-        }
-
-        start = time.monotonic()
-        await core_v1.patch_node(name=node_id, body=body)
-        elapsed = time.monotonic() - start
-
+        elapsed = await self._patch_node_labels(
+            node_id=node_id,
+            labels={LABEL_KEY: "true", REASON_LABEL_KEY: reason},
+        )
         logger.info(
             "mark_node_bad node_id=%s reason=%s elapsed_seconds=%.3f",
             node_id, reason, elapsed,
         )
 
     async def unmark_node_bad(self, node_id: str) -> None:
-        core_v1 = await self._ensure_client()
-        body = {
-            "metadata": {
-                "labels": {
-                    LABEL_KEY: None,
-                    REASON_LABEL_KEY: None,
-                }
-            }
-        }
-
-        start = time.monotonic()
-        await core_v1.patch_node(name=node_id, body=body)
-        elapsed = time.monotonic() - start
-
+        elapsed = await self._patch_node_labels(
+            node_id=node_id,
+            labels={LABEL_KEY: None, REASON_LABEL_KEY: None},
+        )
         logger.info(
             "unmark_node_bad node_id=%s elapsed_seconds=%.3f",
             node_id, elapsed,
         )
+
+    async def _patch_node_labels(
+        self,
+        node_id: str,
+        labels: dict[str, str | None],
+    ) -> float:
+        core_v1 = await self._ensure_client()
+        body = {"metadata": {"labels": labels}}
+
+        start = time.monotonic()
+        await core_v1.patch_node(name=node_id, body=body)
+        return time.monotonic() - start
 
     async def get_bad_nodes(self) -> list[str]:
         core_v1 = await self._ensure_client()
