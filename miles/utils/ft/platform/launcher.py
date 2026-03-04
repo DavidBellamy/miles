@@ -37,11 +37,11 @@ def _build_k8s_ray_components(
 
 
 def _build_notifier(platform_mode: str) -> NotificationProtocol | None:
-    webhook_url = (os.environ.get("FT_FEISHU_WEBHOOK_URL") or "").strip()
+    webhook_url = (os.environ.get("FT_LARK_WEBHOOK_URL") or "").strip()
     if webhook_url:
-        from miles.utils.ft.platform.feishu_notifier import FeishuWebhookNotifier
+        from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
 
-        return FeishuWebhookNotifier(webhook_url=webhook_url)
+        return LarkWebhookNotifier(webhook_url=webhook_url)
 
     if platform_mode == "stub":
         return StubNotifier()

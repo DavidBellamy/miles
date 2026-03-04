@@ -5,8 +5,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-class FeishuWebhookNotifier:
-    """Sends notifications via Feishu custom bot webhook (interactive card)."""
+class LarkWebhookNotifier:
+    """Sends notifications via Lark custom bot webhook (interactive card)."""
 
     def __init__(self, webhook_url: str) -> None:
         self._webhook_url = webhook_url
@@ -34,7 +34,7 @@ class FeishuWebhookNotifier:
             response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning(
-                "feishu_webhook_send_failed url=%s error=%s",
+                "lark_webhook_send_failed url=%s error=%s",
                 self._webhook_url,
                 exc,
             )

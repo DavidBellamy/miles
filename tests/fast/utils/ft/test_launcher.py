@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from miles.utils.ft.platform.feishu_notifier import FeishuWebhookNotifier
+from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
 from miles.utils.ft.platform.launcher import _build_notifier, app
 from miles.utils.ft.platform.stubs import StubNotifier
 
@@ -30,10 +30,10 @@ class TestLauncherCli:
 
 
 class TestBuildNotifier:
-    def test_webhook_url_returns_feishu_notifier(self) -> None:
-        with patch.dict("os.environ", {"FT_FEISHU_WEBHOOK_URL": "https://hook.example.com"}):
+    def test_webhook_url_returns_lark_notifier(self) -> None:
+        with patch.dict("os.environ", {"FT_LARK_WEBHOOK_URL": "https://hook.example.com"}):
             notifier = _build_notifier(platform_mode="stub")
-        assert isinstance(notifier, FeishuWebhookNotifier)
+        assert isinstance(notifier, LarkWebhookNotifier)
 
     def test_stub_mode_without_webhook_returns_stub(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
@@ -46,6 +46,6 @@ class TestBuildNotifier:
         assert notifier is None
 
     def test_empty_webhook_url_treated_as_unset(self) -> None:
-        with patch.dict("os.environ", {"FT_FEISHU_WEBHOOK_URL": "  "}):
+        with patch.dict("os.environ", {"FT_LARK_WEBHOOK_URL": "  "}):
             notifier = _build_notifier(platform_mode="stub")
         assert isinstance(notifier, StubNotifier)
