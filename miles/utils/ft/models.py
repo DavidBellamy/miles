@@ -26,11 +26,39 @@ class ActionType(str, Enum):
     NOTIFY_HUMAN = "notify_human"
 
 
+class NodeFault(FtBaseModel):
+    node_id: str
+    reason: str
+
+
 class Decision(FtBaseModel):
     action: ActionType
     bad_node_ids: list[str] = []
     reason: str
     trigger: str = ""
+
+    @classmethod
+    def from_node_faults(
+        cls,
+        faults: "list[NodeFault]",
+        *,
+        fallback_reason: str,
+    ) -> "Decision":
+        if not faults:
+            return cls(action=ActionType.NONE, reason=fallback_reason)
+
+        seen: set[str] = set()
+        bad_node_ids: list[str] = []
+        for fault in faults:
+            if fault.node_id not in seen:
+                seen.add(fault.node_id)
+                bad_node_ids.append(fault.node_id)
+
+        return cls(
+            action=ActionType.MARK_BAD_AND_RESTART,
+            bad_node_ids=sorted(bad_node_ids),
+            reason="; ".join(f.reason for f in faults),
+        )
 
 
 class DiagnosticResult(FtBaseModel):

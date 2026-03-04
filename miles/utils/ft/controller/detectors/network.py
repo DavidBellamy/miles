@@ -4,7 +4,7 @@ from miles.utils.ft.controller.detectors._metric_names import NODE_NIC_UP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import Decision, NodeFault
 
 _DEFAULT_ALERT_WINDOW = timedelta(minutes=5)
 _DEFAULT_ALERT_THRESHOLD = 2
@@ -39,26 +39,20 @@ class NetworkAlertDetector(BaseFaultDetector):
         )
 
         if df.is_empty():
-            return Decision(action=ActionType.NONE, reason="no NIC alerts in window")
+            return Decision.from_node_faults([], fallback_reason="no NIC alerts in window")
 
-        # Count down events per node_id
         node_down_counts: dict[str, int] = {}
         for row in df.iter_rows(named=True):
             node_id = row["node_id"]
             node_down_counts[node_id] = node_down_counts.get(node_id, 0) + 1
 
-        bad_nodes: list[str] = []
-        reasons: list[str] = []
-        for node_id, count in sorted(node_down_counts.items()):
-            if count >= self._alert_threshold:
-                bad_nodes.append(node_id)
-                reasons.append(f"NIC down {count} times on {node_id} in {self._alert_window}")
-
-        if bad_nodes:
-            return Decision(
-                action=ActionType.MARK_BAD_AND_RESTART,
-                bad_node_ids=bad_nodes,
-                reason="; ".join(reasons),
+        faults: list[NodeFault] = [
+            NodeFault(
+                node_id=node_id,
+                reason=f"NIC down {count} times on {node_id} in {self._alert_window}",
             )
+            for node_id, count in sorted(node_down_counts.items())
+            if count >= self._alert_threshold
+        ]
 
-        return Decision(action=ActionType.NONE, reason="NIC alerts below threshold")
+        return Decision.from_node_faults(faults, fallback_reason="NIC alerts below threshold")
