@@ -9,13 +9,9 @@ import polars as pl
 from miles.utils.ft.controller.mini_prometheus.query import (
     TimeSeriesSample,
     _SeriesKey,
-    avg_over_time as _avg_over_time,
-    changes as _changes,
-    count_over_time as _count_over_time,
-    max_over_time as _max_over_time,
-    min_over_time as _min_over_time,
     query_latest as _query_latest,
     query_range as _query_range,
+    range_aggregate as _range_aggregate,
 )
 from miles.utils.ft.controller.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.models import MetricSample
@@ -107,35 +103,44 @@ class MiniPrometheus:
     ) -> pl.DataFrame:
         return _query_range(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
 
+    def _range_query(
+        self, func_name: str, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None,
+    ) -> pl.DataFrame:
+        return _range_aggregate(
+            self._series, self._label_maps, self._name_index,
+            func_name, metric_name, window, label_filters,
+        )
+
     def changes(
         self, metric_name: str, window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return _changes(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+        return self._range_query("changes", metric_name, window, label_filters)
 
     def count_over_time(
         self, metric_name: str, window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return _count_over_time(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+        return self._range_query("count_over_time", metric_name, window, label_filters)
 
     def avg_over_time(
         self, metric_name: str, window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return _avg_over_time(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+        return self._range_query("avg_over_time", metric_name, window, label_filters)
 
     def min_over_time(
         self, metric_name: str, window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return _min_over_time(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+        return self._range_query("min_over_time", metric_name, window, label_filters)
 
     def max_over_time(
         self, metric_name: str, window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return _max_over_time(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+        return self._range_query("max_over_time", metric_name, window, label_filters)
 
     # -------------------------------------------------------------------
     # Internal: eviction
