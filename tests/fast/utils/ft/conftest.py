@@ -5,6 +5,14 @@ from typing import NamedTuple
 from unittest.mock import MagicMock
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.controller.detectors._metric_names import (
+    NODE_DISK_AVAILABLE_BYTES,
+    NODE_GPU_AVAILABLE,
+    NODE_GPU_TEMPERATURE,
+    NODE_NIC_UP,
+    NODE_XID_CODE_RECENT,
+    TRAINING_JOB_STATUS,
+)
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
@@ -50,6 +58,93 @@ def make_fake_mini_wandb(
         for step_num, metrics in sorted(steps.items()):
             wandb.log_step(run_id=run_id, rank=rank, step=step_num, metrics=metrics)
     return wandb
+
+
+# ---------------------------------------------------------------------------
+# Detector test helpers — inject functions (detectors milestone)
+# ---------------------------------------------------------------------------
+
+
+def inject_gpu_unavailable(
+    store: MiniPrometheus, node_id: str = "node-0", gpu: str = "0",
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
+    ])
+
+
+def inject_critical_xid(
+    store: MiniPrometheus, node_id: str = "node-0", xid_code: int = 48,
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
+    ])
+
+
+def inject_disk_fault(
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    mount: str = "/data",
+    available_bytes: float = 0.0,
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mount": mount}, value=available_bytes),
+    ])
+
+
+def inject_nic_down(
+    store: MiniPrometheus, node_id: str = "node-0", interface: str = "ib0",
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_NIC_UP, labels={"interface": interface}, value=0.0),
+    ])
+
+
+def inject_nic_up(
+    store: MiniPrometheus, node_id: str = "node-0", interface: str = "ib0",
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_NIC_UP, labels={"interface": interface}, value=1.0),
+    ])
+
+
+def inject_training_job_status(store: MiniPrometheus, status_value: int) -> None:
+    store.ingest_samples(target_id="controller", samples=[
+        MetricSample(name=TRAINING_JOB_STATUS, labels={}, value=float(status_value)),
+    ])
+
+
+def inject_gpu_temperature(
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    gpu: str = "0",
+    celsius: float = 65.0,
+) -> None:
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_GPU_TEMPERATURE, labels={"gpu": gpu}, value=celsius),
+    ])
+
+
+def inject_healthy_node(
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    num_gpus: int = 8,
+    num_nics: int = 4,
+) -> None:
+    for i in range(num_gpus):
+        store.ingest_samples(target_id=node_id, samples=[
+            MetricSample(name=NODE_GPU_AVAILABLE, labels={"gpu": str(i)}, value=1.0),
+            MetricSample(name=NODE_GPU_TEMPERATURE, labels={"gpu": str(i)}, value=65.0),
+        ])
+
+    for i in range(num_nics):
+        store.ingest_samples(target_id=node_id, samples=[
+            MetricSample(name=NODE_NIC_UP, labels={"interface": f"ib{i}"}, value=1.0),
+        ])
+
+    store.ingest_samples(target_id=node_id, samples=[
+        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mount": "/data"}, value=500e9),
+    ])
 
 
 # ---------------------------------------------------------------------------
