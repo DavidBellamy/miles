@@ -182,8 +182,13 @@ def make_test_controller(
 
 
 class TestCollector(BaseCollector):
-    def __init__(self, metrics: list[MetricSample] | None = None) -> None:
+    def __init__(
+        self,
+        metrics: list[MetricSample] | None = None,
+        collect_interval: float = 10.0,
+    ) -> None:
         self._metrics = metrics or []
+        self.collect_interval = collect_interval
 
     def set_metrics(self, metrics: list[MetricSample]) -> None:
         self._metrics = metrics
