@@ -14,7 +14,6 @@ from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     FixedDecisionDetector,
-    TrackingDetector,
     get_sample_value,
     make_detector_context,
     make_test_controller,
@@ -325,55 +324,6 @@ class TestShutdown:
         assert stopped
 
 
-class TestOnNewRunBroadcast:
-    @pytest.mark.asyncio
-    async def test_register_rank_new_run_calls_on_new_run(self) -> None:
-        """When a new run_id arrives, all detectors receive on_new_run()."""
-        detector_a = TrackingDetector()
-        detector_b = TrackingDetector()
-        harness = make_test_controller(detectors=[detector_a, detector_b])
-
-        await harness.controller.register_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
-        )
-
-        assert detector_a.on_new_run_calls == ["run-1"]
-        assert detector_b.on_new_run_calls == ["run-1"]
-
-    @pytest.mark.asyncio
-    async def test_same_run_id_does_not_call_on_new_run_again(self) -> None:
-        detector = TrackingDetector()
-        harness = make_test_controller(detectors=[detector])
-
-        await harness.controller.register_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
-        )
-        await harness.controller.register_rank(
-            run_id="run-1", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090",
-        )
-
-        assert detector.on_new_run_calls == ["run-1"]
-
-    @pytest.mark.asyncio
-    async def test_second_run_triggers_second_on_new_run(self) -> None:
-        detector = TrackingDetector()
-        harness = make_test_controller(detectors=[detector])
-
-        await harness.controller.register_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
-        )
-        await harness.controller.register_rank(
-            run_id="run-2", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
-        )
-
-        assert detector.on_new_run_calls == ["run-1", "run-2"]
-
-
 class TestDetectorChain:
     def test_first_non_none_wins(self) -> None:
         none_detector = AlwaysNoneDetector()
@@ -670,11 +620,11 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_controller_mode") == 0.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_controller_mode") == 1.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
 
 
 class TestGetStatus:
@@ -720,3 +670,34 @@ class TestGetStatus:
         )
         status = harness.controller.get_status()
         assert status["active_run_id"] == "run-42"
+
+
+class TestAgentManagement:
+    def test_register_agent_adds_to_dict(self) -> None:
+        harness = make_test_controller()
+        agent = object()
+        harness.controller.register_agent("node-0", agent)
+
+        assert "node-0" in harness.controller._agents
+        assert harness.controller._agents["node-0"] is agent
+
+    def test_unregister_agent_removes_from_dict(self) -> None:
+        harness = make_test_controller()
+        agent = object()
+        harness.controller.register_agent("node-0", agent)
+        harness.controller.unregister_agent("node-0")
+
+        assert "node-0" not in harness.controller._agents
+
+    def test_unregister_nonexistent_agent_is_noop(self) -> None:
+        harness = make_test_controller()
+        harness.controller.unregister_agent("nonexistent")
+
+    def test_register_overwrites_existing(self) -> None:
+        harness = make_test_controller()
+        agent1 = object()
+        agent2 = object()
+        harness.controller.register_agent("node-0", agent1)
+        harness.controller.register_agent("node-0", agent2)
+
+        assert harness.controller._agents["node-0"] is agent2

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +21,7 @@ from miles.utils.ft.metric_names import (
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
@@ -258,21 +260,6 @@ class FixedDecisionDetector(BaseFaultDetector):
         return self._decision
 
 
-class TrackingDetector(BaseFaultDetector):
-    """Detector that tracks on_new_run calls and always returns NONE."""
-
-    def __init__(self) -> None:
-        self.on_new_run_calls: list[str] = []
-        self.call_count = 0
-
-    def evaluate(self, ctx: DetectorContext) -> Decision:
-        self.call_count += 1
-        return Decision(action=ActionType.NONE, reason="tracking")
-
-    def on_new_run(self, run_id: str) -> None:
-        self.on_new_run_calls.append(run_id)
-
-
 _ALWAYS_NONE_DECISION = Decision(action=ActionType.NONE, reason="always none")
 _ALWAYS_MARK_BAD_DECISION = Decision(
     action=ActionType.MARK_BAD_AND_RESTART,
@@ -310,11 +297,16 @@ def make_test_controller(
     notifier: FakeNotifier | None = FakeNotifier,
     tick_interval: float = 0.01,
     controller_exporter: ControllerExporter | None = None,
+    diagnostic_scheduler: object | None = None,
 ) -> ControllerTestHarness:
     """Construct a Controller and all its dependencies for testing.
 
     ``notifier`` defaults to a fresh FakeNotifier instance. Pass ``None``
     explicitly to create a Controller without a notifier.
+
+    ``diagnostic_scheduler`` defaults to a real DiagnosticScheduler with
+    empty pipeline (same behavior as old stub). Pass a FakeDiagnosticScheduler
+    for recovery-specific tests.
     """
     real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
     node_manager = FakeNodeManager()
@@ -333,6 +325,7 @@ def make_test_controller(
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
         scrape_target_manager=metric_store,
+        diagnostic_scheduler=diagnostic_scheduler,
     )
     return ControllerTestHarness(
         controller=controller,
@@ -343,6 +336,72 @@ def make_test_controller(
         controller_exporter=controller_exporter,
         notifier=real_notifier,
     )
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic test helpers (diag-framework milestone)
+# ---------------------------------------------------------------------------
+
+
+class StubDiagnostic(BaseDiagnostic):
+    """Test diagnostic that returns a configurable pass/fail result."""
+
+    diagnostic_type = "stub"
+
+    def __init__(
+        self, passed: bool = True, details: str = "stub passed",
+    ) -> None:
+        self._passed = passed
+        self._details = details
+
+    async def run(
+        self, node_id: str, timeout_seconds: int = 120,
+    ) -> DiagnosticResult:
+        return DiagnosticResult(
+            diagnostic_type=self.diagnostic_type,
+            node_id=node_id,
+            passed=self._passed,
+            details=self._details,
+        )
+
+
+class FailingDiagnostic(BaseDiagnostic):
+    """Test diagnostic that always reports failure."""
+
+    diagnostic_type = "failing"
+
+    def __init__(self, details: str = "diagnostic failed") -> None:
+        self._details = details
+
+    async def run(
+        self, node_id: str, timeout_seconds: int = 120,
+    ) -> DiagnosticResult:
+        return DiagnosticResult(
+            diagnostic_type=self.diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details=self._details,
+        )
+
+
+class SlowDiagnostic(BaseDiagnostic):
+    """Test diagnostic that sleeps longer than its timeout."""
+
+    diagnostic_type = "slow"
+
+    def __init__(self, sleep_seconds: float = 300.0) -> None:
+        self._sleep_seconds = sleep_seconds
+
+    async def run(
+        self, node_id: str, timeout_seconds: int = 120,
+    ) -> DiagnosticResult:
+        await asyncio.sleep(self._sleep_seconds)
+        return DiagnosticResult(
+            diagnostic_type=self.diagnostic_type,
+            node_id=node_id,
+            passed=True,
+            details="should not reach here",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +453,25 @@ class TestCollector(BaseCollector):
         return list(self._metrics)
 
 
+def make_fake_agents(
+    node_results: dict[str, dict[str, bool]],
+) -> dict[str, "FakeNodeAgent"]:
+    """Build FakeNodeAgents from {node_id: {diag_type: passed}} mapping."""
+    agents: dict[str, FakeNodeAgent] = {}
+    for node_id, results in node_results.items():
+        diagnostic_results = {
+            diag_type: DiagnosticResult(
+                diagnostic_type=diag_type,
+                node_id=node_id,
+                passed=passed,
+                details="pass" if passed else "fail",
+            )
+            for diag_type, passed in results.items()
+        }
+        agents[node_id] = FakeNodeAgent(diagnostic_results=diagnostic_results)
+    return agents
+
+
 class FakeNodeAgent:
     def __init__(
         self,
@@ -403,8 +481,18 @@ class FakeNodeAgent:
         self.cleanup_called: bool = False
         self.cleanup_job_id: str | None = None
 
-    async def run_diagnostic(self, diagnostic_type: str) -> DiagnosticResult:
-        return self._diagnostic_results[diagnostic_type]
+    async def run_diagnostic(
+        self, diagnostic_type: str, timeout_seconds: int = 120,
+    ) -> DiagnosticResult:
+        result = self._diagnostic_results.get(diagnostic_type)
+        if result is None:
+            return DiagnosticResult(
+                diagnostic_type=diagnostic_type,
+                node_id="fake",
+                passed=False,
+                details=f"unknown diagnostic type: {diagnostic_type}",
+            )
+        return result
 
     async def cleanup_training_processes(self, training_job_id: str) -> None:
         self.cleanup_called = True

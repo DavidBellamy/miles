@@ -6,9 +6,7 @@ from typing import Any
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.diagnostic_scheduler_stub import (
-    StubDiagnosticScheduler,
-)
+from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.mini_prometheus.protocol import (
     MetricStoreProtocol,
     ScrapeTargetManagerProtocol,
@@ -59,8 +57,10 @@ class FtController:
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter
         self._scrape_target_manager = scrape_target_manager
+        self._agents: dict[str, Any] = {}
+
         self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
-            diagnostic_scheduler or StubDiagnosticScheduler()
+            diagnostic_scheduler or DiagnosticScheduler(agents=self._agents)
         )
 
         self._active_run_id: str | None = None
@@ -110,6 +110,19 @@ class FtController:
         }
 
     # -------------------------------------------------------------------
+    # Agent management
+    # -------------------------------------------------------------------
+
+    def register_agent(self, node_id: str, agent: Any) -> None:
+        self._agents[node_id] = agent
+        logger.info("agent_registered node_id=%s", node_id)
+
+    def unregister_agent(self, node_id: str) -> None:
+        removed = self._agents.pop(node_id, None)
+        if removed is not None:
+            logger.info("agent_unregistered node_id=%s", node_id)
+
+    # -------------------------------------------------------------------
     # API Called from Agents
     # -------------------------------------------------------------------
 
@@ -153,8 +166,6 @@ class FtController:
             self._mini_wandb.clear()
             self._remove_old_scrape_targets()
             self._rank_placement = {}
-            for detector in self._detectors:
-                detector.on_new_run(run_id)
 
         self._expected_world_size = world_size
         self._rank_placement[rank] = node_id
