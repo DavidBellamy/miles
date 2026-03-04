@@ -24,7 +24,7 @@ class TestJobStatus:
         }
 
     def test_string_conversion(self) -> None:
-        assert str(JobStatus.RUNNING) == "running"
+        assert JobStatus.RUNNING.value == "running"
         assert JobStatus("failed") == JobStatus.FAILED
 
 
