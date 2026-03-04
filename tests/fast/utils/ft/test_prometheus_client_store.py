@@ -333,7 +333,7 @@ class TestUnsupportedResultTypes:
 
 
 class TestMalformedVectorValues:
-    def test_null_value_pair_skipped(self) -> None:
+    def test_null_value_pair_defaults_to_zero(self) -> None:
         json_data: dict[str, Any] = {
             "status": "success",
             "data": {
@@ -349,8 +349,8 @@ class TestMalformedVectorValues:
             client = PrometheusClient(url="http://fake:9090")
             df = client.instant_query("m")
 
-        assert df.shape[0] == 1
-        assert df["value"][0] == 1.0
+        assert df.shape[0] == 2
+        assert sorted(df["value"].to_list()) == [0.0, 1.0]
 
     def test_non_numeric_value_skipped(self) -> None:
         json_data: dict[str, Any] = {
