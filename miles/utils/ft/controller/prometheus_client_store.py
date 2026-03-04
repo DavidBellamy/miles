@@ -22,15 +22,13 @@ class PrometheusClient:
         self._client = httpx.Client(timeout=timeout)
 
     def instant_query(self, query: str) -> pl.DataFrame:
-        try:
-            response = self._client.get(
-                f"{self._url}/api/v1/query",
-                params={"query": query},
-            )
-            response.raise_for_status()
-            data = response.json()
-        except Exception:
-            logger.warning("prometheus_instant_query_failed query=%s", query, exc_info=True)
+        data = self._fetch_json(
+            endpoint="/api/v1/query",
+            params={"query": query},
+            error_label="prometheus_instant_query_failed",
+            query=query,
+        )
+        if data is None:
             return _empty_instant_dataframe()
 
         return _parse_instant_response(data)
@@ -42,23 +40,36 @@ class PrometheusClient:
         end: datetime,
         step: timedelta,
     ) -> pl.DataFrame:
-        try:
-            response = self._client.get(
-                f"{self._url}/api/v1/query_range",
-                params={
-                    "query": query,
-                    "start": start.timestamp(),
-                    "end": end.timestamp(),
-                    "step": step.total_seconds(),
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-        except Exception:
-            logger.warning("prometheus_range_query_failed query=%s", query, exc_info=True)
+        data = self._fetch_json(
+            endpoint="/api/v1/query_range",
+            params={
+                "query": query,
+                "start": start.timestamp(),
+                "end": end.timestamp(),
+                "step": step.total_seconds(),
+            },
+            error_label="prometheus_range_query_failed",
+            query=query,
+        )
+        if data is None:
             return _empty_range_dataframe()
 
         return _parse_range_response(data)
+
+    def _fetch_json(
+        self,
+        endpoint: str,
+        params: dict[str, Any],
+        error_label: str,
+        query: str,
+    ) -> dict[str, Any] | None:
+        try:
+            response = self._client.get(f"{self._url}{endpoint}", params=params)
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            logger.warning("%s query=%s", error_label, query, exc_info=True)
+            return None
 
     def close(self) -> None:
         self._client.close()
@@ -78,17 +89,25 @@ def _empty_range_dataframe() -> pl.DataFrame:
     })
 
 
-def _parse_instant_response(data: dict[str, Any]) -> pl.DataFrame:
+def _extract_results(data: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
     if data.get("status") != "success":
         logger.warning("prometheus_query_error response=%s", data)
-        return _empty_instant_dataframe()
+        return None
 
-    data_section = data.get("data") or {}
-    result = data_section.get("result") or []
+    data_section: dict[str, Any] = data.get("data") or {}
+    result: list[dict[str, Any]] = data_section.get("result") or []
     if not result:
+        return None
+
+    return data_section.get("resultType", ""), result
+
+
+def _parse_instant_response(data: dict[str, Any]) -> pl.DataFrame:
+    extracted = _extract_results(data)
+    if extracted is None:
         return _empty_instant_dataframe()
 
-    result_type = data_section.get("resultType", "")
+    result_type, result = extracted
     if result_type == "vector":
         return _parse_vector(result)
     if result_type == "scalar":
@@ -112,12 +131,10 @@ def _parse_vector(result: list[dict[str, Any]]) -> pl.DataFrame:
         all_label_keys.update(metric.keys())
         rows.append((metric, parsed_value))
 
+    sorted_label_keys = _collect_sorted_label_keys(all_label_keys)
     records: list[dict[str, object]] = []
-    sorted_label_keys = sorted(k for k in all_label_keys if k != "__name__")
     for metric, value in rows:
-        record: dict[str, object] = {"__name__": metric.get("__name__", "")}
-        for key in sorted_label_keys:
-            record[key] = metric.get(key, "")
+        record = _build_label_record(metric=metric, sorted_label_keys=sorted_label_keys)
         record["value"] = value
         records.append(record)
 
@@ -138,16 +155,11 @@ def _parse_scalar(result: list[Any]) -> pl.DataFrame:
 
 
 def _parse_range_response(data: dict[str, Any]) -> pl.DataFrame:
-    if data.get("status") != "success":
-        logger.warning("prometheus_query_error response=%s", data)
+    extracted = _extract_results(data)
+    if extracted is None:
         return _empty_range_dataframe()
 
-    data_section = data.get("data") or {}
-    result = data_section.get("result") or []
-    if not result:
-        return _empty_range_dataframe()
-
-    result_type = data_section.get("resultType", "")
+    result_type, result = extracted
     if result_type != "matrix":
         logger.warning("prometheus_unsupported_range_result_type type=%s", result_type)
         return _empty_range_dataframe()
@@ -161,7 +173,7 @@ def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
         metric = item.get("metric") or {}
         all_label_keys.update(metric.keys())
 
-    sorted_label_keys = sorted(k for k in all_label_keys if k != "__name__")
+    sorted_label_keys = _collect_sorted_label_keys(all_label_keys)
     records: list[dict[str, object]] = []
     for item in result:
         metric: dict[str, str] = item.get("metric") or {}
@@ -172,9 +184,7 @@ def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
             except (TypeError, ValueError):
                 continue
 
-            record: dict[str, object] = {"__name__": metric.get("__name__", "")}
-            for key in sorted_label_keys:
-                record[key] = metric.get(key, "")
+            record = _build_label_record(metric=metric, sorted_label_keys=sorted_label_keys)
             record["timestamp"] = parsed_ts
             record["value"] = parsed_value
             records.append(record)
@@ -183,3 +193,17 @@ def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
         return _empty_range_dataframe()
 
     return pl.DataFrame(records)
+
+
+def _collect_sorted_label_keys(all_label_keys: set[str]) -> list[str]:
+    return sorted(k for k in all_label_keys if k != "__name__")
+
+
+def _build_label_record(
+    metric: dict[str, str],
+    sorted_label_keys: list[str],
+) -> dict[str, object]:
+    record: dict[str, object] = {"__name__": metric.get("__name__", "")}
+    for key in sorted_label_keys:
+        record[key] = metric.get(key, "")
+    return record
