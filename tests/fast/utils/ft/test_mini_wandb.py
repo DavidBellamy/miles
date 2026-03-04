@@ -67,6 +67,47 @@ class TestMiniWandbTimeWindow:
         assert result[1][2] == 2.5
 
 
+class TestMiniWandbTimeWindowEdgeCases:
+    def test_missing_rank_returns_empty(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        result = wandb.query_time_window(
+            metric_name="loss", rank=99, window=timedelta(minutes=5)
+        )
+        assert result == []
+
+    def test_missing_metric_returns_empty(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", rank=0, step=1, metrics={"loss": 1.0})
+
+        result = wandb.query_time_window(
+            metric_name="nonexistent", rank=0, window=timedelta(minutes=5)
+        )
+        assert result == []
+
+    def test_multi_metric_per_step(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(
+            run_id="run-1", rank=0, step=1,
+            metrics={"loss": 2.0, "grad_norm": 1.5, "lr": 0.001},
+        )
+        wandb.log_step(
+            run_id="run-1", rank=0, step=2,
+            metrics={"loss": 1.8, "grad_norm": 1.3, "lr": 0.001},
+        )
+
+        loss = wandb.query_last_n_steps(metric_name="loss", rank=0, last_n=10)
+        grad = wandb.query_last_n_steps(metric_name="grad_norm", rank=0, last_n=10)
+        lr = wandb.query_last_n_steps(metric_name="lr", rank=0, last_n=10)
+
+        assert len(loss) == 2
+        assert loss[0] == (1, 2.0)
+        assert loss[1] == (2, 1.8)
+        assert len(grad) == 2
+        assert grad[0] == (1, 1.5)
+        assert len(lr) == 2
+        assert lr[0][1] == 0.001
+
+
 class TestMiniWandbRingBuffer:
     def test_max_steps_evicts_oldest(self) -> None:
         wandb = MiniWandb(active_run_id="run-1", max_steps=3)

@@ -41,3 +41,27 @@ class TestParsePrometheusText:
         samples = parse_prometheus_text(text)
         assert len(samples) == 1
         assert samples[0].value == 1000.0
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert parse_prometheus_text("") == []
+
+    def test_only_comments_returns_empty(self) -> None:
+        text = "# HELP metric_a A metric\n# TYPE metric_a gauge\n"
+        assert parse_prometheus_text(text) == []
+
+    def test_malformed_value_is_skipped(self) -> None:
+        text = "metric_a not_a_number\nmetric_b 2.0\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].name == "metric_b"
+
+    def test_scientific_notation_value(self) -> None:
+        text = "metric_a 1.23e4\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].value == 12300.0
+
+    def test_blank_lines_skipped(self) -> None:
+        text = "\n\nmetric_a 1.0\n\nmetric_b 2.0\n\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 2

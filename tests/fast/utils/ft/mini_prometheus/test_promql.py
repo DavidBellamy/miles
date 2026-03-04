@@ -1,12 +1,16 @@
 from datetime import timedelta
 
+import pytest
+
 from miles.utils.ft.controller.mini_prometheus.promql import (
     CompareExpr,
     CompareOp,
     LabelMatchOp,
+    LabelMatcher,
     MetricSelector,
     RangeFunction,
     RangeFunctionCompare,
+    _match_labels,
     parse_promql,
 )
 
@@ -99,3 +103,111 @@ class TestParsePromQL:
         expr = parse_promql("count_over_time(metric[1h])")
         assert isinstance(expr, RangeFunction)
         assert expr.duration == timedelta(hours=1)
+
+    def test_duration_days(self) -> None:
+        expr = parse_promql("count_over_time(metric[1d])")
+        assert isinstance(expr, RangeFunction)
+        assert expr.duration == timedelta(days=1)
+
+    def test_compare_with_label_selector(self) -> None:
+        expr = parse_promql('gpu_temp{gpu="0"} > 90')
+        assert isinstance(expr, CompareExpr)
+        assert expr.selector.name == "gpu_temp"
+        assert len(expr.selector.matchers) == 1
+        assert expr.selector.matchers[0].label == "gpu"
+        assert expr.selector.matchers[0].value == "0"
+        assert expr.op == CompareOp.GT
+        assert expr.threshold == 90.0
+
+    def test_compare_neq_with_label_selector(self) -> None:
+        expr = parse_promql('gpu_available{node_id!="node-0"} == 0')
+        assert isinstance(expr, CompareExpr)
+        assert expr.selector.name == "gpu_available"
+        assert expr.selector.matchers[0].op == LabelMatchOp.NEQ
+        assert expr.op == CompareOp.EQ
+        assert expr.threshold == 0.0
+
+    def test_multiple_label_matchers(self) -> None:
+        expr = parse_promql('metric{env="prod", region="us"}')
+        assert isinstance(expr, MetricSelector)
+        assert len(expr.matchers) == 2
+        assert expr.matchers[0].label == "env"
+        assert expr.matchers[0].value == "prod"
+        assert expr.matchers[1].label == "region"
+        assert expr.matchers[1].value == "us"
+
+
+class TestParsePromQLErrors:
+    def test_unmatched_paren_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unmatched parenthesis"):
+            parse_promql("count_over_time(nic_alert[5m]")
+
+    def test_missing_range_selector_raises(self) -> None:
+        with pytest.raises(ValueError, match="Missing range selector"):
+            parse_promql("count_over_time(nic_alert)")
+
+    def test_invalid_duration_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid duration"):
+            parse_promql("count_over_time(metric[5x])")
+
+
+class TestMatchLabels:
+    def test_eq_match(self) -> None:
+        labels = {"gpu": "0", "node_id": "node-0"}
+        matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0")]
+        assert _match_labels(labels, matchers) is True
+
+    def test_eq_mismatch(self) -> None:
+        labels = {"gpu": "1"}
+        matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0")]
+        assert _match_labels(labels, matchers) is False
+
+    def test_neq(self) -> None:
+        labels = {"gpu": "1"}
+        matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.NEQ, value="0")]
+        assert _match_labels(labels, matchers) is True
+
+    def test_neq_blocks_match(self) -> None:
+        labels = {"gpu": "0"}
+        matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.NEQ, value="0")]
+        assert _match_labels(labels, matchers) is False
+
+    def test_regex_match(self) -> None:
+        labels = {"node_id": "node-42"}
+        matchers = [LabelMatcher(label="node_id", op=LabelMatchOp.RE, value="node-.*")]
+        assert _match_labels(labels, matchers) is True
+
+    def test_regex_no_match(self) -> None:
+        labels = {"node_id": "worker-1"}
+        matchers = [LabelMatcher(label="node_id", op=LabelMatchOp.RE, value="node-.*")]
+        assert _match_labels(labels, matchers) is False
+
+    def test_missing_label_returns_empty_string(self) -> None:
+        labels = {"gpu": "0"}
+        matchers = [LabelMatcher(label="missing_key", op=LabelMatchOp.EQ, value="")]
+        assert _match_labels(labels, matchers) is True
+
+    def test_missing_label_neq(self) -> None:
+        labels = {"gpu": "0"}
+        matchers = [LabelMatcher(label="missing_key", op=LabelMatchOp.EQ, value="something")]
+        assert _match_labels(labels, matchers) is False
+
+    def test_multiple_matchers_all_must_pass(self) -> None:
+        labels = {"gpu": "0", "node_id": "node-1"}
+        matchers = [
+            LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0"),
+            LabelMatcher(label="node_id", op=LabelMatchOp.EQ, value="node-1"),
+        ]
+        assert _match_labels(labels, matchers) is True
+
+    def test_multiple_matchers_one_fails(self) -> None:
+        labels = {"gpu": "0", "node_id": "node-1"}
+        matchers = [
+            LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0"),
+            LabelMatcher(label="node_id", op=LabelMatchOp.EQ, value="node-2"),
+        ]
+        assert _match_labels(labels, matchers) is False
+
+    def test_empty_matchers_matches_all(self) -> None:
+        labels = {"gpu": "0"}
+        assert _match_labels(labels, []) is True
