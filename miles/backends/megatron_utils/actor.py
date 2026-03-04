@@ -451,7 +451,13 @@ class MegatronTrainRayActor(TrainRayActor):
 
             maybe_finalize_async_save(blocking=True)
 
+        if self._ft_agent is not None:
+            self._ft_agent.step(iteration=rollout_id, phase="checkpoint_saving")
+
         save(rollout_id, self.model, self.optimizer, self.opt_param_scheduler)
+
+        if self._ft_agent is not None:
+            self._ft_agent.step(iteration=rollout_id, phase="training")
 
         if force_sync and self.args.async_save:
             maybe_finalize_async_save(blocking=True)
