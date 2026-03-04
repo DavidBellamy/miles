@@ -28,8 +28,8 @@ class TestMiniPrometheusInstantQuery:
 
     def test_latest_value_returned(self) -> None:
         store = self._make_store()
-        t1 = datetime(2026, 1, 1, 0, 0, 0)
-        t2 = datetime(2026, 1, 1, 0, 0, 10)
+        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 1, 1, 0, 0, 10, tzinfo=timezone.utc)
 
         store.ingest_samples(
             target_id="node-0",

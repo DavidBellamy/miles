@@ -71,7 +71,9 @@ PromQLExpr = MetricSelector | CompareExpr | RangeFunction | RangeFunctionCompare
 # ---------------------------------------------------------------------------
 
 _DURATION_RE = re.compile(r"(\d+)([smhd])")
-_COMPARE_OPS = ["==", "!=", ">=", "<=", ">", "<"]  # longest-first to avoid greedy single-char match
+_COMPARE_OPS = sorted(
+    [op.value for op in CompareOp], key=len, reverse=True,
+)  # longest-first to avoid greedy single-char match
 _RANGE_FUNCTIONS = {
     "count_over_time",
     "changes",
@@ -143,6 +145,7 @@ def _find_compare_op(text: str) -> tuple[str, CompareOp, str] | None:
     return None
 
 
+@lru_cache(maxsize=256)
 def parse_promql(query: str) -> PromQLExpr:
     query = query.strip()
 

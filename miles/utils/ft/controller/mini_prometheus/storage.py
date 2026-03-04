@@ -46,7 +46,7 @@ class MiniPrometheus:
         self._series: dict[_SeriesKey, deque[_TimeSeriesSample]] = {}
         # Cached label dicts to avoid reconstructing from frozenset on every query
         self._label_maps: dict[_SeriesKey, dict[str, str]] = {}
-        self._name_index: dict[str, list[_SeriesKey]] = {}
+        self._name_index: dict[str, set[_SeriesKey]] = {}
         self._scrape_targets: dict[str, str] = {}
         self._running = False
         self._last_eviction_time: datetime | None = None
@@ -80,7 +80,7 @@ class MiniPrometheus:
             if key not in self._series:
                 self._series[key] = deque()
                 self._label_maps[key] = labels
-                self._name_index.setdefault(sample.name, []).append(key)
+                self._name_index.setdefault(sample.name, set()).add(key)
 
             self._series[key].append(_TimeSeriesSample(timestamp=ts, value=sample.value))
 
@@ -113,9 +113,10 @@ class MiniPrometheus:
                         exc_info=True,
                     )
 
-            await asyncio.gather(
-                *(_scrape_target(tid, addr) for tid, addr in targets)
-            )
+            await asyncio.gather(*(
+                _scrape_target(target_id, address)
+                for target_id, address in targets
+            ))
 
     async def start(self) -> None:
         self._running = True
@@ -147,6 +148,9 @@ class MiniPrometheus:
     # -------------------------------------------------------------------
     # Internal: shared query helpers
     # -------------------------------------------------------------------
+
+    _EMPTY_INSTANT = pl.DataFrame({"__name__": [], "value": []})
+    _EMPTY_RANGE = pl.DataFrame({"__name__": [], "timestamp": [], "value": []})
 
     def _iter_matching_series(
         self, selector: MetricSelector,
@@ -200,7 +204,7 @@ class MiniPrometheus:
             rows.append(row)
 
         if not rows:
-            return pl.DataFrame({"__name__": [], "value": []})
+            return self._EMPTY_INSTANT
         return pl.DataFrame(rows)
 
     def _instant_range_function(self, func: RangeFunction) -> pl.DataFrame:
@@ -219,7 +223,7 @@ class MiniPrometheus:
             rows.append(row)
 
         if not rows:
-            return pl.DataFrame({"__name__": [], "value": []})
+            return self._EMPTY_INSTANT
         return pl.DataFrame(rows)
 
     # -------------------------------------------------------------------
@@ -266,7 +270,7 @@ class MiniPrometheus:
                     rows.append(row)
 
         if not rows:
-            return pl.DataFrame({"__name__": [], "timestamp": [], "value": []})
+            return self._EMPTY_RANGE
         return pl.DataFrame(rows)
 
     # -------------------------------------------------------------------
@@ -298,13 +302,10 @@ class MiniPrometheus:
             metric_name, _ = key
             del self._series[key]
             self._label_maps.pop(key, None)
-            index_list = self._name_index.get(metric_name)
-            if index_list is not None:
-                try:
-                    index_list.remove(key)
-                except ValueError:
-                    pass
-                if not index_list:
+            index_set = self._name_index.get(metric_name)
+            if index_set is not None:
+                index_set.discard(key)
+                if not index_set:
                     del self._name_index[metric_name]
 
 
