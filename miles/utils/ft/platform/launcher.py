@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 import asyncio
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
+
+if TYPE_CHECKING:
+    from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
+    from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
@@ -14,7 +20,7 @@ app = typer.Typer()
 def _build_k8s_ray_components(
     ray_address: str,
     entrypoint: str,
-) -> tuple:
+) -> tuple[K8sNodeManager, RayTrainingJob]:
     """Lazily import and construct K8s + Ray platform components."""
     from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
     from miles.utils.ft.platform.ray_training_job import RayTrainingJob

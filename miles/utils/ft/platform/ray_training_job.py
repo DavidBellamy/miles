@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -19,8 +20,14 @@ _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
     "FAILED": JobStatus.FAILED,
 }
 
+_TERMINAL_STATUSES = frozenset(("STOPPED", "FAILED", "SUCCEEDED"))
+
 _DEFAULT_POLL_INTERVAL_SECONDS = 5
 _DEFAULT_TIMEOUT_SECONDS = 300
+
+
+def _parse_ray_status(raw_status: Any) -> str:
+    return str(raw_status).rsplit(".", maxsplit=1)[-1]
 
 
 class RayTrainingJob:
@@ -79,11 +86,16 @@ class RayTrainingJob:
 
         deadline = start + timeout_seconds
         while True:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Job {self._job_id} did not stop within {timeout_seconds}s"
+                )
+
             raw_status = await asyncio.to_thread(
                 self._client.get_job_status, self._job_id
             )
-            status_str = str(raw_status).rsplit(".", maxsplit=1)[-1]
-            if status_str in ("STOPPED", "FAILED", "SUCCEEDED"):
+            status_str = _parse_ray_status(raw_status)
+            if status_str in _TERMINAL_STATUSES:
                 elapsed = time.monotonic() - start
                 log.info(
                     "stop_training_completed",
@@ -92,12 +104,6 @@ class RayTrainingJob:
                     elapsed_seconds=round(elapsed, 3),
                 )
                 return
-
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"Job {self._job_id} did not stop within {timeout_seconds}s "
-                    f"(last status: {status_str})"
-                )
 
             await asyncio.sleep(self._poll_interval)
 
@@ -111,7 +117,7 @@ class RayTrainingJob:
         )
         elapsed = time.monotonic() - start
 
-        status_str = str(raw_status).rsplit(".", maxsplit=1)[-1]
+        status_str = _parse_ray_status(raw_status)
         job_status = _RAY_STATUS_TO_JOB_STATUS.get(status_str, JobStatus.FAILED)
 
         log.info(

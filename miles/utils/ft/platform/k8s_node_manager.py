@@ -21,17 +21,19 @@ class K8sNodeManager:
     """
 
     def __init__(self, api_client: ApiClient | None = None) -> None:
-        self._external_client = api_client
         self._api_client: ApiClient | None = api_client
+        self._core_v1: CoreV1Api | None = None
 
     async def _ensure_client(self) -> CoreV1Api:
-        if self._api_client is None:
-            try:
-                k8s_config.load_incluster_config()
-            except k8s_config.ConfigException:
-                await k8s_config.load_kube_config()
-            self._api_client = ApiClient()
-        return CoreV1Api(self._api_client)
+        if self._core_v1 is None:
+            if self._api_client is None:
+                try:
+                    k8s_config.load_incluster_config()
+                except k8s_config.ConfigException:
+                    await k8s_config.load_kube_config()
+                self._api_client = ApiClient()
+            self._core_v1 = CoreV1Api(self._api_client)
+        return self._core_v1
 
     async def mark_node_bad(self, node_id: str, reason: str) -> None:
         core_v1 = await self._ensure_client()
