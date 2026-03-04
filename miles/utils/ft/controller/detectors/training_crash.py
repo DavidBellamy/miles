@@ -3,7 +3,7 @@ from miles.utils.ft.controller.detectors.base import (
     DetectorContext,
     _get_non_finite_loss,
 )
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.models import TrainingMetricStoreProtocol
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -21,7 +21,7 @@ class TrainingCrashDetector(BaseFaultDetector):
             trigger=trigger,
         )
 
-    def _determine_trigger(self, mini_wandb: MiniWandb) -> TriggerType:
+    def _determine_trigger(self, mini_wandb: TrainingMetricStoreProtocol) -> TriggerType:
         if _get_non_finite_loss(mini_wandb) is not None:
             return TriggerType.NAN_LOSS
 

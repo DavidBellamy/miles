@@ -3,8 +3,7 @@ from datetime import datetime, timezone
 from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TrainingMetricStoreProtocol
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8
 _DEFAULT_CONSECUTIVE_STEPS = 10
@@ -50,6 +49,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         mfu_values = [value for _, value in recent_mfu]
         avg_mfu = sum(mfu_values) / len(mfu_values)
         threshold = baseline * self._mfu_threshold_ratio
+        mfu_stats = f"{avg_mfu:.4f} < {threshold:.4f}"
 
         if avg_mfu >= threshold:
             self._decline_start_time = None
@@ -61,7 +61,7 @@ class MfuDeclineDetector(BaseFaultDetector):
             return Decision(
                 action=ActionType.MARK_BAD_AND_RESTART,
                 bad_node_ids=[high_temp_node],
-                reason=f"MFU decline ({avg_mfu:.4f} < {threshold:.4f}) correlated with high temperature on {high_temp_node}",
+                reason=f"MFU decline ({mfu_stats}) correlated with high temperature on {high_temp_node}",
             )
 
         now = datetime.now(timezone.utc)
@@ -73,15 +73,15 @@ class MfuDeclineDetector(BaseFaultDetector):
             self._decline_start_time = None
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
-                reason=f"MFU decline ({avg_mfu:.4f} < {threshold:.4f}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
+                reason=f"MFU decline ({mfu_stats}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
             )
 
         return Decision(
             action=ActionType.NONE,
-            reason=f"MFU declining ({avg_mfu:.4f} < {threshold:.4f}), monitoring ({elapsed_minutes:.1f}min)",
+            reason=f"MFU declining ({mfu_stats}), monitoring ({elapsed_minutes:.1f}min)",
         )
 
-    def _get_baseline(self, mini_wandb: MiniWandb) -> float:
+    def _get_baseline(self, mini_wandb: TrainingMetricStoreProtocol) -> float:
         if self._mfu_baseline > 0:
             return self._mfu_baseline
 

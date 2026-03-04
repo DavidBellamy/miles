@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -14,6 +14,18 @@ class TimedStepValue(NamedTuple):
     step: int
     timestamp: datetime
     value: float
+
+
+class TrainingMetricStoreProtocol(Protocol):
+    def latest(self, metric_name: str, rank: int) -> float | None: ...
+
+    def query_last_n_steps(
+        self, metric_name: str, rank: int, last_n: int,
+    ) -> list[StepValue]: ...
+
+    def query_time_window(
+        self, metric_name: str, rank: int, window: timedelta,
+    ) -> list[TimedStepValue]: ...
 
 
 class FtBaseModel(BaseModel):
