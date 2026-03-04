@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from miles.utils.external_utils.command_utils import (
     ExecuteTrainConfig,

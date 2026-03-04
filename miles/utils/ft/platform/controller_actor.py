@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import ray
 
@@ -13,6 +14,11 @@ from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.controller.prometheus_client_store import PrometheusClient
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 
+if TYPE_CHECKING:
+    from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
+    from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
+    from miles.utils.ft.platform.ray_training_job import RayTrainingJob
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +26,7 @@ def _build_platform_components(
     platform: str,
     ray_address: str,
     entrypoint: str,
-) -> tuple:
+) -> tuple[StubNodeManager | K8sNodeManager, StubTrainingJob | RayTrainingJob]:
     if platform == "stub":
         return StubNodeManager(), StubTrainingJob()
 
@@ -39,7 +45,7 @@ def _build_platform_components(
     raise ValueError(f"Unknown platform: {platform}")
 
 
-def _build_notifier(platform: str):
+def _build_notifier(platform: str) -> LarkWebhookNotifier | StubNotifier | None:
     webhook_url = (os.environ.get("FT_LARK_WEBHOOK_URL") or "").strip()
     if webhook_url:
         from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
