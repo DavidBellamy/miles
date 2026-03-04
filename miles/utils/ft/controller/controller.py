@@ -91,6 +91,23 @@ class FtController:
         logger.info("controller_shutdown_requested")
         self._shutting_down = True
 
+    def get_status(self) -> dict[str, Any]:
+        recovery_phase: str | None = None
+        if self._recovery_orchestrator is not None:
+            mode = "recovery"
+            recovery_phase = self._recovery_orchestrator.phase.value
+        else:
+            mode = "monitoring"
+
+        bad_nodes: list[str] = sorted(self._diagnosing_nodes) if self._diagnosing_nodes else []
+        return {
+            "mode": mode,
+            "recovery_phase": recovery_phase,
+            "tick_count": self._tick_count,
+            "active_run_id": self._active_run_id,
+            "bad_nodes": bad_nodes,
+        }
+
     # -------------------------------------------------------------------
     # API Called from Agents
     # -------------------------------------------------------------------

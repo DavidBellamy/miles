@@ -675,3 +675,48 @@ class TestEnterRecovery:
         await harness.controller._tick()
 
         assert get_sample_value(registry, "ft_controller_mode") == 1.0
+
+
+class TestGetStatus:
+    def test_monitoring_mode_default(self) -> None:
+        harness = make_test_controller()
+        status = harness.controller.get_status()
+        assert status["mode"] == "monitoring"
+        assert status["recovery_phase"] is None
+        assert status["tick_count"] == 0
+        assert status["active_run_id"] is None
+        assert status["bad_nodes"] == []
+
+    @pytest.mark.asyncio
+    async def test_monitoring_mode_after_tick(self) -> None:
+        harness = make_test_controller()
+        await harness.controller._tick()
+        status = harness.controller.get_status()
+        assert status["mode"] == "monitoring"
+        assert status["tick_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_recovery_mode(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test",
+        ))
+        harness = make_test_controller(detectors=[detector])
+
+        await harness.controller._tick()
+        await harness.controller._tick()
+        status = harness.controller.get_status()
+
+        assert status["mode"] == "recovery"
+        assert status["recovery_phase"] is not None
+
+    @pytest.mark.asyncio
+    async def test_active_run_id_after_register(self) -> None:
+        harness = make_test_controller()
+        await harness.controller.register_rank(
+            run_id="run-42", rank=0, world_size=1,
+            node_id="node-0", exporter_address="http://node-0:9090",
+        )
+        status = harness.controller.get_status()
+        assert status["active_run_id"] == "run-42"
