@@ -119,6 +119,9 @@ class RecoveryOrchestrator:
     # -------------------------------------------------------------------
 
     def _check_global_timeout(self) -> bool:
+        if self._context.phase in (RecoveryPhase.NOTIFY, RecoveryPhase.DONE):
+            return False
+
         elapsed = (
             datetime.now(timezone.utc) - self._context.recovery_start_time
         ).total_seconds()
