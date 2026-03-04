@@ -4,7 +4,7 @@ from miles.utils.ft.controller.detectors._metric_names import NODE_GPU_TEMPERATU
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, NodeFault
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8
 _DEFAULT_CONSECUTIVE_STEPS = 10
@@ -59,11 +59,11 @@ class MfuDeclineDetector(BaseFaultDetector):
         high_temp_node = self._find_high_temperature_node(metric_store, rank_placement)
         if high_temp_node is not None:
             self._decline_start_time = None
-            return Decision(
-                action=ActionType.MARK_BAD_AND_RESTART,
-                bad_node_ids=[high_temp_node],
+            fault = NodeFault(
+                node_id=high_temp_node,
                 reason=f"MFU decline ({avg_mfu:.4f} < {threshold:.4f}) correlated with high temperature on {high_temp_node}",
             )
+            return Decision.from_node_faults([fault], fallback_reason="")
 
         now = datetime.now(timezone.utc)
         if self._decline_start_time is None:
