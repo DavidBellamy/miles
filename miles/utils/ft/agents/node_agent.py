@@ -91,8 +91,9 @@ class FtNodeAgent:
         )
 
     async def cleanup_training_processes(self, training_job_id: str) -> None:
-        raise NotImplementedError(
-            "cleanup_training_processes will be implemented in recovery-basic milestone"
+        logger.info(
+            "cleanup_training_processes node_id=%s job_id=%s (stub — no-op)",
+            self._node_id, training_job_id,
         )
 
     # ------------------------------------------------------------------
