@@ -233,6 +233,9 @@ class FakeKmsgReader:
         self._consumed = True
         return list(self._lines)
 
+    def close(self) -> None:
+        pass
+
 
 def make_mock_pynvml(
     device_count: int = 8,
