@@ -119,10 +119,10 @@ RUN git clone https://github.com/radixark/miles.git /root/miles && \
 # ====================================== FT diagnostics tools ============================================
 
 # py-spy: stack trace collection for hang diagnosis (requires SYS_PTRACE at runtime)
-RUN pip install py-spy
+RUN pip install --no-cache-dir py-spy==0.4.1
 
 # nccl-tests: intra/inter-machine communication diagnostics
-RUN git clone --depth 1 https://github.com/NVIDIA/nccl-tests.git /tmp/nccl-tests && \
+RUN git clone --depth 1 https://github.com/NVIDIA/nccl-tests.git -b master /tmp/nccl-tests && \
     cd /tmp/nccl-tests && \
     make -j$(nproc) CUDA_HOME=/usr/local/cuda && \
     cp /tmp/nccl-tests/build/*_perf /usr/local/bin/ && \
