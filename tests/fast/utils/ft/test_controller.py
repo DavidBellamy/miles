@@ -675,3 +675,34 @@ class TestEnterRecovery:
         await harness.controller._tick()
 
         assert get_sample_value(registry, "ft_controller_mode") == 1.0
+
+
+class TestAgentManagement:
+    def test_register_agent_adds_to_dict(self) -> None:
+        harness = make_test_controller()
+        agent = object()
+        harness.controller.register_agent("node-0", agent)
+
+        assert "node-0" in harness.controller._agents
+        assert harness.controller._agents["node-0"] is agent
+
+    def test_unregister_agent_removes_from_dict(self) -> None:
+        harness = make_test_controller()
+        agent = object()
+        harness.controller.register_agent("node-0", agent)
+        harness.controller.unregister_agent("node-0")
+
+        assert "node-0" not in harness.controller._agents
+
+    def test_unregister_nonexistent_agent_is_noop(self) -> None:
+        harness = make_test_controller()
+        harness.controller.unregister_agent("nonexistent")
+
+    def test_register_overwrites_existing(self) -> None:
+        harness = make_test_controller()
+        agent1 = object()
+        agent2 = object()
+        harness.controller.register_agent("node-0", agent1)
+        harness.controller.register_agent("node-0", agent2)
+
+        assert harness.controller._agents["node-0"] is agent2

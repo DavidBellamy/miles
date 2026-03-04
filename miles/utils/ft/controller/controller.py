@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
@@ -62,6 +63,8 @@ class FtController:
             diagnostic_scheduler or StubDiagnosticScheduler()
         )
 
+        self._agents: dict[str, Any] = {}
+
         self._active_run_id: str | None = None
         self._expected_world_size: int | None = None
         self._rank_placement: dict[int, str] = {}
@@ -90,6 +93,19 @@ class FtController:
     async def shutdown(self) -> None:
         logger.info("controller_shutdown_requested")
         self._shutting_down = True
+
+    # -------------------------------------------------------------------
+    # Agent management
+    # -------------------------------------------------------------------
+
+    def register_agent(self, node_id: str, agent: Any) -> None:
+        self._agents[node_id] = agent
+        logger.info("agent_registered node_id=%s", node_id)
+
+    def unregister_agent(self, node_id: str) -> None:
+        removed = self._agents.pop(node_id, None)
+        if removed is not None:
+            logger.info("agent_unregistered node_id=%s", node_id)
 
     # -------------------------------------------------------------------
     # API Called from Agents
