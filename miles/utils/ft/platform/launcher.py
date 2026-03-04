@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -10,9 +11,17 @@ if TYPE_CHECKING:
     from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
 from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_prometheus.protocol import (
+    MetricStoreProtocol,
+    ScrapeTargetManagerProtocol,
+)
 from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.prometheus_client_store import PrometheusClient
 from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
@@ -34,6 +43,29 @@ def _build_k8s_ray_components(
     return node_manager, training_job
 
 
+def _build_metric_components(
+    backend: str,
+    prometheus_url: str,
+    controller_exporter_port: int,
+) -> tuple[MetricStoreProtocol, ScrapeTargetManagerProtocol | None, ControllerExporter]:
+    """Build metric store, optional scrape target manager, and controller exporter."""
+    controller_exporter = ControllerExporter(port=controller_exporter_port)
+
+    if backend == "mini":
+        mini_prom = MiniPrometheus(config=MiniPrometheusConfig())
+        mini_prom.add_scrape_target(
+            target_id="controller",
+            address=controller_exporter.address,
+        )
+        return mini_prom, mini_prom, controller_exporter
+
+    if backend == "prometheus":
+        prom_client = PrometheusClient(url=prometheus_url)
+        return prom_client, None, controller_exporter
+
+    raise typer.BadParameter(f"Unknown metric-store-backend: {backend}")
+
+
 @app.command()
 def main(
     tick_interval: Annotated[
@@ -48,6 +80,15 @@ def main(
     entrypoint: Annotated[
         str, typer.Option(help="Training job entrypoint command (k8s-ray mode)")
     ] = "",
+    metric_store_backend: Annotated[
+        str, typer.Option(help="Metric store backend: 'mini' or 'prometheus'")
+    ] = "mini",
+    prometheus_url: Annotated[
+        str, typer.Option(help="Prometheus server URL (prometheus mode)")
+    ] = "http://prometheus:9090",
+    controller_exporter_port: Annotated[
+        int, typer.Option(help="Controller Prometheus exporter HTTP port")
+    ] = 9400,
 ) -> None:
     """FT Controller entry point."""
     if platform == "stub":
@@ -61,15 +102,28 @@ def main(
     else:
         raise typer.BadParameter(f"Unknown platform: {platform}")
 
-    metric_store = MiniPrometheus(config=MiniPrometheusConfig())
+    metric_store, scrape_target_manager, controller_exporter = _build_metric_components(
+        backend=metric_store_backend,
+        prometheus_url=prometheus_url,
+        controller_exporter_port=controller_exporter_port,
+    )
     mini_wandb = MiniWandb()
+
+    controller_exporter.start()
+    logger.info(
+        "launcher_started backend=%s platform=%s exporter_port=%d",
+        metric_store_backend, platform, controller_exporter_port,
+    )
 
     controller = FtController(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
         mini_wandb=mini_wandb,
+        detectors=[],
         tick_interval=tick_interval,
+        controller_exporter=controller_exporter,
+        scrape_target_manager=scrape_target_manager,
     )
 
     asyncio.run(controller.run())
