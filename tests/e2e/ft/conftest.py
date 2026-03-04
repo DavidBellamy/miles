@@ -13,7 +13,8 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Generator
+from collections.abc import Callable, Generator
+from typing import Any
 
 import pytest
 import ray
@@ -73,7 +74,6 @@ def ray_cluster(ray_address: str) -> Generator[None, None, None]:
 @dataclass
 class FtSystem:
     controller: FtController
-    controller_handle: Any
     metric_store: MiniPrometheus
     mini_wandb: MiniWandb
     training_job: RayTrainingJob
@@ -81,8 +81,7 @@ class FtSystem:
     _controller_task: asyncio.Task[None] | None = field(default=None, repr=False)
 
     async def start(self) -> None:
-        loop = asyncio.get_event_loop()
-        self._controller_task = loop.create_task(self.controller.run())
+        self._controller_task = asyncio.create_task(self.controller.run())
 
     async def shutdown(self) -> None:
         await self.controller.shutdown()
@@ -126,7 +125,6 @@ def ft_system(ray_cluster: None, ray_address: str) -> Generator[FtSystem, None, 
 
     system = FtSystem(
         controller=controller,
-        controller_handle=controller,
         metric_store=mini_prom,
         mini_wandb=mini_wandb,
         training_job=training_job,
@@ -190,7 +188,7 @@ def target_node(ray_cluster: None) -> str:
 
 
 def wait_for_condition(
-    check_fn: Any,
+    check_fn: Callable[[], Any],
     timeout: float,
     interval: float = 5.0,
     description: str = "condition",

@@ -14,6 +14,7 @@ import pytest
 from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.models import MetricSample
 from tests.fast.utils.ft.conftest import (
+    ControllerTestHarness,
     inject_healthy_node,
     make_test_controller,
 )
@@ -79,12 +80,11 @@ class TestControllerMemoryLeak:
 
     @staticmethod
     def _inject_tick_data(
-        harness: object,
+        harness: ControllerTestHarness,
         step: int,
         run_id: str,
     ) -> None:
-        """Inject per-tick training metrics and refresh node health data."""
-        harness.mini_wandb.log_step(  # type: ignore[attr-defined]
+        harness.mini_wandb.log_step(
             run_id=run_id,
             rank=0,
             step=step,
@@ -99,6 +99,6 @@ class TestControllerMemoryLeak:
 
         for node_id in ["node-0", "node-1", "node-2", "node-3"]:
             inject_healthy_node(
-                harness.metric_store,  # type: ignore[attr-defined]
+                harness.metric_store,
                 node_id=node_id,
             )

@@ -45,7 +45,7 @@ class FaultInjectorActor:
                 continue
         return results
 
-    def kill_process(self, pid: int, sig: int = 9) -> None:
+    def kill_process(self, pid: int, sig: int = signal.SIGKILL) -> None:
         logger.info("kill_process pid=%d sig=%d", pid, sig)
         os.kill(pid, sig)
 

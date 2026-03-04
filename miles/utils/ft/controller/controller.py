@@ -99,7 +99,7 @@ class FtController:
         else:
             mode = "monitoring"
 
-        bad_nodes: list[str] = sorted(self._diagnosing_nodes) if self._diagnosing_nodes else []
+        bad_nodes: list[str] = sorted(self._diagnosing_nodes)
         return {
             "mode": mode,
             "recovery_phase": recovery_phase,

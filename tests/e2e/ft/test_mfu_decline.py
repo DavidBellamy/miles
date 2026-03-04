@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import pytest
 import ray
 
-from miles.utils.ft.models import ActionType
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
     FtSystem,
@@ -60,22 +60,21 @@ async def test_mfu_decline_detection(
     try:
         # Wait for MfuDeclineDetector to trigger
         # consecutive_decline_threshold × iteration_time + buffer
-        deadline_seconds = 600.0
+        timeout = 600.0
         poll_interval = 10.0
-        elapsed = 0.0
+        deadline = time.monotonic() + timeout
         detected = False
 
-        while elapsed < deadline_seconds:
+        while time.monotonic() < deadline:
             status = controller.get_status()
             if status["mode"] == "recovery":
                 detected = True
                 logger.info("mfu_decline_detected status=%s", status)
                 break
             await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
 
         assert detected, (
-            f"MfuDeclineDetector did not trigger within {deadline_seconds}s"
+            f"MfuDeclineDetector did not trigger within {timeout}s"
         )
 
         # Both outcomes are acceptable
