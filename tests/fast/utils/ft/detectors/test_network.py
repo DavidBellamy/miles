@@ -6,7 +6,7 @@ from tests.fast.utils.ft.conftest import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.controller.detectors._metric_names import NODE_NIC_UP
+from miles.utils.ft.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
 from miles.utils.ft.models import ActionType, MetricSample
@@ -21,7 +21,7 @@ def _inject_nic_at_time(
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
-        samples=[MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=value)],
+        samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=value)],
         timestamp=timestamp,
     )
 

@@ -7,7 +7,7 @@ from tests.fast.utils.ft.conftest import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.controller.detectors._metric_names import (
+from miles.utils.ft.metric_names import (
     TRAINING_ITERATION,
     TRAINING_PHASE,
 )

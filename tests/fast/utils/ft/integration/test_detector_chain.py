@@ -12,8 +12,8 @@ from tests.fast.utils.ft.conftest import (
 )
 
 from miles.utils.ft.controller.detectors import build_detector_chain
-from miles.utils.ft.controller.detectors._metric_names import (
-    NODE_NIC_UP,
+from miles.utils.ft.metric_names import (
+    NODE_NETWORK_UP,
     TRAINING_ITERATION,
     TRAINING_PHASE,
 )
@@ -78,12 +78,12 @@ class TestDetectorChainIntegration:
         # Multiple NIC down events
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name=NODE_NIC_UP, labels={"device": "ib0"}, value=0.0)],
+            samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
             timestamp=now - timedelta(minutes=3),
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name=NODE_NIC_UP, labels={"device": "ib0"}, value=0.0)],
+            samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
             timestamp=now - timedelta(minutes=1),
         )
 
