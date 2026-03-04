@@ -9,7 +9,7 @@ from typing import Literal
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.agents._controller_handle import ControllerHandleMixin
+from miles.utils.ft.agents.controller_handle import ControllerHandleMixin
 
 logger = logging.getLogger(__name__)
 
