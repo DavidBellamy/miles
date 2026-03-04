@@ -1,18 +1,20 @@
 from datetime import timedelta
 from typing import NamedTuple
 
+from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision, MetricSample
+from miles.utils.ft.models import (
+    ActionType,
+    CollectorOutput,
+    Decision,
+    DiagnosticResult,
+    MetricSample,
+)
 from miles.utils.ft.platform.protocols import JobStatus
-
-
-# ---------------------------------------------------------------------------
-# Metric helpers (from mini-prom milestone)
-# ---------------------------------------------------------------------------
 
 
 def make_metric(
@@ -174,3 +176,36 @@ def make_test_controller(
         metric_store=metric_store,
         mini_wandb=mini_wandb,
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent test helpers (agent-skeleton milestone)
+# ---------------------------------------------------------------------------
+
+
+class TestCollector(BaseCollector):
+    def __init__(self, metrics: list[MetricSample] | None = None) -> None:
+        self._metrics = metrics or []
+
+    def set_metrics(self, metrics: list[MetricSample]) -> None:
+        self._metrics = metrics
+
+    async def collect(self) -> CollectorOutput:
+        return CollectorOutput(metrics=self._metrics)
+
+
+class FakeNodeAgent:
+    def __init__(
+        self,
+        diagnostic_results: dict[str, DiagnosticResult] | None = None,
+    ) -> None:
+        self._diagnostic_results = diagnostic_results or {}
+        self.cleanup_called: bool = False
+        self.cleanup_job_id: str | None = None
+
+    async def run_diagnostic(self, diagnostic_type: str) -> DiagnosticResult:
+        return self._diagnostic_results[diagnostic_type]
+
+    async def cleanup_training_processes(self, training_job_id: str) -> None:
+        self.cleanup_called = True
+        self.cleanup_job_id = training_job_id
