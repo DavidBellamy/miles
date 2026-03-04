@@ -66,6 +66,10 @@ class FtController:
         log.info("controller_shutdown_requested")
         self._shutting_down = True
 
+    # -------------------------------------------------------------------
+    # API Called from Agents
+    # -------------------------------------------------------------------
+
     async def log_step(
         self,
         run_id: str,
