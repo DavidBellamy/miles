@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -85,7 +85,7 @@ class TestParseAvgBusBandwidth:
 
     def test_fallback_to_last_row(self) -> None:
         result = _parse_avg_bus_bandwidth(NCCL_OUTPUT_NO_SUMMARY)
-        # Last data row busbw column (index 8) = 339.55
+        # Last data row busbw column (index 7) = 339.55
         assert result == pytest.approx(339.55)
 
     def test_garbage_output_returns_none(self) -> None:
@@ -191,6 +191,8 @@ class TestIntraMachineCommDiagnostic:
         diag = IntraMachineCommDiagnostic()
         mock_proc = AsyncMock()
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
+        mock_proc.kill = MagicMock()
+        mock_proc.wait = AsyncMock()
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
             with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
@@ -198,6 +200,8 @@ class TestIntraMachineCommDiagnostic:
 
         assert result.passed is False
         assert "timed out" in result.details
+        mock_proc.kill.assert_called_once()
+        mock_proc.wait.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_custom_num_gpus(self) -> None:

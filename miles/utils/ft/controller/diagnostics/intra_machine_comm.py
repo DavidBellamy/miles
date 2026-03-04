@@ -80,13 +80,11 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(), timeout=timeout_seconds,
-            )
         except FileNotFoundError:
             logger.warning(
                 "intra_machine_binary_not_found node=%s binary=%s",
                 node_id, self._nccl_test_binary,
+                exc_info=True,
             )
             return DiagnosticResult(
                 diagnostic_type=self.diagnostic_type,
@@ -94,10 +92,18 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
                 passed=False,
                 details=f"{self._nccl_test_binary} not found",
             )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(), timeout=timeout_seconds,
+            )
         except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
             logger.warning(
                 "intra_machine_timeout node=%s timeout=%s",
                 node_id, timeout_seconds,
+                exc_info=True,
             )
             return DiagnosticResult(
                 diagnostic_type=self.diagnostic_type,
