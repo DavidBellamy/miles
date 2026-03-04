@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -118,7 +118,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i in range(5):
             store.ingest_samples(
@@ -145,7 +145,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i in range(3):
             store.ingest_samples(
@@ -164,7 +164,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         values = [100.0, 101.0, 102.0, 102.0, 103.0]
         for i, val in enumerate(values):
@@ -189,7 +189,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
             store.ingest_samples(
@@ -205,7 +205,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i, val in enumerate([10.0, 20.0, 30.0]):
             store.ingest_samples(
@@ -221,7 +221,7 @@ class TestMiniPrometheusRangeFunctions:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
             store.ingest_samples(
@@ -256,7 +256,7 @@ class TestMiniPrometheusRangeQuery:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         t1 = now - timedelta(minutes=10)
         t2 = now - timedelta(minutes=5)
         t3 = now
@@ -292,7 +292,7 @@ class TestMiniPrometheusRangeQuery:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for i, val in enumerate([70.0, 75.0, 80.0, 85.0]):
             store.ingest_samples(
@@ -315,7 +315,7 @@ class TestMiniPrometheusRangeQuery:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=60),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         store.ingest_samples(
             target_id="node-0",
             samples=[MetricSample(name="metric_a", labels={}, value=1.0)],
@@ -336,7 +336,7 @@ class TestMiniPrometheusRetention:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=5),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         store.ingest_samples(
             target_id="node-0",
@@ -357,7 +357,7 @@ class TestMiniPrometheusRetention:
         store = MiniPrometheus(config=MiniPrometheusConfig(
             retention=timedelta(minutes=5),
         ))
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         store.ingest_samples(
             target_id="node-0",

@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 import polars as pl
@@ -71,7 +71,7 @@ class MiniPrometheus:
         samples: list[MetricSample],
         timestamp: datetime | None = None,
     ) -> None:
-        ts = timestamp or datetime.utcnow()
+        ts = timestamp or datetime.now(timezone.utc)
         for sample in samples:
             labels = dict(sample.labels)
             labels["node_id"] = target_id
@@ -204,7 +204,7 @@ class MiniPrometheus:
         return pl.DataFrame(rows)
 
     def _instant_range_function(self, func: RangeFunction) -> pl.DataFrame:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         window_start = now - func.duration
         rows: list[dict] = []
 
@@ -274,7 +274,7 @@ class MiniPrometheus:
     # -------------------------------------------------------------------
 
     def _maybe_evict(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         evict_interval = self._config.retention / 10
         if (
             self._last_eviction_time is not None
@@ -285,7 +285,7 @@ class MiniPrometheus:
         self._evict_expired()
 
     def _evict_expired(self) -> None:
-        cutoff = datetime.utcnow() - self._config.retention
+        cutoff = datetime.now(timezone.utc) - self._config.retention
         empty_keys: list[_SeriesKey] = []
 
         for key, samples in self._series.items():

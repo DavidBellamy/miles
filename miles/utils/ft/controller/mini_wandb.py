@@ -1,7 +1,7 @@
 import logging
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class MiniWandb:
 
         record = _StepRecord(
             step=step,
-            receive_time=datetime.utcnow(),
+            receive_time=datetime.now(timezone.utc),
             metrics=metrics,
         )
 
@@ -83,7 +83,7 @@ class MiniWandb:
         if rank not in self._data:
             return []
 
-        cutoff = datetime.utcnow() - window
+        cutoff = datetime.now(timezone.utc) - window
         result: list[tuple[int, datetime, float]] = []
         for record in self._data[rank]:
             if record.receive_time >= cutoff and metric_name in record.metrics:
@@ -112,6 +112,6 @@ class MiniWandb:
         while len(buffer) > self._max_steps:
             buffer.popleft()
 
-        cutoff = datetime.utcnow() - self._max_age
+        cutoff = datetime.now(timezone.utc) - self._max_age
         while buffer and buffer[0].receive_time < cutoff:
             buffer.popleft()
