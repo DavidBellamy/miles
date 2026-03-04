@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostic_scheduler_stub import (
     StubDiagnosticScheduler,
 )
@@ -77,10 +77,14 @@ class FtController:
 
     async def run(self) -> None:
         logger.info("controller_start tick_interval=%s", self._tick_interval)
-        while not self._shutting_down:
-            await self._tick()
-            if not self._shutting_down:
-                await asyncio.sleep(self._tick_interval)
+        scrape_task = await self._start_scrape_loop()
+        try:
+            while not self._shutting_down:
+                await self._tick()
+                if not self._shutting_down:
+                    await asyncio.sleep(self._tick_interval)
+        finally:
+            await self._stop_scrape_loop(scrape_task)
         logger.info("controller_stopped")
 
     async def shutdown(self) -> None:
@@ -131,6 +135,8 @@ class FtController:
             self._mini_wandb.clear()
             self._remove_old_scrape_targets()
             self._rank_placement = {}
+            for detector in self._detectors:
+                detector.on_new_run(run_id)
 
         self._expected_world_size = world_size
         self._rank_placement[rank] = node_id
@@ -166,7 +172,7 @@ class FtController:
                 len(self._rank_placement), self._expected_world_size, self._active_run_id,
             )
 
-        await self._update_training_job_status()
+        job_status = await self._training_job.get_training_status()
 
         if self._recovery_orchestrator is not None:
             await self._recovery_orchestrator.step()
@@ -174,10 +180,16 @@ class FtController:
                 logger.info("recovery_complete trigger=%s", self._recovery_orchestrator.trigger)
                 self._recovery_orchestrator = None
                 self._diagnosing_nodes.clear()
-            self._update_exporter_metrics()
+            self._update_exporter_metrics(job_status)
             return
 
-        decision = self._evaluate_detectors()
+        ctx = DetectorContext(
+            metric_store=self._metric_store,
+            mini_wandb=self._mini_wandb,
+            rank_placement=self._rank_placement,
+            job_status=job_status,
+        )
+        decision = self._evaluate_detectors(ctx)
 
         logger.info(
             "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
@@ -185,20 +197,16 @@ class FtController:
             decision.action.value, decision.reason,
         )
 
-        self._update_exporter_metrics()
+        self._update_exporter_metrics(job_status)
         await self._execute_decision(decision)
 
     # -------------------------------------------------------------------
     # Internal: detector chain
     # -------------------------------------------------------------------
 
-    def _evaluate_detectors(self) -> Decision:
+    def _evaluate_detectors(self, ctx: DetectorContext) -> Decision:
         for detector in self._detectors:
-            decision = detector.evaluate(
-                metric_store=self._metric_store,
-                mini_wandb=self._mini_wandb,
-                rank_placement=self._rank_placement,
-            )
+            decision = detector.evaluate(ctx)
             if decision.action != ActionType.NONE:
                 return decision
 
@@ -208,17 +216,12 @@ class FtController:
     # Internal: exporter metric updates
     # -------------------------------------------------------------------
 
-    async def _update_training_job_status(self) -> None:
-        status = await self._training_job.get_training_status()
-        status_value = _JOB_STATUS_TO_NUMERIC.get(status, 0)
-
-        if self._controller_exporter is not None:
-            self._controller_exporter.update_training_job_status(status_value)
-
-    def _update_exporter_metrics(self) -> None:
+    def _update_exporter_metrics(self, job_status: JobStatus) -> None:
         if self._controller_exporter is None:
             return
 
+        status_value = _JOB_STATUS_TO_NUMERIC.get(job_status, 0)
+        self._controller_exporter.update_training_job_status(status_value)
         self._controller_exporter.update_tick_count()
 
         if self._recovery_orchestrator is not None:
@@ -232,6 +235,42 @@ class FtController:
         loss = self._mini_wandb.latest(metric_name="loss", rank=0)
         mfu = self._mini_wandb.latest(metric_name="mfu", rank=0)
         self._controller_exporter.update_training_metrics(loss=loss, mfu=mfu)
+
+    # -------------------------------------------------------------------
+    # Internal: scrape loop lifecycle
+    # -------------------------------------------------------------------
+
+    async def _start_scrape_loop(self) -> asyncio.Task[None] | None:
+        start_fn = getattr(self._metric_store, "start", None)
+        if start_fn is None or not callable(start_fn):
+            return None
+
+        async def _run_scrape() -> None:
+            try:
+                await start_fn()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.error("scrape_loop_crashed", exc_info=True)
+
+        task = asyncio.create_task(_run_scrape())
+        logger.info("scrape_loop_started")
+        return task
+
+    async def _stop_scrape_loop(self, task: asyncio.Task[None] | None) -> None:
+        if task is None:
+            return
+
+        stop_fn = getattr(self._metric_store, "stop", None)
+        if stop_fn is not None and callable(stop_fn):
+            await stop_fn()
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        logger.info("scrape_loop_stopped")
 
     # -------------------------------------------------------------------
     # Internal: decision execution

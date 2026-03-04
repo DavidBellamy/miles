@@ -5,7 +5,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
-from miles.utils.ft.platform.launcher import _build_notifier, app
+from miles.utils.ft.launcher import _build_notifier, app
 from miles.utils.ft.platform.stubs import StubNotifier
 
 runner = CliRunner()
