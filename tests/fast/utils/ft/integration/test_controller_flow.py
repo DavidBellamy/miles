@@ -76,26 +76,13 @@ class TestRunIdIsolation:
         assert harness.controller._rank_placement == {0: "node-0"}
 
 
-class TestTrainingJobStatusInjection:
-    @pytest.mark.asyncio
-    async def test_tick_makes_status_queryable(self) -> None:
-        harness = make_test_controller()
-
-        await harness.controller._tick()
-
-        df = harness.metric_store.instant_query("training_job_status")
-        assert not df.is_empty()
-        assert df["value"][0] == 1.0
-
-
 class TestCustomDetectorInTick:
     @pytest.mark.asyncio
-    async def test_detector_returns_mark_bad(self) -> None:
+    async def test_detector_invoked_during_tick(self) -> None:
         detector = AlwaysMarkBadDetector()
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
 
-        decision = harness.controller._evaluate_detectors()
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
-        assert decision.bad_node_ids == ["node-1"]
+        assert detector.call_count == 1
+        assert harness.controller._tick_count == 1

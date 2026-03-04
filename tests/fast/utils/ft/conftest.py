@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import NamedTuple
 
 from miles.utils.ft.controller.controller import FtController

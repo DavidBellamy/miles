@@ -209,3 +209,5 @@ class FtController:
                 reason=decision.reason,
             )
             return
+
+        raise ValueError(f"Unknown action type: {decision.action}")
