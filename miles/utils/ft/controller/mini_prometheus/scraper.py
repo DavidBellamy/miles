@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import re
+
+from miles.utils.ft.models import MetricSample
+
+
+def parse_prometheus_text(text: str) -> list[MetricSample]:
+    samples: list[MetricSample] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        label_match = re.match(r"^(\w+)(\{([^}]*)\})?\s+(.+?)(\s+\d+)?$", line)
+        if not label_match:
+            continue
+
+        name = label_match.group(1)
+        labels_str = label_match.group(3) or ""
+        value_str = label_match.group(4)
+
+        labels: dict[str, str] = {}
+        if labels_str:
+            for pair in labels_str.split(","):
+                pair = pair.strip()
+                if "=" in pair:
+                    key, val = pair.split("=", 1)
+                    labels[key.strip()] = val.strip().strip('"')
+
+        try:
+            value = float(value_str)
+        except ValueError:
+            continue
+
+        samples.append(MetricSample(name=name, labels=labels, value=value))
+
+    return samples

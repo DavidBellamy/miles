@@ -8,7 +8,7 @@ from threading import Thread
 
 import pytest
 
-from miles.utils.ft.controller.metric_store import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 
 
 def _find_free_port() -> int:

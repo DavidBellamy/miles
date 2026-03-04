@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from miles.utils.ft.controller.metric_store import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import MetricSample
 
