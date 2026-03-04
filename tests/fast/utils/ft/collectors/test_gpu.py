@@ -24,7 +24,7 @@ class TestGpuCollector:
             "gpu_temperature_celsius",
             "gpu_row_remap_pending",
             "gpu_row_remap_failure",
-            "gpu_pcie_bandwidth_gbps",
+            "gpu_pcie_bandwidth_gbs",
             "gpu_tensorcore_utilization",
         }
 
@@ -91,9 +91,33 @@ class TestGpuCollector:
             collector = GpuCollector()
             result = await collector.collect()
 
-        bw = [m for m in result.metrics if m.name == "gpu_pcie_bandwidth_gbps"]
+        bw = [m for m in result.metrics if m.name == "gpu_pcie_bandwidth_gbs"]
         assert len(bw) == 1
         assert bw[0].value == pytest.approx(2.0)
+
+    @pytest.mark.asyncio()
+    async def test_close_safe_when_nvml_unavailable(self) -> None:
+        mock_pynvml = MagicMock()
+        mock_pynvml.nvmlInit.side_effect = RuntimeError("NVML not available")
+        with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
+            collector = GpuCollector()
+            await collector.close()
+
+        mock_pynvml.nvmlShutdown.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_partial_metric_failure_still_reports_others(self) -> None:
+        mock_pynvml = make_mock_pynvml(device_count=1)
+        mock_pynvml.nvmlDeviceGetTemperature.side_effect = RuntimeError("temp failed")
+        with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
+            collector = GpuCollector()
+            result = await collector.collect()
+
+        names = {m.name for m in result.metrics}
+        assert "gpu_available" in names
+        assert "gpu_temperature_celsius" not in names
+        assert "gpu_row_remap_pending" in names
+        assert "gpu_pcie_bandwidth_gbs" in names
 
     @pytest.mark.asyncio()
     async def test_collect_interval_default(self) -> None:

@@ -42,6 +42,10 @@ class HostCollector(BaseCollector):
         metrics = await asyncio.to_thread(self._collect_sync)
         return CollectorOutput(metrics=metrics)
 
+    async def close(self) -> None:
+        if self._kmsg_reader is not None:
+            self._kmsg_reader._close_kmsg()
+
     def _collect_sync(self) -> list[MetricSample]:
         samples: list[MetricSample] = []
 
@@ -111,9 +115,9 @@ class HostCollector(BaseCollector):
             except Exception:
                 logger.warning("Failed to statvfs %s", mount)
 
-        self._collect_disk_io_errors(samples)
+        self._collect_disk_io_time(samples)
 
-    def _collect_disk_io_errors(self, samples: list[MetricSample]) -> None:
+    def _collect_disk_io_time(self, samples: list[MetricSample]) -> None:
         sys_block = Path("/sys/block")
         if not sys_block.exists():
             return
@@ -124,11 +128,11 @@ class HostCollector(BaseCollector):
                 text = stat_file.read_text().strip()
                 fields = text.split()
                 if len(fields) >= 10:
-                    io_errors = int(fields[9])
+                    io_time_ms = int(fields[9])
                     samples.append(MetricSample(
-                        name="disk_io_errors",
+                        name="disk_io_time_ms",
                         labels={"device": device_dir.name},
-                        value=float(io_errors),
+                        value=float(io_time_ms),
                     ))
             except Exception:
                 logger.warning("Failed to read disk stat for %s", device_dir.name)

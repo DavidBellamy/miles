@@ -122,7 +122,7 @@ class TestHostCollectorDisk:
         assert disk[0].value > 0
 
     @pytest.mark.asyncio()
-    async def test_disk_io_errors_parsing(self) -> None:
+    async def test_disk_io_time_ms_parsing(self) -> None:
         fields = "  123  456  789  100  200  300  400  500  0  600  700".split()
         assert int(fields[9]) == 600
 

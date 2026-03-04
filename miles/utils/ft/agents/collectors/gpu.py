@@ -86,9 +86,7 @@ class GpuCollector(BaseCollector):
         samples: list[MetricSample],
     ) -> None:
         try:
-            remap_info = pynvml.nvmlDeviceGetRemappedRows(handle)
-            pending = remap_info[2]
-            failure = remap_info[3]
+            _correctable, _uncorrectable, pending, failure = pynvml.nvmlDeviceGetRemappedRows(handle)
             samples.append(MetricSample(name="gpu_row_remap_pending", labels=gpu_label, value=float(pending)))
             samples.append(MetricSample(name="gpu_row_remap_failure", labels=gpu_label, value=float(failure)))
         except Exception:
@@ -106,7 +104,7 @@ class GpuCollector(BaseCollector):
                 handle, pynvml.NVML_PCIE_UTIL_TX_BYTES,
             )
             gbps = throughput_kb_per_s / (1024.0 * 1024.0)
-            samples.append(MetricSample(name="gpu_pcie_bandwidth_gbps", labels=gpu_label, value=gbps))
+            samples.append(MetricSample(name="gpu_pcie_bandwidth_gbs", labels=gpu_label, value=gbps))
         except Exception:
             logger.warning("Failed to get PCIe bandwidth for GPU %s", gpu_label["gpu"])
 

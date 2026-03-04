@@ -375,6 +375,30 @@ class TestFtNodeAgentLifecycle:
         assert collector1.closed
         assert collector2.closed
 
+    @pytest.mark.asyncio()
+    async def test_close_failure_does_not_block_other_collectors(self) -> None:
+        class _FailingCloseCollector(BaseCollector):
+            def __init__(self) -> None:
+                self.collect_interval = 0.05
+
+            async def collect(self) -> CollectorOutput:
+                return CollectorOutput(metrics=[])
+
+            async def close(self) -> None:
+                raise RuntimeError("close failed")
+
+        failing = _FailingCloseCollector()
+        good = _CountingCollector(collect_interval=0.05)
+        agent = FtNodeAgent(
+            node_id="test-node-close-fail",
+            collectors=[failing, good],
+        )
+        await agent.start()
+        await asyncio.sleep(0.1)
+        await agent.stop()
+
+        assert good.closed
+
 
 class TestFtNodeAgentStubMethods:
     @pytest_asyncio.fixture()
