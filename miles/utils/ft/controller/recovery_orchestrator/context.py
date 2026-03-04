@@ -22,12 +22,19 @@ def _is_finite(value: float) -> bool:
 class RecoveryContext:
     trigger: str
     phase: RecoveryPhase = RecoveryPhase.CHECK_ALERTS
-    reattempt_start_time: datetime | None = None
-    reattempt_base_iteration: int | None = None
     recovery_start_time: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc),
     )
+    phase_before_notify: RecoveryPhase | None = None
+    bad_node_ids: list[str] = field(default_factory=list)
+
+    # Reattempt state
+    reattempt_submitted: bool = False
+    reattempt_submit_time: datetime | None = None
+    reattempt_start_time: datetime | None = None
+    reattempt_base_iteration: int | None = None
+
+    # Configuration
     global_timeout_seconds: int = 1800
     monitoring_success_iterations: int = 10
     monitoring_timeout_seconds: int = 600
-    phase_before_notify: RecoveryPhase | None = None

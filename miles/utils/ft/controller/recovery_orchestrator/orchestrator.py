@@ -62,10 +62,6 @@ class RecoveryOrchestrator:
             monitoring_timeout_seconds=monitoring_timeout_seconds,
         )
 
-        self._reattempt_submitted: bool = False
-        self._reattempt_submit_time: datetime | None = None
-        self._bad_node_ids: list[str] = []
-
     @property
     def phase(self) -> RecoveryPhase:
         return self._context.phase
@@ -127,10 +123,10 @@ class RecoveryOrchestrator:
         bad_node_ids, reasons = self._alert_checker.check_alerts()
 
         if bad_node_ids:
-            self._bad_node_ids = bad_node_ids
+            self._context.bad_node_ids = bad_node_ids
             logger.info(
                 "check_alerts_found bad_nodes=%s reasons=%s",
-                self._bad_node_ids, reasons,
+                self._context.bad_node_ids, reasons,
             )
             self._transition(RecoveryPhase.EVICT_AND_RESTART)
         else:
@@ -138,54 +134,49 @@ class RecoveryOrchestrator:
             self._transition(RecoveryPhase.REATTEMPTING)
 
     async def _step_reattempting(self) -> None:
-        if not self._reattempt_submitted:
-            try:
-                await self._training_job.stop_training()
-            except Exception:
-                logger.warning("reattempt_stop_training_failed", exc_info=True)
+        ctx = self._context
 
-            self._mini_wandb.clear()
-
-            try:
-                await self._training_job.submit_training()
-            except Exception:
-                logger.error("reattempt_submit_training_failed", exc_info=True)
-                self._transition(RecoveryPhase.NOTIFY)
-                return
-
-            self._reattempt_submitted = True
-            self._reattempt_submit_time = datetime.now(timezone.utc)
-            logger.info("reattempt_submitted trigger=%s", self._context.trigger)
+        if not ctx.reattempt_submitted:
+            await self._reattempt_submit()
             return
 
+        await self._reattempt_poll()
+
+    async def _reattempt_submit(self) -> None:
+        ctx = self._context
+
+        success = await self._stop_clear_submit()
+        if not success:
+            self._transition(RecoveryPhase.NOTIFY)
+            return
+
+        ctx.reattempt_submitted = True
+        ctx.reattempt_submit_time = datetime.now(timezone.utc)
+        logger.info("reattempt_submitted trigger=%s", ctx.trigger)
+
+    async def _reattempt_poll(self) -> None:
+        ctx = self._context
         status = await self._training_job.get_training_status()
 
         if status == JobStatus.RUNNING:
             iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
-            self._context.reattempt_start_time = datetime.now(timezone.utc)
-            self._context.reattempt_base_iteration = (
+            ctx.reattempt_start_time = datetime.now(timezone.utc)
+            ctx.reattempt_base_iteration = (
                 int(iteration) if iteration is not None and _is_finite(iteration) else 0
             )
-            logger.info(
-                "reattempt_running base_iteration=%s",
-                self._context.reattempt_base_iteration,
-            )
+            logger.info("reattempt_running base_iteration=%s", ctx.reattempt_base_iteration)
             self._transition(RecoveryPhase.MONITORING)
             return
 
         if status == JobStatus.FAILED:
-            logger.warning("reattempt_immediately_failed trigger=%s", self._context.trigger)
+            logger.warning("reattempt_immediately_failed trigger=%s", ctx.trigger)
             self._transition(RecoveryPhase.DIAGNOSING)
             return
 
-        if self._reattempt_submit_time is not None:
-            elapsed = (
-                datetime.now(timezone.utc) - self._reattempt_submit_time
-            ).total_seconds()
+        if ctx.reattempt_submit_time is not None:
+            elapsed = (datetime.now(timezone.utc) - ctx.reattempt_submit_time).total_seconds()
             if elapsed > _PENDING_TIMEOUT_SECONDS:
-                logger.warning(
-                    "reattempt_pending_timeout elapsed=%.0f", elapsed,
-                )
+                logger.warning("reattempt_pending_timeout elapsed=%.0f", elapsed)
                 self._transition(RecoveryPhase.NOTIFY)
 
     async def _step_monitoring(self) -> None:
@@ -219,22 +210,15 @@ class RecoveryOrchestrator:
                 )
                 self._transition(RecoveryPhase.DIAGNOSING)
 
-    def _iteration_progress(self) -> int:
-        current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
-        if current_iteration is None or not _is_finite(current_iteration):
-            return 0
-        base = self._context.reattempt_base_iteration or 0
-        return int(current_iteration) - base
-
     async def _step_diagnosing(self) -> None:
         decision = await self._diagnostic_scheduler.run_diagnostic_pipeline(
             trigger_reason=self._context.trigger,
         )
 
         if decision.action == ActionType.MARK_BAD_AND_RESTART:
-            self._bad_node_ids = list(decision.bad_node_ids)
+            self._context.bad_node_ids = list(decision.bad_node_ids)
             logger.info(
-                "diagnosing_found_bad_nodes bad_nodes=%s", self._bad_node_ids,
+                "diagnosing_found_bad_nodes bad_nodes=%s", self._context.bad_node_ids,
             )
             self._transition(RecoveryPhase.EVICT_AND_RESTART)
         else:
@@ -242,7 +226,7 @@ class RecoveryOrchestrator:
             self._transition(RecoveryPhase.NOTIFY)
 
     async def _step_evict_and_restart(self) -> None:
-        for node_id in self._bad_node_ids:
+        for node_id in self._context.bad_node_ids:
             success = await self._retry_async(
                 lambda nid=node_id: self._node_manager.mark_node_bad(
                     nid, reason=f"recovery eviction: {self._context.trigger}",
@@ -253,24 +237,14 @@ class RecoveryOrchestrator:
                 self._transition(RecoveryPhase.NOTIFY)
                 return
 
-        try:
-            await self._training_job.stop_training()
-        except Exception:
-            logger.warning("evict_stop_training_failed", exc_info=True)
-
-        self._mini_wandb.clear()
-
-        success = await self._retry_async(
-            self._training_job.submit_training,
-            description="submit_training",
-        )
+        success = await self._stop_clear_submit()
         if not success:
             self._transition(RecoveryPhase.NOTIFY)
             return
 
         logger.info(
             "evict_and_restart_done bad_nodes=%s trigger=%s",
-            self._bad_node_ids, self._context.trigger,
+            self._context.bad_node_ids, self._context.trigger,
         )
         self._transition(RecoveryPhase.DONE)
 
@@ -298,6 +272,30 @@ class RecoveryOrchestrator:
     # -------------------------------------------------------------------
     # Helpers
     # -------------------------------------------------------------------
+
+    def _iteration_progress(self) -> int:
+        current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
+        if current_iteration is None or not _is_finite(current_iteration):
+            return 0
+        base = self._context.reattempt_base_iteration or 0
+        return int(current_iteration) - base
+
+    async def _stop_clear_submit(self) -> bool:
+        """Stop training, clear metrics, and submit a new training job.
+
+        Returns True on success, False if submit fails after retries.
+        """
+        try:
+            await self._training_job.stop_training()
+        except Exception:
+            logger.warning("stop_training_failed", exc_info=True)
+
+        self._mini_wandb.clear()
+
+        return await self._retry_async(
+            self._training_job.submit_training,
+            description="submit_training",
+        )
 
     def _transition(self, new_phase: RecoveryPhase) -> None:
         old = self._context.phase
