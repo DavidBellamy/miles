@@ -82,7 +82,7 @@ class FtNodeAgent:
 
     async def cleanup_training_processes(self, training_job_id: str) -> None:
         raise NotImplementedError(
-            "cleanup_training_processes will be implemented in platform-adapters milestone"
+            "cleanup_training_processes will be implemented in recovery-basic milestone"
         )
 
     # ------------------------------------------------------------------
