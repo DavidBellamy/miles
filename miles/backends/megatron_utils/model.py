@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import gc
 import logging
@@ -6,6 +8,7 @@ from argparse import Namespace
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from megatron.core import mpu
@@ -29,9 +32,13 @@ from ..training_utils.log_utils import aggregate_forward_results, aggregate_trai
 from ..training_utils.loss import loss_function
 from ..training_utils.parallel import ParallelState
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
+from .initialize import is_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
 from .model_provider import get_model_provider_func
 from .parallel import get_packed_seq_params
+
+if TYPE_CHECKING:
+    from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +502,7 @@ def train(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
+    ft_agent: FtMegatronAgent | None = None,
 ) -> None:
     """Run training over a rollout consisting of multiple steps.
 
@@ -508,6 +516,7 @@ def train(
         opt_param_scheduler (OptimizerParamScheduler): LR/WD scheduler.
         data_iterator (Sequence[DataIterator]): Iterable(s) yielding training batches.
         num_microbatches (Sequence[int]): Microbatches per step in the rollout.
+        ft_agent: Optional FtMegatronAgent for fault tolerance heartbeat.
     """
     args = get_args()
 
@@ -578,6 +587,7 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
+    is_main_rank = is_megatron_main_rank()
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
@@ -625,13 +635,13 @@ def train(
 
                     check_mtp_loss(mtp_losses)
 
+        accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+
+        if ft_agent is not None:
+            ft_agent.step(iteration=accumulated_step_id)
+
         # per train step log.
-        if (
-            mpu.get_data_parallel_rank(with_context_parallel=True) == 0
-            and mpu.get_tensor_model_parallel_rank() == 0
-            and mpu.get_pipeline_model_parallel_rank() == mpu.get_pipeline_model_parallel_world_size() - 1
-        ):
-            accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+        if is_main_rank:
             role = getattr(model[0], "role", "actor")
             role_tag = "" if role == "actor" else f"{role}-"
 
