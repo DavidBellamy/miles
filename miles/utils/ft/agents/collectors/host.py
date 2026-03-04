@@ -200,7 +200,7 @@ class _KmsgReader:
             return []
 
         since_str = self._last_dmesg_time.strftime("%Y-%m-%d %H:%M:%S")
-        self._last_dmesg_time = datetime.now(timezone.utc)
+        new_time = datetime.now(timezone.utc)
 
         try:
             result = subprocess.run(
@@ -209,8 +209,10 @@ class _KmsgReader:
                 text=True,
                 timeout=5,
             )
-            if result.returncode == 0 and result.stdout:
-                return result.stdout.strip().splitlines()
+            if result.returncode == 0:
+                self._last_dmesg_time = new_time
+                if result.stdout:
+                    return result.stdout.strip().splitlines()
         except Exception:
             logger.warning("dmesg fallback failed", exc_info=True)
 
