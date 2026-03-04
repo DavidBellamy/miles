@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -40,8 +39,7 @@ class HostCollector(BaseCollector):
 
     async def collect(self) -> CollectorOutput:
         self._collect_count += 1
-        metrics = await asyncio.to_thread(self._collect_sync)
-        return CollectorOutput(metrics=metrics)
+        return await super().collect()
 
     async def close(self) -> None:
         if self._kmsg_reader is not None:
