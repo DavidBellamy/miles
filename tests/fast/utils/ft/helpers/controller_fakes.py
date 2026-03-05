@@ -5,13 +5,19 @@ from typing import NamedTuple
 from prometheus_client import CollectorRegistry
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.models import ActionType, Decision
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.platform.protocols import (
+    DiagnosticSchedulerProtocol,
+    JobStatus,
+    NodeManagerProtocol,
+    TrainingJobProtocol,
+)
+
 
 # ---------------------------------------------------------------------------
 # Platform fakes
@@ -69,7 +75,7 @@ class FakeTrainingJob:
     async def stop_training(self, timeout_seconds: int = 300) -> None:
         self._stopped = True
 
-    async def submit_training(self) -> str:
+    async def submit_training(self, excluded_node_ids: list[str] | None = None) -> str:
         self._submitted = True
         self._call_count = 0
         self._run_id = f"fake-{id(self)}"
