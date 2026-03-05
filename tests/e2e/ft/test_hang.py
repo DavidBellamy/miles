@@ -16,8 +16,14 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models import ControllerMode
-from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
+from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from tests.e2e.ft.conftest import (
+    FaultInjectorFactory,
+    FtSystem,
+    assert_phase_path_contains,
+    wait_for_recovery_complete,
+    wait_for_training_stable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +70,14 @@ async def test_hang_detection_and_recovery(
     logger.info("hang_detected_and_recovered t_detect=%.1fs", t_detect)
 
     assert status.mode == ControllerMode.MONITORING
+
+    final_status = controller.get_status()
+    assert_phase_path_contains(final_status, [
+        RecoveryPhase.CHECK_ALERTS,
+        RecoveryPhase.REATTEMPTING,
+        RecoveryPhase.MONITORING,
+        RecoveryPhase.DONE,
+    ])
 
     # Wait for training to stabilize post-recovery
     await wait_for_training_stable(

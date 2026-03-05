@@ -14,8 +14,14 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models import ControllerMode
-from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
+from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from tests.e2e.ft.conftest import (
+    FaultInjectorFactory,
+    FtSystem,
+    assert_phase_path_contains,
+    wait_for_recovery_complete,
+    wait_for_training_stable,
+)
 
 pytestmark = [
     pytest.mark.e2e,
@@ -71,6 +77,13 @@ async def test_transient_crash_auto_recovery(
     assert (
         final_status.bad_nodes == []
     ), f"Expected no bad nodes for transient crash, got: {final_status.bad_nodes}"
+
+    assert_phase_path_contains(final_status, [
+        RecoveryPhase.CHECK_ALERTS,
+        RecoveryPhase.REATTEMPTING,
+        RecoveryPhase.MONITORING,
+        RecoveryPhase.DONE,
+    ])
 
     # Sanity check: recovery time should be reasonable (< 5 min)
     assert t_recover < 300.0, f"Recovery took too long: {t_recover:.1f}s"

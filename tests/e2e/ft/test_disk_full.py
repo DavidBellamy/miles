@@ -15,8 +15,14 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models import ControllerMode
-from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
+from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from tests.e2e.ft.conftest import (
+    FaultInjectorFactory,
+    FtSystem,
+    assert_phase_path_contains,
+    wait_for_recovery_complete,
+    wait_for_training_stable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +78,16 @@ async def test_disk_full_eviction(
         assert target_node in node_bad or any(
             target_node in str(n) for n in node_bad
         ), f"Expected {target_node} in bad nodes, got: {node_bad}"
+
+        # If recovery went through RecoveryOrchestrator (crash detected first),
+        # verify it took the eviction path. If hardware detector fired directly
+        # (MARK_BAD_AND_RESTART without orchestrator), phase_history is None.
+        final_status = controller.get_status()
+        if final_status.phase_history is not None:
+            assert_phase_path_contains(final_status, [
+                RecoveryPhase.EVICT_AND_RESTART,
+                RecoveryPhase.DONE,
+            ])
 
         # Training should recover on remaining healthy nodes
         await wait_for_training_stable(

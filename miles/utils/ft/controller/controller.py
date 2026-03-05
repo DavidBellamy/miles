@@ -15,7 +15,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import ActionType, ControllerMode, ControllerStatus, Decision, NodeAgentProtocol
+from miles.utils.ft.models import ActionType, ControllerMode, ControllerStatus, Decision, NodeAgentProtocol, RecoveryPhase
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
     JobStatus,
@@ -65,6 +65,7 @@ class FtController:
         self._tick_count: int = 0
         self._recovery_orchestrator: RecoveryOrchestrator | None = None
         self._diagnosing_nodes: set[str] = set()
+        self._last_phase_history: list[RecoveryPhase] | None = None
 
     # -------------------------------------------------------------------
     # Public API
@@ -100,11 +101,11 @@ class FtController:
         if self._recovery_orchestrator is not None:
             mode = ControllerMode.RECOVERY
             recovery_phase = self._recovery_orchestrator.phase
-            phase_history: list = list(self._recovery_orchestrator.phase_history)
+            phase_history: list[RecoveryPhase] | None = list(self._recovery_orchestrator.phase_history)
         else:
             mode = ControllerMode.MONITORING
             recovery_phase = None
-            phase_history = None
+            phase_history = self._last_phase_history
 
         return ControllerStatus(
             mode=mode,
@@ -176,6 +177,7 @@ class FtController:
 
             if self._recovery_orchestrator.is_done():
                 logger.info("recovery_complete trigger=%s", self._recovery_orchestrator.trigger)
+                self._last_phase_history = list(self._recovery_orchestrator.phase_history)
                 self._recovery_orchestrator = None
                 self._diagnosing_nodes.clear()
 

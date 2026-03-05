@@ -19,6 +19,7 @@ from miles.utils.ft.models import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
     FtSystem,
+    assert_phase_path_contains,
     wait_for_mode_transition,
     wait_for_recovery_complete,
     wait_for_recovery_phase,
@@ -84,3 +85,9 @@ async def test_repeated_crash_enters_diagnosing(
         timeout=300.0,
     )
     assert final_status.mode == ControllerMode.MONITORING
+
+    assert_phase_path_contains(final_status, [
+        RecoveryPhase.DIAGNOSING,
+        RecoveryPhase.NOTIFY,
+        RecoveryPhase.DONE,
+    ])
