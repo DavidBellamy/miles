@@ -13,6 +13,8 @@ from miles.utils.ft.controller.mini_prometheus.query import EMPTY_INSTANT, EMPTY
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_RANGE_QUERY_STEP_SECONDS: int = 15
+
 
 class PrometheusClient(RangeAggregationMixin):
     """MetricStoreProtocol implementation backed by a real Prometheus HTTP API.
@@ -22,9 +24,15 @@ class PrometheusClient(RangeAggregationMixin):
     with the same schema as MiniPrometheus.
     """
 
-    def __init__(self, url: str, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        url: str,
+        timeout: float = 10.0,
+        range_query_step_seconds: int = _DEFAULT_RANGE_QUERY_STEP_SECONDS,
+    ) -> None:
         self._url = url.rstrip("/")
         self._client = httpx.Client(timeout=timeout)
+        self._range_query_step_seconds = range_query_step_seconds
 
     # -------------------------------------------------------------------
     # MetricStoreProtocol implementation
@@ -76,7 +84,7 @@ class PrometheusClient(RangeAggregationMixin):
 
         data = self._fetch_json(
             "/api/v1/query_range",
-            params={"query": promql, "start": start, "end": now, "step": 15},
+            params={"query": promql, "start": start, "end": now, "step": self._range_query_step_seconds},
         )
         if data is None:
             return EMPTY_RANGE
