@@ -134,10 +134,14 @@ def range_aggregate(
     window: timedelta,
     label_filters: dict[str, str] | None,
 ) -> pl.DataFrame:
-    window_start = datetime.now(timezone.utc) - window
+    now = datetime.now(timezone.utc)
+    window_start = now - window
 
     def _extract(samples: deque[TimeSeriesSample]) -> float | None:
-        window_samples = [s for s in samples if s.timestamp >= window_start]
+        window_samples = [
+            s for s in samples
+            if window_start <= s.timestamp <= now
+        ]
         if not window_samples:
             return None
         return _compute_aggregate(func_name, window_samples)
