@@ -17,7 +17,7 @@ class FtTrackingAgent(ControllerHandleMixin):
     """
 
     def __init__(self, run_id: str | None = None) -> None:
-        super().__init__()
+        super().__init__(ft_id=os.environ.get("FT_ID", ""))
         self._run_id = run_id or os.environ.get("FT_TRAINING_RUN_ID", "")
 
     def log(self, *, metrics: dict[str, float], step: int) -> None:
@@ -33,4 +33,6 @@ class FtTrackingAgent(ControllerHandleMixin):
                     metrics=metrics,
                 )
         except Exception:
-            logger.warning("FtTrackingAgent.log() failed at step=%d", step, exc_info=True)
+            logger.warning(
+                "FtTrackingAgent.log() failed at step=%d", step, exc_info=True
+            )

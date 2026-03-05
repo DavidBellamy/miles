@@ -26,7 +26,7 @@ class FtMegatronAgent(ControllerHandleMixin):
     """
 
     def __init__(self, rank: int, world_size: int) -> None:
-        super().__init__()
+        super().__init__(ft_id=os.environ.get("FT_ID", ""))
         self._rank = rank
         self._world_size = world_size
         self._run_id: str = os.environ.get("FT_TRAINING_RUN_ID", "")
@@ -100,7 +100,8 @@ class FtMegatronAgent(ControllerHandleMixin):
 
     def step(self, iteration: int) -> None:
         assert iteration > self._last_iteration, (
-            f"iteration must be strictly increasing: got {iteration}, " f"last was {self._last_iteration}"
+            f"iteration must be strictly increasing: got {iteration}, "
+            f"last was {self._last_iteration}"
         )
         try:
             self._last_iteration = iteration
