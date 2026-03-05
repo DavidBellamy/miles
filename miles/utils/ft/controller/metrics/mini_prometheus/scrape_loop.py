@@ -36,7 +36,7 @@ class ScrapeLoop:
 
     @property
     def targets(self) -> dict[str, str]:
-        return self._targets
+        return dict(self._targets)
 
     def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
