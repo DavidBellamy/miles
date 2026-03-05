@@ -27,7 +27,7 @@ class TestCheckNvml:
     def test_healthy_gpu(self) -> None:
         mock_pynvml = make_mock_pynvml(device_count=1)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.ecc_errors_uncorrectable == 0
         assert result.retired_pages_count == 0
@@ -37,42 +37,42 @@ class TestCheckNvml:
     def test_ecc_uncorrectable_errors(self) -> None:
         mock_pynvml = make_mock_pynvml(ecc_uncorrectable=5)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.ecc_errors_uncorrectable == 5
 
     def test_retired_pages(self) -> None:
         mock_pynvml = make_mock_pynvml(retired_pages=["page1", "page2", "page3"])
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.retired_pages_count == 3
 
     def test_abnormal_power_state_8(self) -> None:
         mock_pynvml = make_mock_pynvml(power_state=8)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.power_state_abnormal is True
 
     def test_abnormal_power_state_15(self) -> None:
         mock_pynvml = make_mock_pynvml(power_state=15)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.power_state_abnormal is True
 
     def test_normal_power_state(self) -> None:
         mock_pynvml = make_mock_pynvml(power_state=0)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.power_state_abnormal is False
 
     def test_row_remap_failure(self) -> None:
         mock_pynvml = make_mock_pynvml(remap_info=(0, 0, 0, 1))
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
-            result = _check_nvml(gpu_index=0, handle="handle-0")
+            result = _check_nvml(handle="handle-0")
 
         assert result.row_remap_failure is True
 
@@ -242,9 +242,38 @@ class TestMain:
         assert output[0]["passed"] is False
         assert output[0]["ecc_errors_uncorrectable"] == 5
 
-    def test_main_nvml_shutdown_on_error(self) -> None:
-        mock_pynvml = make_mock_pynvml(device_count=1)
-        mock_pynvml.nvmlDeviceGetHandleByIndex.side_effect = RuntimeError("GPU error")
+    def test_main_per_gpu_exception_produces_failed_result(self) -> None:
+        mock_pynvml = make_mock_pynvml(device_count=2)
+        mock_pynvml.nvmlDeviceGetHandleByIndex.side_effect = [
+            RuntimeError("GPU 0 error"),
+            "handle-1",
+        ]
+        stdout_capture = StringIO()
+
+        with (
+            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
+            patch(
+                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                return_value=True,
+            ),
+            patch(
+                "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
+                return_value=_MOCK_MATMUL_REF,
+            ),
+            patch("sys.stdout", stdout_capture),
+        ):
+            main()
+
+        output = json.loads(stdout_capture.getvalue())
+        assert len(output) == 2
+        assert output[0]["passed"] is False
+        assert "GPU 0 error" in output[0]["details"]
+        assert output[1]["passed"] is True
+        mock_pynvml.nvmlShutdown.assert_called_once()
+
+    def test_main_nvml_shutdown_always_called(self) -> None:
+        mock_pynvml = make_mock_pynvml(device_count=0)
+        stdout_capture = StringIO()
 
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
@@ -252,11 +281,13 @@ class TestMain:
                 "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
                 return_value=_MOCK_MATMUL_REF,
             ),
-            pytest.raises(RuntimeError, match="GPU error"),
+            patch("sys.stdout", stdout_capture),
         ):
             main()
 
         mock_pynvml.nvmlShutdown.assert_called_once()
+        output = json.loads(stdout_capture.getvalue())
+        assert output == []
 
 
 # ---------------------------------------------------------------------------

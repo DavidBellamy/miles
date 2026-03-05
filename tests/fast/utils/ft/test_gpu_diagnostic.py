@@ -192,6 +192,34 @@ class TestGpuDiagnosticTimeout:
         assert result.passed is False
         assert "timed out" in result.details
         process.kill.assert_called_once()
+        process.wait.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_kill_failure_still_returns_result(self) -> None:
+        process = AsyncMock()
+        process.communicate.side_effect = asyncio.TimeoutError()
+        process.kill.side_effect = OSError("kill failed")
+        process.wait = AsyncMock()
+
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            diag = GpuDiagnostic()
+            result = await diag.run(node_id="node-0", timeout_seconds=1)
+
+        assert result.passed is False
+        assert "timed out" in result.details
+
+
+class TestGpuDiagnosticEmptyResults:
+    @pytest.mark.asyncio
+    async def test_empty_gpu_list_passes(self) -> None:
+        process = _mock_subprocess(stdout="[]")
+
+        with patch("asyncio.create_subprocess_exec", return_value=process):
+            diag = GpuDiagnostic()
+            result = await diag.run(node_id="node-0")
+
+        assert result.passed is True
+        assert "all GPU checks passed" in result.details
 
 
 class TestGpuDiagnosticProcessCrash:

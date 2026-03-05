@@ -42,7 +42,7 @@ class GpuCheckResult:
 _ABNORMAL_POWER_STATES = frozenset({8, 15})
 
 
-def _check_nvml(gpu_index: int, handle: object) -> NvmlCheckResult:
+def _check_nvml(handle: object) -> NvmlCheckResult:
     """Run pynvml extended checks on a single GPU handle."""
     import pynvml
 
@@ -115,7 +115,7 @@ def _check_single_gpu(
     """Run all checks on one GPU and produce a GpuCheckResult."""
     failures: list[str] = []
 
-    nvml = _check_nvml(gpu_index, handle)
+    nvml = _check_nvml(handle)
 
     if nvml.ecc_errors_uncorrectable > 0:
         failures.append(
@@ -157,8 +157,20 @@ def main() -> None:
 
         results: list[GpuCheckResult] = []
         for i in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            result = _check_single_gpu(i, handle, matmul_ref=matmul_ref)
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                result = _check_single_gpu(i, handle, matmul_ref=matmul_ref)
+            except Exception as exc:
+                result = GpuCheckResult(
+                    gpu_index=i,
+                    passed=False,
+                    ecc_errors_uncorrectable=0,
+                    retired_pages_count=0,
+                    power_state_abnormal=False,
+                    row_remap_failure=False,
+                    matmul_passed=False,
+                    details=f"check failed: {exc}",
+                )
             results.append(result)
     finally:
         pynvml.nvmlShutdown()
