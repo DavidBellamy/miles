@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from miles.utils.ft.controller.detectors import build_detector_chain
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
 from miles.utils.ft.platform.controller_actor import (
     _FtControllerActorCls,
     build_ft_controller,
@@ -70,6 +71,18 @@ class TestBuildFtController:
             start_exporter=False,
         )
         assert ctrl._scrape_target_manager is None
+
+    def test_detector_chain_types_match(self) -> None:
+        ctrl = build_ft_controller(platform="stub", start_exporter=False)
+        expected_chain = build_detector_chain()
+        actual_types = [type(d).__name__ for d in ctrl._detectors]
+        expected_types = [type(d).__name__ for d in expected_chain]
+        assert actual_types == expected_types
+
+    def test_controller_exporter_registered_as_scrape_target(self) -> None:
+        ctrl = build_ft_controller(platform="stub", start_exporter=False)
+        assert isinstance(ctrl._metric_store, MiniPrometheus)
+        assert "controller" in ctrl._metric_store._scrape_targets
 
 
 class TestBuildPlatformComponentsK8sRay:
