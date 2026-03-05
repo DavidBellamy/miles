@@ -4,9 +4,16 @@ import asyncio
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.controller.diagnostics.inter_machine_comm import InterMachineCommDiagnostic
-from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import InterMachineOrchestrator
-from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator, StackTraceDiagnostic
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
+    InterMachineCommDiagnostic,
+)
+from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
+    InterMachineOrchestrator,
+)
+from miles.utils.ft.controller.diagnostics.stack_trace import (
+    StackTraceAggregator,
+    StackTraceDiagnostic,
+)
 from miles.utils.ft.models import (
     ActionType,
     Decision,
@@ -53,9 +60,7 @@ class DiagnosticScheduler:
     ) -> Decision:
         logger.info(
             "diagnostic_pipeline_start trigger=%s suspect_nodes=%s pipeline=%s",
-            trigger_reason,
-            suspect_node_ids,
-            self._pipeline,
+            trigger_reason, suspect_node_ids, self._pipeline,
         )
 
         if trigger_reason == TriggerType.HANG and self._rank_pids_provider is not None:
@@ -76,7 +81,8 @@ class DiagnosticScheduler:
         if suspect_node_ids is not None:
             suspect_set = set(suspect_node_ids)
             remaining_agents: dict[str, NodeAgentProtocol] = {
-                nid: agent for nid, agent in self._agents.items() if nid in suspect_set
+                nid: agent for nid, agent in self._agents.items()
+                if nid in suspect_set
             }
         else:
             remaining_agents: dict[str, NodeAgentProtocol] = dict(self._agents)
@@ -100,8 +106,7 @@ class DiagnosticScheduler:
             if bad_node_ids:
                 logger.info(
                     "diagnostic_step_found_bad step=%s bad_nodes=%s",
-                    diagnostic_type,
-                    bad_node_ids,
+                    diagnostic_type, bad_node_ids,
                 )
                 return Decision(
                     action=ActionType.MARK_BAD_AND_RESTART,
@@ -122,7 +127,17 @@ class DiagnosticScheduler:
         suspect_from_failures: list[str] = []
 
         async def _collect_node(node_id: str) -> None:
-            rank_pids = self._rank_pids_provider(node_id)
+            try:
+                rank_pids = self._rank_pids_provider(node_id)
+            except Exception:
+                suspect_from_failures.append(node_id)
+                logger.warning(
+                    "rank_pids_provider_failed node=%s",
+                    node_id,
+                    exc_info=True,
+                )
+                return
+
             if not rank_pids:
                 return
 
@@ -140,8 +155,7 @@ class DiagnosticScheduler:
                     suspect_from_failures.append(node_id)
                     logger.info(
                         "stack_trace_collection_failed node=%s details=%s",
-                        node_id,
-                        result.details,
+                        node_id, result.details,
                     )
             except Exception:
                 suspect_from_failures.append(node_id)
@@ -158,9 +172,7 @@ class DiagnosticScheduler:
 
         logger.info(
             "stack_trace_pre_step_done traces_collected=%d suspect_from_failures=%s suspect_from_aggregation=%s",
-            len(traces),
-            suspect_from_failures,
-            suspect_from_aggregation,
+            len(traces), suspect_from_failures, suspect_from_aggregation,
         )
         return all_suspects
 
@@ -181,21 +193,18 @@ class DiagnosticScheduler:
         node_ids = list(agents.keys())
         logger.info(
             "diagnostic_step_start type=%s nodes=%s",
-            diagnostic_type,
-            node_ids,
+            diagnostic_type, node_ids,
         )
 
-        raw_results = await asyncio.gather(
-            *(
-                self._call_agent_diagnostic(
-                    agent=agents[node_id],
-                    node_id=node_id,
-                    diagnostic_type=diagnostic_type,
-                    timeout_seconds=timeout_seconds,
-                )
-                for node_id in node_ids
+        raw_results = await asyncio.gather(*(
+            self._call_agent_diagnostic(
+                agent=agents[node_id],
+                node_id=node_id,
+                diagnostic_type=diagnostic_type,
+                timeout_seconds=timeout_seconds,
             )
-        )
+            for node_id in node_ids
+        ))
         results = dict(zip(node_ids, raw_results))
 
         bad_node_ids: list[str] = []
@@ -207,9 +216,7 @@ class DiagnosticScheduler:
                 bad_node_ids.append(node_id)
                 logger.info(
                     "diagnostic_node_failed type=%s node=%s details=%s",
-                    diagnostic_type,
-                    node_id,
-                    result.details,
+                    diagnostic_type, node_id, result.details,
                 )
 
         return bad_node_ids, remaining
@@ -227,31 +234,26 @@ class DiagnosticScheduler:
     ) -> DiagnosticResult:
         try:
             return await agent.run_diagnostic(
-                diagnostic_type,
-                timeout_seconds=timeout_seconds,
+                diagnostic_type, timeout_seconds=timeout_seconds,
             )
         except UnknownDiagnosticError:
             logger.error(
                 "diagnostic_type_not_registered node=%s type=%s — "
                 "this is a pipeline configuration error, not a node fault",
-                node_id,
-                diagnostic_type,
+                node_id, diagnostic_type,
                 exc_info=True,
             )
             return DiagnosticResult.pass_result(
-                diagnostic_type=diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=diagnostic_type, node_id=node_id,
                 details=f"config error: diagnostic type '{diagnostic_type}' not registered on node (treated as pass)",
             )
         except Exception:
             logger.warning(
                 "diagnostic_agent_call_failed node=%s type=%s",
-                node_id,
-                diagnostic_type,
+                node_id, diagnostic_type,
                 exc_info=True,
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=diagnostic_type, node_id=node_id,
                 details="agent call raised exception",
             )
