@@ -19,7 +19,7 @@ from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTra
 
 if TYPE_CHECKING:
     from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-    from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
+    from miles.utils.ft.platform.notifiers.webhook_notifier import WebhookNotifier
     from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
 logger = logging.getLogger(__name__)
@@ -69,18 +69,68 @@ def _build_platform_components(
     raise ValueError(f"Unknown platform: {platform}")
 
 
-def _build_notifier(platform: str) -> LarkWebhookNotifier | StubNotifier | None:
-    webhook_url = (os.environ.get("FT_LARK_WEBHOOK_URL") or "").strip()
-    if webhook_url:
-        from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
+_NOTIFIER_PLATFORM_CLASSES: dict[str, str] = {
+    "lark": "LarkWebhookNotifier",
+    "slack": "SlackWebhookNotifier",
+    "discord": "DiscordWebhookNotifier",
+}
 
-        return LarkWebhookNotifier(webhook_url=webhook_url)
+
+def _resolve_notify_config() -> tuple[str, str]:
+    """Return (platform, webhook_url) from environment variables.
+
+    Priority: MILES_FT_NOTIFY_PLATFORM + MILES_FT_NOTIFY_WEBHOOK_URL.
+    Fallback: MILES_FT_LARK_WEBHOOK_URL implies platform=lark.
+    """
+    webhook_url = (os.environ.get("MILES_FT_NOTIFY_WEBHOOK_URL") or "").strip()
+    notify_platform = (os.environ.get("MILES_FT_NOTIFY_PLATFORM") or "").strip().lower()
+
+    if webhook_url and notify_platform:
+        return notify_platform, webhook_url
+
+    if webhook_url and not notify_platform:
+        return "lark", webhook_url
+
+    legacy_url = (os.environ.get("MILES_FT_LARK_WEBHOOK_URL") or "").strip()
+    if legacy_url:
+        return "lark", legacy_url
+
+    return notify_platform or "lark", ""
+
+
+def _get_notifier_class(notify_platform: str) -> type[WebhookNotifier]:
+    from miles.utils.ft.platform.notifiers import (
+        DiscordWebhookNotifier,
+        LarkWebhookNotifier,
+        SlackWebhookNotifier,
+    )
+
+    registry: dict[str, type[WebhookNotifier]] = {
+        "lark": LarkWebhookNotifier,
+        "slack": SlackWebhookNotifier,
+        "discord": DiscordWebhookNotifier,
+    }
+    cls = registry.get(notify_platform)
+    if cls is None:
+        raise ValueError(
+            f"Unknown notify platform: {notify_platform!r}. "
+            f"Supported: {sorted(registry)}"
+        )
+    return cls
+
+
+def _build_notifier(platform: str) -> WebhookNotifier | StubNotifier | None:
+    notify_platform, webhook_url = _resolve_notify_config()
+    if webhook_url:
+        cls = _get_notifier_class(notify_platform)
+        return cls(webhook_url=webhook_url)
 
     if platform == "stub":
         return StubNotifier()
 
     logger.warning(
-        "No notifier configured for platform=%s (FT_LARK_WEBHOOK_URL not set). "
+        "No notifier configured for platform=%s "
+        "(MILES_FT_NOTIFY_WEBHOOK_URL / MILES_FT_LARK_WEBHOOK_URL not set). "
         "Recovery alerts will not be delivered.",
         platform,
     )
