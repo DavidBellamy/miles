@@ -8,6 +8,7 @@ from miles.utils.ft.models import (
     DiagnosticResult,
     FtBaseModel,
     MetricSample,
+    NodeFault,
     TriggerType,
 )
 
@@ -86,6 +87,54 @@ class TestDecision:
             reason="GPU lost on multiple nodes",
         )
         assert decision.bad_node_ids == ["node-0", "node-1"]
+
+
+class TestDecisionFromNodeFaults:
+    def test_empty_faults_returns_none_action(self) -> None:
+        decision = Decision.from_node_faults(faults=[], fallback_reason="no faults")
+
+        assert decision.action == ActionType.NONE
+        assert decision.reason == "no faults"
+        assert decision.bad_node_ids == []
+
+    def test_single_fault(self) -> None:
+        faults = [NodeFault(node_id="node-0", reason="GPU lost")]
+        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.bad_node_ids == ["node-0"]
+        assert decision.reason == "GPU lost"
+
+    def test_multiple_faults_different_nodes_sorted(self) -> None:
+        faults = [
+            NodeFault(node_id="node-2", reason="NIC down"),
+            NodeFault(node_id="node-0", reason="GPU ECC error"),
+        ]
+        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+
+        assert decision.bad_node_ids == ["node-0", "node-2"]
+        assert "NIC down" in decision.reason
+        assert "GPU ECC error" in decision.reason
+
+    def test_duplicate_node_ids_deduplicated(self) -> None:
+        faults = [
+            NodeFault(node_id="node-0", reason="GPU 0 lost"),
+            NodeFault(node_id="node-0", reason="GPU 1 lost"),
+        ]
+        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+
+        assert decision.bad_node_ids == ["node-0"]
+        assert decision.reason == "GPU 0 lost; GPU 1 lost"
+
+    def test_reason_semicolon_joined(self) -> None:
+        faults = [
+            NodeFault(node_id="node-0", reason="reason-a"),
+            NodeFault(node_id="node-1", reason="reason-b"),
+            NodeFault(node_id="node-2", reason="reason-c"),
+        ]
+        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+
+        assert decision.reason == "reason-a; reason-b; reason-c"
 
 
 class TestDiagnosticResult:
