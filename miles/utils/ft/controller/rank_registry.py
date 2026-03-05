@@ -43,6 +43,17 @@ class RankRegistry:
         exporter_address: str,
         pid: int | None = None,
     ) -> None:
+        self._validate_rank(run_id=run_id, rank=rank, world_size=world_size, node_id=node_id)
+        self._switch_run_if_needed(run_id=run_id)
+        self._record_rank(
+            run_id=run_id, rank=rank, world_size=world_size,
+            node_id=node_id, exporter_address=exporter_address, pid=pid,
+        )
+
+    @staticmethod
+    def _validate_rank(
+        *, run_id: str, rank: int, world_size: int, node_id: str,
+    ) -> None:
         if not run_id:
             raise ValueError("run_id must be non-empty")
         if not node_id:
@@ -52,23 +63,37 @@ class RankRegistry:
         if rank < 0 or rank >= world_size:
             raise ValueError(f"rank must be in [0, {world_size}), got {rank}")
 
-        if run_id != self.active_run_id:
-            logger.info(
-                "new_run_registered run_id=%s previous_run_id=%s",
-                run_id, self.active_run_id,
-            )
-            self.active_run_id = run_id
-            self.expected_world_size = None
-            self._mini_wandb.set_active_run_id(run_id)
-            self._mini_wandb.clear()
-            self._remove_old_scrape_targets()
-            self.rank_placement = {}
-            self.rank_pids = {}
+    def _switch_run_if_needed(self, *, run_id: str) -> None:
+        if run_id == self.active_run_id:
+            return
 
+        logger.info(
+            "new_run_registered run_id=%s previous_run_id=%s",
+            run_id, self.active_run_id,
+        )
+        self.active_run_id = run_id
+        self.expected_world_size = None
+        self._mini_wandb.set_active_run_id(run_id)
+        self._mini_wandb.clear()
+        self._remove_old_scrape_targets()
+        self.rank_placement = {}
+        self.rank_pids = {}
+
+    def _record_rank(
+        self,
+        *,
+        run_id: str,
+        rank: int,
+        world_size: int,
+        node_id: str,
+        exporter_address: str,
+        pid: int | None,
+    ) -> None:
         self.expected_world_size = world_size
         self.rank_placement[rank] = node_id
         if pid is not None:
             self.rank_pids[rank] = pid
+
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
             run_id, rank, world_size, node_id,
