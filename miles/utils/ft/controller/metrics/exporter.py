@@ -6,7 +6,7 @@ from http.server import HTTPServer
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, start_http_server
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.models._recovery import RECOVERY_PHASE_TO_INT, RecoveryPhase
+from miles.utils.ft.models._recovery import RECOVERY_PHASE_TO_INT, ControllerMode, RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -136,3 +136,19 @@ class ControllerExporter:
             self._training_loss_latest.set(loss)
         if mfu is not None:
             self._training_mfu_latest.set(mfu)
+
+    def update_from_state(
+        self,
+        *,
+        job_status: JobStatus,
+        mode: ControllerMode,
+        recovery_phase: RecoveryPhase | None,
+        latest_loss: float | None,
+        latest_mfu: float | None,
+    ) -> None:
+        self.update_training_job_status(job_status)
+        self.update_tick_count()
+        self.update_mode(is_recovery=(mode == ControllerMode.RECOVERY))
+        if mode != ControllerMode.RECOVERY:
+            self.update_recovery_phase(None)
+        self.update_training_metrics(loss=latest_loss, mfu=latest_mfu)

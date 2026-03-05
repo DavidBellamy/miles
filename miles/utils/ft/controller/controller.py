@@ -102,15 +102,18 @@ class FtController:
                 if not self._shutting_down:
                     await asyncio.sleep(self._tick_interval)
         finally:
-            await stop_metric_store_task(self._metric_store, scrape_task)
-            if self._controller_exporter is not None:
-                self._controller_exporter.stop()
-            if self._notifier is not None:
-                try:
-                    await self._notifier.aclose()
-                except Exception:
-                    logger.warning("notifier_aclose_failed", exc_info=True)
+            await self._stop_services(scrape_task)
         logger.info("controller_stopped")
+
+    async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
+        await stop_metric_store_task(self._metric_store, scrape_task)
+        if self._controller_exporter is not None:
+            self._controller_exporter.stop()
+        if self._notifier is not None:
+            try:
+                await self._notifier.aclose()
+            except Exception:
+                logger.warning("notifier_aclose_failed", exc_info=True)
 
     async def shutdown(self) -> None:
         logger.info("controller_shutdown_requested")
@@ -325,21 +328,29 @@ class FtController:
         if self._controller_exporter is None:
             return
 
-        self._controller_exporter.update_training_job_status(job_status)
-        self._controller_exporter.update_tick_count()
-
         is_recovery = self._recovery_orchestrator is not None
-        self._controller_exporter.update_mode(is_recovery=is_recovery)
-        if not is_recovery:
-            self._controller_exporter.update_recovery_phase(None)
-
-        loss = self._mini_wandb.latest(metric_name="loss")
-        mfu = self._mini_wandb.latest(metric_name="mfu")
-        self._controller_exporter.update_training_metrics(loss=loss, mfu=mfu)
+        self._controller_exporter.update_from_state(
+            job_status=job_status,
+            mode=ControllerMode.RECOVERY if is_recovery else ControllerMode.MONITORING,
+            recovery_phase=self._recovery_orchestrator.phase if is_recovery else None,
+            latest_loss=self._mini_wandb.latest(metric_name="loss"),
+            latest_mfu=self._mini_wandb.latest(metric_name="mfu"),
+        )
 
     # -------------------------------------------------------------------
     # Internal: decision execution
     # -------------------------------------------------------------------
+
+    def _build_platform_deps(self) -> PlatformDeps:
+        return PlatformDeps(
+            node_manager=self._node_manager,
+            training_job=self._training_job,
+            metric_store=self._metric_store,
+            mini_wandb=self._mini_wandb,
+            notifier=self._notifier,
+            diagnostic_scheduler=self._diagnostic_scheduler,
+            controller_exporter=self._controller_exporter,
+        )
 
     async def _execute_decision(self, decision: Decision) -> None:
         if decision.action == ActionType.NONE:
@@ -356,52 +367,54 @@ class FtController:
                 action=decision.action.value, trigger=trigger_str,
             )
 
-        deps = PlatformDeps(
-            node_manager=self._node_manager,
-            training_job=self._training_job,
-            metric_store=self._metric_store,
-            mini_wandb=self._mini_wandb,
-            notifier=self._notifier,
-            diagnostic_scheduler=self._diagnostic_scheduler,
-            controller_exporter=self._controller_exporter,
+        handlers = {
+            ActionType.MARK_BAD_AND_RESTART: self._handle_mark_bad,
+            ActionType.ENTER_RECOVERY: self._handle_enter_recovery,
+            ActionType.NOTIFY_HUMAN: self._handle_notify,
+        }
+        handler = handlers.get(decision.action)
+        if handler is None:
+            raise ValueError(f"Unknown action type: {decision.action}")
+        await handler(decision)
+
+    async def _handle_mark_bad(self, decision: Decision) -> None:
+        await handle_mark_bad_and_restart(
+            decision=decision, deps=self._build_platform_deps(),
         )
 
-        if decision.action == ActionType.MARK_BAD_AND_RESTART:
-            await handle_mark_bad_and_restart(decision=decision, deps=deps)
-        elif decision.action == ActionType.ENTER_RECOVERY:
-            now = datetime.now(timezone.utc)
-            self._recovery_history.append((decision.trigger, now))
+    async def _handle_enter_recovery(self, decision: Decision) -> None:
+        now = datetime.now(timezone.utc)
+        self._recovery_history.append((decision.trigger, now))
 
-            cutoff = now - timedelta(minutes=self._recovery_cooldown_minutes)
-            recent_count = sum(
-                1 for trigger, ts in self._recovery_history
-                if trigger == decision.trigger and ts >= cutoff
+        cutoff = now - timedelta(minutes=self._recovery_cooldown_minutes)
+        recent_count = sum(
+            1 for trigger, ts in self._recovery_history
+            if trigger == decision.trigger and ts >= cutoff
+        )
+
+        if recent_count >= self._recovery_cooldown_max_count:
+            logger.warning(
+                "recovery_cooldown_escalation trigger=%s count=%d max=%d window_minutes=%s",
+                decision.trigger, recent_count, self._recovery_cooldown_max_count,
+                self._recovery_cooldown_minutes,
             )
-
-            if recent_count >= self._recovery_cooldown_max_count:
-                logger.warning(
-                    "recovery_cooldown_escalation trigger=%s count=%d max=%d window_minutes=%s",
-                    decision.trigger, recent_count, self._recovery_cooldown_max_count,
-                    self._recovery_cooldown_minutes,
-                )
-                await handle_notify_human(
-                    decision=Decision(
-                        action=ActionType.NOTIFY_HUMAN,
-                        reason=f"Recovery cooldown: {decision.trigger.value} triggered {recent_count} times in {self._recovery_cooldown_minutes}min",
-                        trigger=decision.trigger,
-                    ),
-                    notifier=self._notifier,
-                )
-                return
-
-            self._recovery_start_time = time.monotonic()
-            self._recovery_orchestrator = await handle_enter_recovery(
-                decision=decision, deps=deps,
-            )
-        elif decision.action == ActionType.NOTIFY_HUMAN:
             await handle_notify_human(
-                decision=decision,
+                decision=Decision(
+                    action=ActionType.NOTIFY_HUMAN,
+                    reason=f"Recovery cooldown: {decision.trigger.value} triggered {recent_count} times in {self._recovery_cooldown_minutes}min",
+                    trigger=decision.trigger,
+                ),
                 notifier=self._notifier,
             )
-        else:
-            raise ValueError(f"Unknown action type: {decision.action}")
+            return
+
+        self._recovery_start_time = time.monotonic()
+        self._recovery_orchestrator = await handle_enter_recovery(
+            decision=decision, deps=self._build_platform_deps(),
+        )
+
+    async def _handle_notify(self, decision: Decision) -> None:
+        await handle_notify_human(
+            decision=decision,
+            notifier=self._notifier,
+        )
