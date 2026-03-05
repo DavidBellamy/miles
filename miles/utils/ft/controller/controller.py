@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.controller.actions import (
@@ -167,10 +168,15 @@ class FtController:
 
     async def _tick(self) -> None:
         self._tick_count += 1
+        t0 = time.monotonic()
         try:
             await self._tick_inner()
         except Exception:
             logger.error("tick_failed tick=%d", self._tick_count, exc_info=True)
+        finally:
+            duration = time.monotonic() - t0
+            if self._controller_exporter is not None:
+                self._controller_exporter.update_tick_duration(duration)
 
     async def _tick_inner(self) -> None:
         if (

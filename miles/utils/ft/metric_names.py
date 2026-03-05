@@ -46,3 +46,4 @@ PHASE_TO_NUMERIC: dict[str, float] = {
 CONTROLLER_MODE = "miles_ft_controller_mode"
 CONTROLLER_TICK_COUNT = "miles_ft_controller_tick_count"
 CONTROLLER_RECOVERY_PHASE = "miles_ft_controller_recovery_phase"
+CONTROLLER_TICK_DURATION_SECONDS = "miles_ft_controller_tick_duration_seconds"

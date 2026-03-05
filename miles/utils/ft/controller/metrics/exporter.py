@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from http.server import HTTPServer
 
-from prometheus_client import CollectorRegistry, Counter, Gauge, start_http_server
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, start_http_server
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import RECOVERY_PHASE_TO_INT, RecoveryPhase
@@ -66,6 +66,11 @@ class ControllerExporter:
             "Latest training MFU from rank 0",
             registry=self._registry,
         )
+        self._tick_duration_seconds = Histogram(
+            mn.CONTROLLER_TICK_DURATION_SECONDS,
+            "Wall-clock duration of each controller tick",
+            registry=self._registry,
+        )
 
     @property
     def address(self) -> str:
@@ -93,6 +98,9 @@ class ControllerExporter:
 
     def update_training_job_status(self, status: JobStatus) -> None:
         self._training_job_status.set(_JOB_STATUS_TO_NUMERIC.get(status, 0))
+
+    def update_tick_duration(self, seconds: float) -> None:
+        self._tick_duration_seconds.observe(seconds)
 
     def update_training_metrics(
         self,
