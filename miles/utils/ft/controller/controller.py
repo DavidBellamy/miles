@@ -18,7 +18,7 @@ from miles.utils.ft.controller.recovery_helpers import (
     stop_clear_submit,
 )
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import ActionType, Decision, RECOVERY_PHASE_TO_INT
+from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
     JobStatus,
@@ -97,6 +97,8 @@ class FtController:
                     await asyncio.sleep(self._tick_interval)
         finally:
             await self._stop_scrape_loop(scrape_task)
+            if self._controller_exporter is not None:
+                self._controller_exporter.stop()
         logger.info("controller_stopped")
 
     async def shutdown(self) -> None:
@@ -128,11 +130,6 @@ class FtController:
         self._agents[node_id] = agent
         logger.info("agent_registered node_id=%s", node_id)
 
-    def unregister_agent(self, node_id: str) -> None:
-        removed = self._agents.pop(node_id, None)
-        if removed is not None:
-            logger.info("agent_unregistered node_id=%s", node_id)
-
     # -------------------------------------------------------------------
     # API Called from Agents
     # -------------------------------------------------------------------
@@ -144,13 +141,6 @@ class FtController:
         step: int,
         metrics: dict[str, float],
     ) -> None:
-        if self._active_run_id is not None and run_id != self._active_run_id:
-            logger.debug(
-                "log_step_discarded run_id=%s active_run_id=%s",
-                run_id, self._active_run_id,
-            )
-            return
-
         self._mini_wandb.log_step(
             run_id=run_id,
             rank=rank,
@@ -227,6 +217,7 @@ class FtController:
 
         if self._recovery_orchestrator is not None:
             await self._recovery_orchestrator.step()
+            self._diagnosing_nodes = set(self._recovery_orchestrator.bad_node_ids)
             if self._recovery_orchestrator.is_done():
                 logger.info("recovery_complete trigger=%s", self._recovery_orchestrator.trigger)
                 self._recovery_orchestrator = None
@@ -277,8 +268,6 @@ class FtController:
 
         if self._recovery_orchestrator is not None:
             self._controller_exporter.update_mode(1)
-            phase_int = RECOVERY_PHASE_TO_INT.get(self._recovery_orchestrator.phase, 0)
-            self._controller_exporter.update_recovery_phase(phase_int)
         else:
             self._controller_exporter.update_mode(0)
             self._controller_exporter.update_recovery_phase(0)
