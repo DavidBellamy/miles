@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import shlex
 from typing import Annotated
 
 import typer
 
-from miles.utils.ft.models import FT_CONTROLLER_ACTOR_NAME
-from miles.utils.ft.platform.controller_actor import FtControllerActor
+from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.platform.controller_factory import (
     FtControllerConfig,
     build_ft_controller,
@@ -18,20 +19,20 @@ logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 
-@app.command()
+@app.command(
+    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
+)
 def main(
+    ctx: typer.Context,
     tick_interval: Annotated[
         float, typer.Option(help="Controller main loop interval (seconds)")
     ] = 30.0,
     platform: Annotated[
         str, typer.Option(help="Platform mode: 'stub' or 'k8s-ray'")
-    ] = "stub",
+    ] = "k8s-ray",
     ray_address: Annotated[
         str, typer.Option(help="Ray dashboard address (k8s-ray mode)")
     ] = "http://127.0.0.1:8265",
-    entrypoint: Annotated[
-        str, typer.Option(help="Training job entrypoint command (k8s-ray mode)")
-    ] = "",
     metric_store_backend: Annotated[
         str, typer.Option(help="Metric store backend: 'mini' or 'prometheus'")
     ] = "mini",
@@ -41,48 +42,45 @@ def main(
     controller_exporter_port: Annotated[
         int, typer.Option(help="Controller Prometheus exporter HTTP port")
     ] = 9400,
-    as_ray_actor: Annotated[
-        bool, typer.Option(help="Create a detached Ray Actor instead of running inline")
-    ] = False,
+    runtime_env_json: Annotated[
+        str, typer.Option(help="Runtime env JSON for the training Ray job")
+    ] = "{}",
 ) -> None:
     """FT Controller entry point.
 
-    When --as-ray-actor is set (production mode), creates a detached named
-    Ray Actor and returns immediately. The actor runs the controller loop
-    in the background. FtMegatronAgent finds it via ray.get_actor("ft_controller").
+    Builds an FtController, submits the training command (passed after --)
+    as a Ray job, and runs the controller loop inline.
 
-    When --as-ray-actor is not set (dev/test mode), builds and runs the
-    controller inline with asyncio.run().
+    Usage: python -m miles.utils.ft.launcher [OPTIONS] -- COMMAND...
     """
+    entrypoint = shlex.join(ctx.args)
+    runtime_env = json.loads(runtime_env_json) if runtime_env_json else {}
+
     config = FtControllerConfig(
         platform=platform,
         ray_address=ray_address,
         entrypoint=entrypoint,
+        runtime_env=runtime_env,
         metric_store_backend=metric_store_backend,
         prometheus_url=prometheus_url,
         controller_exporter_port=controller_exporter_port,
         tick_interval=tick_interval,
     )
 
-    if as_ray_actor:
-        actor = FtControllerActor.options(
-            name=FT_CONTROLLER_ACTOR_NAME,
-            lifetime="detached",
-        ).remote(config=config)
-        actor.run.remote()
-        logger.info(
-            "ft_controller actor created and started "
-            "platform=%s backend=%s exporter_port=%d",
-            config.platform, config.metric_store_backend, config.controller_exporter_port,
-        )
-        return
-
     controller = build_ft_controller(config=config)
     logger.info(
-        "launcher_started_inline platform=%s backend=%s exporter_port=%d",
-        config.platform, config.metric_store_backend, config.controller_exporter_port,
+        "launcher_started platform=%s backend=%s exporter_port=%d entrypoint=%s",
+        config.platform,
+        config.metric_store_backend,
+        config.controller_exporter_port,
+        entrypoint,
     )
-    asyncio.run(controller.run())
+    asyncio.run(_submit_and_run(controller))
+
+
+async def _submit_and_run(controller: FtController) -> None:
+    await controller.submit_initial_training()
+    await controller.run()
 
 
 if __name__ == "__main__":
