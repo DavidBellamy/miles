@@ -6,11 +6,38 @@ import time
 from typing import Any
 from uuid import uuid4
 
+import ray
 from ray.job_submission import JobSubmissionClient
 
 from miles.utils.ft.platform.protocols import JobStatus
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
+    """Map node identifiers (K8s names, IPs, or Ray hex IDs) to Ray node IDs.
+
+    Looks up each identifier against NodeName, NodeManagerAddress, and NodeID
+    of alive Ray nodes. Identifiers already matching a NodeID pass through.
+    Unresolvable identifiers are logged and skipped.
+    """
+    lookup: dict[str, str] = {}
+    for node in ray.nodes():
+        if not node.get("Alive"):
+            continue
+        ray_id = node["NodeID"]
+        lookup[ray_id] = ray_id
+        lookup[node.get("NodeName", "")] = ray_id
+        lookup[node.get("NodeManagerAddress", "")] = ray_id
+
+    resolved: list[str] = []
+    for ident in identifiers:
+        ray_id = lookup.get(ident)
+        if ray_id is not None:
+            resolved.append(ray_id)
+        else:
+            logger.warning("resolve_to_ray_node_ids: %s not found in Ray cluster, skipping", ident)
+    return resolved
 
 _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
     "PENDING": JobStatus.PENDING,
@@ -62,7 +89,9 @@ class RayTrainingJob:
 
         entrypoint = self._entrypoint
         if excluded_node_ids:
-            entrypoint += f" --excluded-node-ids {','.join(excluded_node_ids)}"
+            ray_node_ids = resolve_to_ray_node_ids(excluded_node_ids)
+            if ray_node_ids:
+                entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 
         start = time.monotonic()
         job_id = await asyncio.to_thread(
