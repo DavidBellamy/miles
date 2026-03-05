@@ -148,20 +148,29 @@ async def ft_system(
 
 
 # ---------------------------------------------------------------------------
-# Function-scoped: Cluster state cleanup
+# Function-scoped: Shared K8sNodeManager for cleanup & node selection
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+async def _cleanup_node_manager(ray_cluster: None) -> AsyncGenerator[K8sNodeManager, None]:
+    """Shared K8sNodeManager for test-infrastructure fixtures (not the SUT)."""
+    node_mgr = K8sNodeManager()
+    yield node_mgr
+    await node_mgr.aclose()
+
+
 @pytest.fixture(autouse=True)
-async def _restore_cluster_state(ray_cluster: None) -> AsyncGenerator[None, None]:
+async def _restore_cluster_state(
+    _cleanup_node_manager: K8sNodeManager,
+) -> AsyncGenerator[None, None]:
     """Uncordon any nodes marked bad during the test, even on failure."""
     yield
-    node_mgr = K8sNodeManager()
     try:
-        bad_nodes = await node_mgr.get_bad_nodes()
+        bad_nodes = await _cleanup_node_manager.get_bad_nodes()
         for node_id in bad_nodes:
             try:
-                await node_mgr.unmark_node_bad(node_id=node_id)
+                await _cleanup_node_manager.unmark_node_bad(node_id=node_id)
             except Exception:
                 logger.warning(
                     "restore_cluster_unmark_failed node_id=%s", node_id,
@@ -169,8 +178,6 @@ async def _restore_cluster_state(ray_cluster: None) -> AsyncGenerator[None, None
                 )
     except Exception:
         logger.warning("restore_cluster_get_bad_nodes_failed", exc_info=True)
-    finally:
-        await node_mgr.aclose()
 
 
 # ---------------------------------------------------------------------------
@@ -209,13 +216,9 @@ def fault_injector(ray_cluster: None) -> Generator[FaultInjectorFactory, None, N
 
 
 @pytest.fixture
-async def target_node(ray_cluster: None) -> str:
+async def target_node(_cleanup_node_manager: K8sNodeManager) -> str:
     """Pick the first alive GPU node that is not already marked bad in K8s."""
-    node_mgr = K8sNodeManager()
-    try:
-        bad_nodes = set(await node_mgr.get_bad_nodes())
-    finally:
-        await node_mgr.aclose()
+    bad_nodes = set(await _cleanup_node_manager.get_bad_nodes())
 
     nodes = ray.nodes()
     candidates = [
