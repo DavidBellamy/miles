@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from miles.utils.ft.models import ActionType, Decision, TriggerType
@@ -94,6 +96,49 @@ class TestDetectorExceptionIsolation:
         await harness.controller._tick()
         await harness.controller._tick()
         assert harness.controller._tick_count == 2
+
+
+class TestAllDetectorsCrashSilentPass:
+    """When every detector raises, the controller silently passes — no fault is detected.
+
+    This is a known dangerous behavior: if a bug causes all detectors to crash,
+    hardware faults go completely undetected.
+    """
+
+    @pytest.mark.anyio
+    async def test_tick_with_all_crashing_detectors_logs_errors(self, caplog: pytest.LogCaptureFixture) -> None:
+        d1 = CrashingDetector()
+        d2 = CrashingDetector()
+        harness = make_test_controller(detectors=[d1, d2])
+
+        with caplog.at_level(logging.ERROR):
+            await harness.controller._tick()
+
+        assert d1.call_count == 1
+        assert d2.call_count == 1
+        assert harness.controller._tick_count == 1
+        error_messages = [r.message for r in caplog.records if r.levelno >= logging.ERROR]
+        assert any("detector_evaluate_failed" in m for m in error_messages)
+
+    @pytest.mark.anyio
+    async def test_tick_with_all_crashing_detectors_results_in_none_action(self) -> None:
+        harness = make_test_controller(detectors=[CrashingDetector(), CrashingDetector()])
+        await harness.controller._tick()
+
+        assert not harness.node_manager._bad_nodes
+        assert not harness.training_job._stopped
+        assert harness.controller._recovery_orchestrator is None
+
+
+class TestExecuteDecisionUnknownAction:
+    @pytest.mark.anyio
+    async def test_unknown_action_type_raises_value_error(self) -> None:
+        decision = Decision(action=ActionType.NONE, reason="fabricated unknown action")
+        object.__setattr__(decision, "action", "fabricated_unknown")
+
+        harness = make_test_controller()
+        with pytest.raises(ValueError, match="Unknown action type"):
+            await harness.controller._execute_decision(decision)
 
 
 class TestExecuteDecision:
