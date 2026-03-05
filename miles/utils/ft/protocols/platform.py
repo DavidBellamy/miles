@@ -50,9 +50,6 @@ class DiagnosticSchedulerProtocol(Protocol):
     ) -> Decision: ...
 
 
-FT_CONTROLLER_ACTOR_NAME: str = "ft_controller"  # deprecated: use ft_controller_actor_name()
-
-
 def ft_controller_actor_name(ft_id: str) -> str:
     if not ft_id:
         return "ft_controller"
