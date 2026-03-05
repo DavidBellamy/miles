@@ -286,14 +286,10 @@ class FtController:
     # Internal: scrape loop lifecycle
     # -------------------------------------------------------------------
 
-    async def _start_scrape_loop(self) -> asyncio.Task[None] | None:
-        start_fn = getattr(self._metric_store, "start", None)
-        if start_fn is None or not callable(start_fn):
-            return None
-
+    async def _start_scrape_loop(self) -> asyncio.Task[None]:
         async def _run_scrape() -> None:
             try:
-                await start_fn()
+                await self._metric_store.start()
             except asyncio.CancelledError:
                 pass
             except Exception:
@@ -303,14 +299,8 @@ class FtController:
         logger.info("scrape_loop_started")
         return task
 
-    async def _stop_scrape_loop(self, task: asyncio.Task[None] | None) -> None:
-        if task is None:
-            return
-
-        stop_fn = getattr(self._metric_store, "stop", None)
-        if stop_fn is not None and callable(stop_fn):
-            await stop_fn()
-
+    async def _stop_scrape_loop(self, task: asyncio.Task[None]) -> None:
+        await self._metric_store.stop()
         task.cancel()
         try:
             await task

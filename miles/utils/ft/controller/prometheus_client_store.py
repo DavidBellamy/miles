@@ -72,6 +72,12 @@ class PrometheusClient:
     ) -> pl.DataFrame:
         return self._range_function_query("max_over_time", metric_name, window, label_filters)
 
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        pass
+
     def close(self) -> None:
         self._client.close()
 
