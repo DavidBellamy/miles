@@ -360,10 +360,14 @@ class StubDiagnostic(BaseDiagnostic):
     diagnostic_type = "stub"
 
     def __init__(
-        self, passed: bool = True, details: str = "stub passed",
+        self,
+        passed: bool = True,
+        details: str = "stub passed",
+        diagnostic_type: str = "stub",
     ) -> None:
         self._passed = passed
         self._details = details
+        self.diagnostic_type = diagnostic_type
 
     async def run(
         self, node_id: str, timeout_seconds: int = 120,
@@ -372,25 +376,6 @@ class StubDiagnostic(BaseDiagnostic):
             diagnostic_type=self.diagnostic_type,
             node_id=node_id,
             passed=self._passed,
-            details=self._details,
-        )
-
-
-class FailingDiagnostic(BaseDiagnostic):
-    """Test diagnostic that always reports failure."""
-
-    diagnostic_type = "failing"
-
-    def __init__(self, details: str = "diagnostic failed") -> None:
-        self._details = details
-
-    async def run(
-        self, node_id: str, timeout_seconds: int = 120,
-    ) -> DiagnosticResult:
-        return DiagnosticResult(
-            diagnostic_type=self.diagnostic_type,
-            node_id=node_id,
-            passed=False,
             details=self._details,
         )
 

@@ -10,7 +10,6 @@ from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.models import CollectorOutput, MetricSample
 from tests.fast.utils.ft.conftest import (
-    FailingDiagnostic,
     SlowDiagnostic,
     StubDiagnostic,
     TestCollector,
@@ -437,7 +436,7 @@ class TestFtNodeAgentDiagnostics:
 
     @pytest.mark.asyncio
     async def test_failing_diagnostic_returns_failure(self) -> None:
-        diag = FailingDiagnostic(details="gpu broken")
+        diag = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
         agent = FtNodeAgent(
             node_id="test-diag-fail",
             diagnostics=[diag],
@@ -468,7 +467,7 @@ class TestFtNodeAgentDiagnostics:
     @pytest.mark.asyncio
     async def test_multiple_diagnostics_registered(self) -> None:
         stub = StubDiagnostic(passed=True)
-        failing = FailingDiagnostic()
+        failing = StubDiagnostic(passed=False, details="diagnostic failed", diagnostic_type="failing")
         agent = FtNodeAgent(
             node_id="test-diag-multi",
             diagnostics=[stub, failing],

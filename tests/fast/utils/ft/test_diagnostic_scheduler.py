@@ -19,7 +19,6 @@ from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.conftest import (
-    FailingDiagnostic,
     FakeNodeAgent,
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_STUCK,
@@ -489,7 +488,7 @@ class TestDiagnosticSchedulerLiveAgents:
     @pytest.mark.asyncio
     async def test_scheduler_with_mismatched_diagnostic_type(self) -> None:
         good = StubDiagnostic(passed=True)
-        bad = FailingDiagnostic(details="gpu broken")
+        bad = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[good])
         agent1 = FtNodeAgent(node_id="node-1", diagnostics=[bad])
 
@@ -502,7 +501,7 @@ class TestDiagnosticSchedulerLiveAgents:
             decision = await scheduler.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
-            # node-1 has FailingDiagnostic (type="failing"), not "stub",
+            # node-1 has diagnostic_type="failing", not "stub",
             # so it gets "unknown diagnostic type" → failure
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
             assert "node-1" in decision.bad_node_ids
