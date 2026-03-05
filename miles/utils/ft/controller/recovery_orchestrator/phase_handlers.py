@@ -148,7 +148,14 @@ def _iteration_progress(ctx: RecoveryContext, mini_wandb: MiniWandb) -> int:
     if current_iteration is None or not math.isfinite(current_iteration):
         return 0
     base = ctx.reattempt_base_iteration or 0
-    return int(current_iteration) - base
+    raw = int(current_iteration) - base
+    if raw < 0:
+        logger.warning(
+            "iteration_progress_negative current=%d base=%d — possible run reset",
+            int(current_iteration), base,
+        )
+        return 0
+    return raw
 
 
 # -------------------------------------------------------------------
