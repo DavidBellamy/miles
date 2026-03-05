@@ -253,6 +253,8 @@ class TestNodeAgentDynamicDiagnostics:
 
     @pytest.mark.anyio
     async def test_remove_diagnostic(self) -> None:
+        from miles.utils.ft.models import UnknownDiagnosticError
+
         stub = StubDiagnostic(passed=True)
         agent = FtNodeAgent(node_id="node-0", diagnostics=[stub])
 
@@ -262,9 +264,8 @@ class TestNodeAgentDynamicDiagnostics:
 
             agent.remove_diagnostic("stub")
 
-            result2 = await agent.run_diagnostic("stub")
-            assert result2.passed is False
-            assert "unknown diagnostic type" in result2.details
+            with pytest.raises(UnknownDiagnosticError, match="unknown diagnostic type"):
+                await agent.run_diagnostic("stub")
         finally:
             await agent.stop()
 
@@ -503,9 +504,9 @@ class TestDiagnosticSchedulerLiveAgents:
                 trigger_reason="crash",
             )
             # node-1 has diagnostic_type="failing", not "stub",
-            # so it gets "unknown diagnostic type" → failure
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
-            assert "node-1" in decision.bad_node_ids
+            # so it gets "unknown diagnostic type" — config error, not node fault.
+            # Both nodes pass → NOTIFY_HUMAN (escalate to human)
+            assert decision.action == ActionType.NOTIFY_HUMAN
         finally:
             await agent0.stop()
             await agent1.stop()

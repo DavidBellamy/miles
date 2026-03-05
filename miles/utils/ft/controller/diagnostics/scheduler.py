@@ -72,10 +72,10 @@ class DiagnosticScheduler:
                     suspect_node_ids = suspect_from_trace
 
         if not self._pipeline:
-            logger.info("diagnostic_pipeline_empty — all pass by default")
+            logger.info("diagnostic_pipeline_empty — no diagnostics configured")
             return Decision(
-                action=ActionType.NONE,
-                reason="all diagnostics passed (empty pipeline)",
+                action=ActionType.NOTIFY_HUMAN,
+                reason="no diagnostics configured (empty pipeline)",
             )
 
         if suspect_node_ids is not None:
@@ -116,7 +116,7 @@ class DiagnosticScheduler:
 
         logger.info("diagnostic_pipeline_all_passed trigger=%s", trigger_reason)
         return Decision(
-            action=ActionType.NONE,
+            action=ActionType.NOTIFY_HUMAN,
             reason="all diagnostics passed — no bad nodes found",
         )
 
@@ -233,9 +233,9 @@ class DiagnosticScheduler:
                 node_id, diagnostic_type,
                 exc_info=True,
             )
-            return DiagnosticResult.fail_result(
+            return DiagnosticResult.pass_result(
                 diagnostic_type=diagnostic_type, node_id=node_id,
-                details=f"config error: diagnostic type '{diagnostic_type}' not registered on node",
+                details=f"config error: diagnostic type '{diagnostic_type}' not registered on node (treated as pass)",
             )
         except Exception:
             logger.warning(
