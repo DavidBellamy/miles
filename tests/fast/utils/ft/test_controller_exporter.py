@@ -31,14 +31,6 @@ class TestControllerExporterGauges:
 
         assert get_sample_value(registry, mn.CONTROLLER_TICK_COUNT + "_total") == 3.0
 
-    def test_update_evicted_node_count(self) -> None:
-        registry = CollectorRegistry()
-        exporter = ControllerExporter(registry=registry)
-
-        exporter.update_evicted_node_count(5)
-
-        assert get_sample_value(registry, mn.CONTROLLER_EVICTED_NODE_COUNT) == 5.0
-
     def test_update_recovery_phase(self) -> None:
         registry = CollectorRegistry()
         exporter = ControllerExporter(registry=registry)

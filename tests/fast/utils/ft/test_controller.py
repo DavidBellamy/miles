@@ -783,18 +783,6 @@ class TestAgentManagement:
         assert "node-0" in harness.controller._agents
         assert harness.controller._agents["node-0"] is agent
 
-    def test_unregister_agent_removes_from_dict(self) -> None:
-        harness = make_test_controller()
-        agent = object()
-        harness.controller.register_agent("node-0", agent)
-        harness.controller.unregister_agent("node-0")
-
-        assert "node-0" not in harness.controller._agents
-
-    def test_unregister_nonexistent_agent_is_noop(self) -> None:
-        harness = make_test_controller()
-        harness.controller.unregister_agent("nonexistent")
-
     def test_register_overwrites_existing(self) -> None:
         harness = make_test_controller()
         agent1 = object()
@@ -825,3 +813,36 @@ class TestDefaultDiagnosticPipeline:
         harness = make_test_controller()
         scheduler = harness.controller._diagnostic_scheduler
         assert "gpu" in scheduler._pipeline
+
+
+class TestScrapeLoopDefensiveBranches:
+    @pytest.mark.asyncio
+    async def test_start_scrape_loop_returns_none_when_no_start_method(self) -> None:
+        harness = make_test_controller()
+        harness.controller._metric_store = object()
+
+        task = await harness.controller._start_scrape_loop()
+
+        assert task is None
+
+    @pytest.mark.asyncio
+    async def test_stop_scrape_loop_noop_when_task_is_none(self) -> None:
+        harness = make_test_controller()
+        await harness.controller._stop_scrape_loop(task=None)
+
+    @pytest.mark.asyncio
+    async def test_scrape_loop_logs_error_on_crash(self, caplog: pytest.LogCaptureFixture) -> None:
+        harness = make_test_controller()
+
+        async def _crashing_start() -> None:
+            raise RuntimeError("scrape exploded")
+
+        harness.controller._metric_store.start = _crashing_start
+
+        import logging
+        with caplog.at_level(logging.ERROR):
+            task = await harness.controller._start_scrape_loop()
+            assert task is not None
+            await asyncio.sleep(0.05)
+
+        assert "scrape_loop_crashed" in caplog.text

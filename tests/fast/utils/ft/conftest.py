@@ -488,8 +488,6 @@ class FakeNodeAgent:
     ) -> None:
         self._diagnostic_results = diagnostic_results or {}
         self._node_id = node_id
-        self.cleanup_called: bool = False
-        self.cleanup_job_id: str | None = None
 
     async def run_diagnostic(
         self, diagnostic_type: str, timeout_seconds: int = 120,
@@ -504,9 +502,6 @@ class FakeNodeAgent:
             )
         return result
 
-    async def cleanup_training_processes(self, training_job_id: str) -> None:
-        self.cleanup_called = True
-        self.cleanup_job_id = training_job_id
 
 
 # ---------------------------------------------------------------------------

@@ -65,6 +65,10 @@ class RecoveryOrchestrator:
     def trigger(self) -> str:
         return self._context.trigger
 
+    @property
+    def bad_node_ids(self) -> list[str]:
+        return self._context.bad_node_ids
+
     def is_done(self) -> bool:
         return self._context.phase == RecoveryPhase.DONE
 

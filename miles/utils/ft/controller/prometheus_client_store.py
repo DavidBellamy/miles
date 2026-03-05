@@ -76,9 +76,6 @@ class PrometheusClient:
         pass
 
     async def stop(self) -> None:
-        pass
-
-    def close(self) -> None:
         self._client.close()
 
     # -------------------------------------------------------------------

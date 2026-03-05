@@ -483,20 +483,3 @@ class TestFtNodeAgentDiagnostics:
             await agent.stop()
 
 
-class TestFtNodeAgentStubMethods:
-    @pytest_asyncio.fixture()
-    async def agent(self) -> AsyncIterator[FtNodeAgent]:
-        agent = FtNodeAgent(node_id="test-node-stubs")
-        yield agent
-        await agent.stop()
-
-    @pytest.mark.asyncio()
-    async def test_collect_logs_raises(self, agent: FtNodeAgent) -> None:
-        with pytest.raises(NotImplementedError, match="collect_logs"):
-            await agent.collect_logs()
-
-    @pytest.mark.asyncio()
-    async def test_cleanup_training_processes_noop(
-        self, agent: FtNodeAgent
-    ) -> None:
-        await agent.cleanup_training_processes("job-123")

@@ -129,21 +129,6 @@ class FtNodeAgent:
             )
 
     # ------------------------------------------------------------------
-    # Stub methods (future milestones)
-    # ------------------------------------------------------------------
-
-    async def collect_logs(self) -> dict[str, str]:
-        raise NotImplementedError(
-            "collect_logs will be implemented in a future milestone"
-        )
-
-    async def cleanup_training_processes(self, training_job_id: str) -> None:
-        logger.info(
-            "cleanup_training_processes node_id=%s job_id=%s (stub — no-op)",
-            self._node_id, training_job_id,
-        )
-
-    # ------------------------------------------------------------------
     # Per-collector background task
     # ------------------------------------------------------------------
 

@@ -164,16 +164,5 @@ class TestFakeNodeAgent:
         agent = FakeNodeAgent(diagnostic_results={"gpu_check": result})
         assert await agent.run_diagnostic("gpu_check") == result
 
-    @pytest.mark.asyncio()
-    async def test_cleanup_training_processes(self) -> None:
-        agent = FakeNodeAgent()
-        assert agent.cleanup_called is False
-
-        await agent.cleanup_training_processes("job-42")
-        assert agent.cleanup_called is True
-        assert agent.cleanup_job_id == "job-42"
-
     def test_default_construction(self) -> None:
         agent = FakeNodeAgent()
-        assert agent.cleanup_called is False
-        assert agent.cleanup_job_id is None

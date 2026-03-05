@@ -36,11 +36,6 @@ class ControllerExporter:
             "Cumulative tick count",
             registry=self._registry,
         )
-        self._evicted_node_count = Gauge(
-            mn.CONTROLLER_EVICTED_NODE_COUNT,
-            "Number of currently evicted nodes",
-            registry=self._registry,
-        )
         self._recovery_phase = Gauge(
             mn.CONTROLLER_RECOVERY_PHASE,
             "Recovery phase encoding (0=none, 1=check_alerts, 2=reattempting, ...)",
@@ -83,9 +78,6 @@ class ControllerExporter:
 
     def update_tick_count(self) -> None:
         self._tick_count.inc()
-
-    def update_evicted_node_count(self, count: int) -> None:
-        self._evicted_node_count.set(count)
 
     def update_recovery_phase(self, phase: int) -> None:
         self._recovery_phase.set(phase)
