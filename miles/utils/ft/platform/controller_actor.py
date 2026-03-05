@@ -67,6 +67,11 @@ def _build_notifier(platform: str) -> LarkWebhookNotifier | StubNotifier | None:
     if platform == "stub":
         return StubNotifier()
 
+    logger.warning(
+        "No notifier configured for platform=%s (FT_LARK_WEBHOOK_URL not set). "
+        "Recovery alerts will not be delivered.",
+        platform,
+    )
     return None
 
 
