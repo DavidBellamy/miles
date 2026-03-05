@@ -77,6 +77,14 @@ class FtNodeAgent:
     # Diagnostics
     # ------------------------------------------------------------------
 
+    def set_diagnostic(self, diagnostic: BaseDiagnostic) -> None:
+        """Register (or replace) a diagnostic by its diagnostic_type."""
+        self._diagnostics[diagnostic.diagnostic_type] = diagnostic
+
+    def remove_diagnostic(self, diagnostic_type: str) -> None:
+        """Remove a diagnostic by type. No-op if not present."""
+        self._diagnostics.pop(diagnostic_type, None)
+
     async def run_diagnostic(
         self, diagnostic_type: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult:

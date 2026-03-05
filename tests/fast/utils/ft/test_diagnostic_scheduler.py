@@ -215,6 +215,60 @@ class TestDiagnosticSchedulerErrorHandling:
         assert "node-2" not in decision.bad_node_ids
 
 
+class TestNodeAgentDynamicDiagnostics:
+    """Test FtNodeAgent.set_diagnostic / remove_diagnostic."""
+
+    @pytest.mark.asyncio
+    async def test_set_diagnostic_overrides_existing(self) -> None:
+        from miles.utils.ft.agents.node_agent import FtNodeAgent
+
+        original = StubDiagnostic(passed=True, details="original")
+        agent = FtNodeAgent(node_id="node-0", diagnostics=[original])
+
+        try:
+            result1 = await agent.run_diagnostic("stub")
+            assert result1.passed is True
+            assert result1.details == "original"
+
+            override = StubDiagnostic(passed=False, details="override")
+            agent.set_diagnostic(override)
+
+            result2 = await agent.run_diagnostic("stub")
+            assert result2.passed is False
+            assert result2.details == "override"
+        finally:
+            await agent.stop()
+
+    @pytest.mark.asyncio
+    async def test_remove_diagnostic(self) -> None:
+        from miles.utils.ft.agents.node_agent import FtNodeAgent
+
+        stub = StubDiagnostic(passed=True)
+        agent = FtNodeAgent(node_id="node-0", diagnostics=[stub])
+
+        try:
+            result1 = await agent.run_diagnostic("stub")
+            assert result1.passed is True
+
+            agent.remove_diagnostic("stub")
+
+            result2 = await agent.run_diagnostic("stub")
+            assert result2.passed is False
+            assert "unknown diagnostic type" in result2.details
+        finally:
+            await agent.stop()
+
+    @pytest.mark.asyncio
+    async def test_remove_nonexistent_is_noop(self) -> None:
+        from miles.utils.ft.agents.node_agent import FtNodeAgent
+
+        agent = FtNodeAgent(node_id="node-0")
+        try:
+            agent.remove_diagnostic("nonexistent")
+        finally:
+            await agent.stop()
+
+
 class TestDiagnosticSchedulerLiveAgents:
     """Test scheduler with real FtNodeAgent instances (not FakeNodeAgent)."""
 
