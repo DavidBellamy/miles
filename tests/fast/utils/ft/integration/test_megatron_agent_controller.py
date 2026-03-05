@@ -9,9 +9,10 @@ not by FtMegatronAgent.step().
 """
 
 import httpx
-from tests.fast.utils.ft.conftest import make_test_controller
+import pytest
 
 from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
+from tests.fast.utils.ft.conftest import make_test_controller
 
 
 def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
@@ -19,21 +20,18 @@ def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
 
 
 class TestStepToLogStepFlow:
+    @pytest.mark.anyio
     async def test_step_metrics_arrive_in_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-1"
 
         await harness.controller.register_rank(
-            run_id=run_id,
-            rank=0,
-            world_size=4,
-            node_id="node-0",
-            exporter_address="http://localhost:9999",
+            run_id=run_id, rank=0, world_size=4,
+            node_id="node-0", exporter_address="http://localhost:9999",
         )
 
         await harness.controller.log_step(
-            run_id=run_id,
-            step=5,
+            run_id=run_id, step=5,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
 
@@ -42,29 +40,25 @@ class TestStepToLogStepFlow:
 
 
 class TestRegisterRankPlacement:
+    @pytest.mark.anyio
     async def test_register_rank_records_placement(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-2"
 
         await harness.controller.register_rank(
-            run_id=run_id,
-            rank=0,
-            world_size=4,
-            node_id="node-0",
-            exporter_address="http://node-0:9090",
+            run_id=run_id, rank=0, world_size=4,
+            node_id="node-0", exporter_address="http://node-0:9090",
         )
         await harness.controller.register_rank(
-            run_id=run_id,
-            rank=1,
-            world_size=4,
-            node_id="node-1",
-            exporter_address="http://node-1:9090",
+            run_id=run_id, rank=1, world_size=4,
+            node_id="node-1", exporter_address="http://node-1:9090",
         )
 
-        assert harness.controller._rank_placement == {0: "node-0", 1: "node-1"}
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0", 1: "node-1"}
 
 
 class TestScrapeTargetRegistration:
+    @pytest.mark.anyio
     async def test_register_rank_adds_scrape_target(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -73,11 +67,8 @@ class TestScrapeTargetRegistration:
             exporter_address = agent.get_exporter_address()
 
             await harness.controller.register_rank(
-                run_id=run_id,
-                rank=0,
-                world_size=4,
-                node_id="node-0",
-                exporter_address=exporter_address,
+                run_id=run_id, rank=0, world_size=4,
+                node_id="node-0", exporter_address=exporter_address,
             )
 
             assert "rank-0" in harness.metric_store._scrape_targets
@@ -86,6 +77,7 @@ class TestScrapeTargetRegistration:
 
 
 class TestHeartbeatScrape:
+    @pytest.mark.anyio
     async def test_scrape_reads_heartbeat_gauges(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -94,11 +86,8 @@ class TestHeartbeatScrape:
             exporter_address = agent.get_exporter_address()
 
             await harness.controller.register_rank(
-                run_id=run_id,
-                rank=0,
-                world_size=4,
-                node_id="node-0",
-                exporter_address=exporter_address,
+                run_id=run_id, rank=0, world_size=4,
+                node_id="node-0", exporter_address=exporter_address,
             )
 
             agent.set_phase("training")
@@ -115,54 +104,45 @@ class TestHeartbeatScrape:
 
 
 class TestRunIdClear:
+    @pytest.mark.anyio
     async def test_new_run_id_clears_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id_1 = "integ-megatron-run-1"
         run_id_2 = "integ-megatron-run-2"
 
         await harness.controller.register_rank(
-            run_id=run_id_1,
-            rank=0,
-            world_size=2,
-            node_id="node-0",
-            exporter_address="http://localhost:9999",
+            run_id=run_id_1, rank=0, world_size=2,
+            node_id="node-0", exporter_address="http://localhost:9999",
         )
         await harness.controller.log_step(
-            run_id=run_id_1,
-            step=10,
+            run_id=run_id_1, step=10,
             metrics={"loss": 2.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
         await harness.controller.register_rank(
-            run_id=run_id_2,
-            rank=0,
-            world_size=2,
-            node_id="node-0",
-            exporter_address="http://localhost:9999",
+            run_id=run_id_2, rank=0, world_size=2,
+            node_id="node-0", exporter_address="http://localhost:9999",
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") is None
 
 
 class TestMultiRankConcurrentStep:
+    @pytest.mark.anyio
     async def test_multi_rank_independent_metrics(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-multirank"
 
         for rank in range(4):
             await harness.controller.register_rank(
-                run_id=run_id,
-                rank=rank,
-                world_size=4,
-                node_id=f"node-{rank}",
-                exporter_address=f"http://node-{rank}:9090",
+                run_id=run_id, rank=rank, world_size=4,
+                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
             )
 
         for rank in range(4):
             await harness.controller.log_step(
-                run_id=run_id,
-                step=1,
+                run_id=run_id, step=1,
                 metrics={"loss": float(rank) + 1.0},
             )
 
@@ -179,6 +159,7 @@ class TestControllerUnreachable:
 
 
 class TestPhaseSwitch:
+    @pytest.mark.anyio
     async def test_phase_switch_visible_in_exporter(self) -> None:
         agent = _make_agent(rank=0, world_size=4)
         try:
@@ -199,6 +180,6 @@ class TestPhaseSwitch:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             text = response.text
-            assert "miles_ft_training_phase{node_id=" in text
+            assert 'miles_ft_training_phase{node_id=' in text
         finally:
             agent.shutdown()

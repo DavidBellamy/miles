@@ -7,8 +7,13 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
+import polars as pl
+import pytest
 
-from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient, _format_duration
+from miles.utils.ft.controller.metrics.prometheus_api.store import (
+    PrometheusClient,
+    _format_duration,
+)
 
 
 def _make_response(json_data: dict[str, Any], status_code: int = 200) -> httpx.Response:
@@ -465,5 +470,5 @@ class TestFormatDuration:
         assert _format_duration(timedelta(seconds=45)) == "45s"
         assert _format_duration(timedelta(minutes=1, seconds=30)) == "90s"
 
-    def test_non_even_hours_falls_to_seconds(self) -> None:
-        assert _format_duration(timedelta(hours=1, minutes=30)) == "5400s"
+    def test_non_even_hours_falls_to_minutes(self) -> None:
+        assert _format_duration(timedelta(hours=1, minutes=30)) == "90m"
