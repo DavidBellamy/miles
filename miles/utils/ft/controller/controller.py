@@ -16,11 +16,10 @@ from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metr
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import (
-    ActionType,
+from miles.utils.ft.models._fault import ActionType, Decision
+from miles.utils.ft.models._recovery import (
     ControllerMode,
     ControllerStatus,
-    Decision,
     RecoveryPhase,
     _BAD_NODES_CONFIRMED_PHASES,
 )

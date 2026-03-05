@@ -7,7 +7,7 @@ from typing import Protocol
 import httpx
 
 from miles.utils.ft.controller.metrics.mini_prometheus.scraper import parse_prometheus_text
-from miles.utils.ft.models import MetricSample
+from miles.utils.ft.models._metrics import MetricSample
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,10 @@ class ScrapeLoop:
                     exc_info=True,
                 )
 
-        await asyncio.gather(*(_scrape_target(target_id, address) for target_id, address in targets))
+        await asyncio.gather(*(
+            _scrape_target(target_id, address)
+            for target_id, address in targets
+        ))
 
     async def start(self) -> None:
         self._running = True

@@ -17,7 +17,8 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
     step_notify,
     step_reattempting,
 )
-from miles.utils.ft.models import RecoveryPhase, TriggerType
+from miles.utils.ft.models._fault import TriggerType
+from miles.utils.ft.models._recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     NodeManagerProtocol,

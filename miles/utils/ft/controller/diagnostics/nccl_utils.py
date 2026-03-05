@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 
-from miles.utils.ft.models import DiagnosticResult
+from miles.utils.ft.models._diagnostics import DiagnosticResult
 
 logger = logging.getLogger(__name__)
 

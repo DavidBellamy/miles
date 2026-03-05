@@ -1,5 +1,5 @@
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import MetricSample
+from miles.utils.ft.models._metrics import MetricSample
 
 
 class StubCollector(BaseCollector):

@@ -17,7 +17,8 @@ from miles.utils.ft.controller.recovery_orchestrator.context import (
     PENDING_TIMEOUT_SECONDS,
     RecoveryContext,
 )
-from miles.utils.ft.models import ActionType, RecoveryPhase, TriggerType
+from miles.utils.ft.models._fault import ActionType, TriggerType
+from miles.utils.ft.models._recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     JobStatus,
