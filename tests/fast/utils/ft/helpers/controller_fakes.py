@@ -9,6 +9,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
@@ -152,6 +153,10 @@ def make_test_controller(
     training_job = FakeTrainingJob(status_sequence=status_sequence)
     metric_store = MiniPrometheus(config=MiniPrometheusConfig())
     mini_wandb = MiniWandb()
+    rank_registry = RankRegistry(
+        mini_wandb=mini_wandb,
+        scrape_target_manager=metric_store,
+    )
 
     if controller_exporter is None:
         controller_exporter = ControllerExporter(registry=CollectorRegistry())
@@ -160,12 +165,11 @@ def make_test_controller(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
-        mini_wandb=mini_wandb,
+        rank_registry=rank_registry,
         notifier=real_notifier,
         detectors=detectors,
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
-        scrape_target_manager=metric_store,
         diagnostic_scheduler=diagnostic_scheduler,
     )
 

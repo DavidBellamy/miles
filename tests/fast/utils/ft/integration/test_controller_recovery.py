@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
@@ -25,7 +26,7 @@ from tests.fast.utils.ft.conftest import (
 
 
 class TestGpuLostDirectEviction:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_gpu_lost_marks_bad_and_restarts(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.MARK_BAD_AND_RESTART,
@@ -51,7 +52,7 @@ class TestGpuLostDirectEviction:
 
 
 class TestCrashReattemptSuccess:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_crash_reattempt_success(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -89,7 +90,7 @@ class TestCrashReattemptSuccess:
 
 
 class TestCrashReattemptFailDiagnoseNotify:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_crash_diagnose_notify(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -126,7 +127,7 @@ class TestCrashReattemptFailDiagnoseNotify:
 
 
 class TestGlobalTimeout:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_global_timeout_triggers_notify(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -162,7 +163,7 @@ class TestGlobalTimeout:
 
 
 class TestRecoveryCompleteBackToMonitoring:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_back_to_monitoring_after_recovery(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -206,7 +207,7 @@ class TestRecoveryCompleteBackToMonitoring:
 
 
 class TestExporterModeGauge:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_mode_gauge_during_recovery(self) -> None:
         registry, exporter = make_test_exporter()
         enter_recovery = FixedDecisionDetector(decision=Decision(
@@ -221,12 +222,12 @@ class TestExporterModeGauge:
         )
 
         await harness.controller._tick()
-        assert get_sample_value(registry, "ft_controller_mode") == 0.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
 
         await harness.controller._tick()
-        assert get_sample_value(registry, "ft_controller_mode") == 1.0
-        assert get_sample_value(registry, "ft_controller_recovery_phase") is not None
-        assert get_sample_value(registry, "ft_controller_recovery_phase") > 0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
+        assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) is not None
+        assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) > 0
 
         orch = harness.controller._recovery_orchestrator
         assert orch is not None
@@ -246,5 +247,5 @@ class TestExporterModeGauge:
             await harness.controller._tick()
 
         await harness.controller._tick()
-        assert get_sample_value(registry, "ft_controller_mode") == 0.0
-        assert get_sample_value(registry, "ft_controller_recovery_phase") == 0.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
+        assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) == 0.0

@@ -6,11 +6,13 @@ import logging
 import pytest
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.models import ActionType, Decision
-from miles.utils.ft.platform.protocols import JobStatus
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.rank_registry import RankRegistry
+from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeNodeManager,
     FakeTrainingJob,
@@ -132,8 +134,8 @@ class TestAgentManagement:
         agent = object()
         harness.controller.register_agent("node-0", agent)
 
-        assert "node-0" in harness.controller._agents
-        assert harness.controller._agents["node-0"] is agent
+        assert "node-0" in harness.controller._rank_registry.agents
+        assert harness.controller._rank_registry.agents["node-0"] is agent
 
     def test_register_overwrites_existing(self) -> None:
         harness = make_test_controller()
@@ -142,22 +144,25 @@ class TestAgentManagement:
         harness.controller.register_agent("node-0", agent1)
         harness.controller.register_agent("node-0", agent2)
 
-        assert harness.controller._agents["node-0"] is agent2
+        assert harness.controller._rank_registry.agents["node-0"] is agent2
 
 
 class TestDefaultDiagnosticSchedulerWiring:
     def test_default_scheduler_has_rank_pids_provider(self) -> None:
+        rank_registry = RankRegistry(
+            mini_wandb=MiniWandb(),
+        )
         controller = FtController(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=make_fake_metric_store(),
-            mini_wandb=MiniWandb(),
+            rank_registry=rank_registry,
         )
 
         scheduler = controller._diagnostic_scheduler
         assert isinstance(scheduler, DiagnosticScheduler)
-        assert scheduler._rank_pids_provider.__func__ is FtController._get_rank_pids_for_node
-        assert scheduler._rank_pids_provider.__self__ is controller
+        assert scheduler._rank_pids_provider.__func__ is RankRegistry.get_rank_pids_for_node
+        assert scheduler._rank_pids_provider.__self__ is rank_registry
 
 
 class TestDefaultDiagnosticPipeline:
@@ -222,20 +227,6 @@ class TestShutdown:
 
 class TestScrapeLoopDefensiveBranches:
     @pytest.mark.asyncio
-    async def test_start_scrape_loop_returns_none_when_no_start_method(self) -> None:
-        harness = make_test_controller()
-        harness.controller._metric_store = object()
-
-        task = await harness.controller._start_scrape_loop()
-
-        assert task is None
-
-    @pytest.mark.asyncio
-    async def test_stop_scrape_loop_noop_when_task_is_none(self) -> None:
-        harness = make_test_controller()
-        await harness.controller._stop_scrape_loop(task=None)
-
-    @pytest.mark.asyncio
     async def test_scrape_loop_logs_error_on_crash(self, caplog: pytest.LogCaptureFixture) -> None:
         harness = make_test_controller()
 
@@ -244,9 +235,8 @@ class TestScrapeLoopDefensiveBranches:
 
         harness.controller._metric_store.start = _crashing_start
 
-        import logging
         with caplog.at_level(logging.ERROR):
-            task = await harness.controller._start_scrape_loop()
+            task = await start_metric_store_task(harness.controller._metric_store)
             assert task is not None
             await asyncio.sleep(0.05)
 

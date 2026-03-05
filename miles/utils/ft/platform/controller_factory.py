@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import ConfigDict
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors import build_detector_chain
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.models import FtBaseModel
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 
@@ -118,6 +119,11 @@ def build_ft_controller(
         raise ValueError(f"Unknown metric-store-backend: {config.metric_store_backend}")
 
     mini_wandb = MiniWandb()
+    rank_registry = RankRegistry(
+        mini_wandb=mini_wandb,
+        scrape_target_manager=scrape_target_manager,
+    )
+
     notifier = _build_notifier(platform=config.platform)
     detectors = build_detector_chain()
 
@@ -133,10 +139,9 @@ def build_ft_controller(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
-        mini_wandb=mini_wandb,
+        rank_registry=rank_registry,
         notifier=notifier,
         detectors=detectors,
         tick_interval=config.tick_interval,
         controller_exporter=controller_exporter,
-        scrape_target_manager=scrape_target_manager,
     )

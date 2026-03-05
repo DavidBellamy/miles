@@ -72,8 +72,8 @@ class TestRunIdIsolation:
         )
 
         assert harness.mini_wandb.latest(metric_name="loss", rank=0) is None
-        assert harness.controller._active_run_id == "run-2"
-        assert harness.controller._rank_placement == {0: "node-0"}
+        assert harness.controller._rank_registry.active_run_id == "run-2"
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
 
     @pytest.mark.asyncio
     async def test_stale_log_step_after_run_switch_is_discarded(self) -> None:

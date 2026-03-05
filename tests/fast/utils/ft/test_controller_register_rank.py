@@ -17,8 +17,8 @@ class TestRegisterRank:
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert harness.controller._active_run_id == "run-1"
-        assert harness.controller._rank_placement == {0: "node-0"}
+        assert harness.controller._rank_registry.active_run_id == "run-1"
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
 
     @pytest.mark.asyncio
     async def test_new_run_id_clears_mini_wandb(self) -> None:
@@ -53,7 +53,7 @@ class TestRegisterRank:
             node_id="node-1", exporter_address="http://node-1:9090",
         )
 
-        assert harness.controller._rank_placement == {0: "node-0", 1: "node-1"}
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0", 1: "node-1"}
 
     @pytest.mark.asyncio
     async def test_same_run_id_same_rank_updates(self) -> None:
@@ -72,7 +72,7 @@ class TestRegisterRank:
             node_id="node-0-new", exporter_address="http://node-0-new:9090",
         )
 
-        assert harness.controller._rank_placement[0] == "node-0-new"
+        assert harness.controller._rank_registry.rank_placement[0] == "node-0-new"
         assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 3.0
 
     @pytest.mark.asyncio
@@ -142,9 +142,9 @@ class TestRegisterRank:
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
             )
 
-        assert len(harness.controller._rank_placement) == 3
-        assert 3 not in harness.controller._rank_placement
-        assert harness.controller._expected_world_size == 4
+        assert len(harness.controller._rank_registry.rank_placement) == 3
+        assert 3 not in harness.controller._rank_registry.rank_placement
+        assert harness.controller._rank_registry.expected_world_size == 4
 
         with caplog.at_level(logging.WARNING):
             await harness.controller._tick()
@@ -166,8 +166,8 @@ class TestRegisterRank:
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
             )
 
-        assert harness.controller._expected_world_size == 4
-        assert len(harness.controller._rank_placement) == 4
+        assert harness.controller._rank_registry.expected_world_size == 4
+        assert len(harness.controller._rank_registry.rank_placement) == 4
 
         with caplog.at_level(logging.WARNING):
             await harness.controller._tick()
@@ -183,14 +183,14 @@ class TestRegisterRank:
             run_id="run-1", rank=0, world_size=8,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        assert harness.controller._expected_world_size == 8
+        assert harness.controller._rank_registry.expected_world_size == 8
 
         await harness.controller.register_rank(
             run_id="run-2", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        assert harness.controller._expected_world_size == 4
-        assert harness.controller._rank_placement == {0: "node-0"}
+        assert harness.controller._rank_registry.expected_world_size == 4
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
 
     @pytest.mark.asyncio
     async def test_register_rank_stores_pid(self) -> None:
@@ -202,7 +202,7 @@ class TestRegisterRank:
             pid=1234,
         )
 
-        assert harness.controller._rank_pids == {0: 1234}
+        assert harness.controller._rank_registry.rank_pids == {0: 1234}
 
     @pytest.mark.asyncio
     async def test_new_run_id_clears_rank_pids(self) -> None:
@@ -213,14 +213,14 @@ class TestRegisterRank:
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=1234,
         )
-        assert harness.controller._rank_pids == {0: 1234}
+        assert harness.controller._rank_registry.rank_pids == {0: 1234}
 
         await harness.controller.register_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=5678,
         )
-        assert harness.controller._rank_pids == {0: 5678}
+        assert harness.controller._rank_registry.rank_pids == {0: 5678}
 
     @pytest.mark.asyncio
     async def test_register_rank_without_pid_does_not_store(self) -> None:
@@ -231,7 +231,7 @@ class TestRegisterRank:
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert harness.controller._rank_pids == {}
+        assert harness.controller._rank_registry.rank_pids == {}
 
 
 class TestGetRankPidsForNode:
@@ -255,7 +255,7 @@ class TestGetRankPidsForNode:
             pid=200,
         )
 
-        result = harness.controller._get_rank_pids_for_node("node-0")
+        result = harness.controller._rank_registry.get_rank_pids_for_node("node-0")
         assert result == {0: 100, 1: 101}
 
     @pytest.mark.asyncio
@@ -268,7 +268,7 @@ class TestGetRankPidsForNode:
             pid=100,
         )
 
-        result = harness.controller._get_rank_pids_for_node("node-999")
+        result = harness.controller._rank_registry.get_rank_pids_for_node("node-999")
         assert result == {}
 
     @pytest.mark.asyncio
@@ -285,7 +285,7 @@ class TestGetRankPidsForNode:
             node_id="node-0", exporter_address="http://node-0:9091",
         )
 
-        result = harness.controller._get_rank_pids_for_node("node-0")
+        result = harness.controller._rank_registry.get_rank_pids_for_node("node-0")
         assert result == {0: 100}
 
 
@@ -331,4 +331,4 @@ class TestLogStep:
         )
 
         assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 3.0
-        assert harness.controller._active_run_id is None
+        assert harness.controller._rank_registry.active_run_id is None

@@ -54,7 +54,7 @@ class TestRegisterRankPlacement:
             node_id="node-1", exporter_address="http://node-1:9090",
         )
 
-        assert harness.controller._rank_placement == {0: "node-0", 1: "node-1"}
+        assert harness.controller._rank_registry.rank_placement == {0: "node-0", 1: "node-1"}
 
 
 class TestScrapeTargetRegistration:

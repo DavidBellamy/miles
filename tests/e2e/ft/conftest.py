@@ -21,10 +21,11 @@ import ray
 from ray.job_submission import JobSubmissionClient
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors import build_detector_chain
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.e2e.fault_injector import FaultInjectorActor, deploy_fault_injector
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.protocols import JobStatus
@@ -109,6 +110,10 @@ async def ft_system(
         address=controller_exporter.address,
     )
     mini_wandb = MiniWandb()
+    rank_registry = RankRegistry(
+        mini_wandb=mini_wandb,
+        scrape_target_manager=mini_prom,
+    )
     node_manager = K8sNodeManager()
     training_job = RayTrainingJob(
         client=JobSubmissionClient(address=ray_address),
@@ -119,11 +124,10 @@ async def ft_system(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=mini_prom,
-        mini_wandb=mini_wandb,
+        rank_registry=rank_registry,
         detectors=build_detector_chain(),
         tick_interval=5.0,
         controller_exporter=controller_exporter,
-        scrape_target_manager=mini_prom,
     )
 
     system = FtSystem(

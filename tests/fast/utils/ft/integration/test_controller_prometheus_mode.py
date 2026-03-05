@@ -11,9 +11,12 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
@@ -46,16 +49,15 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(status_sequence=[JobStatus.RUNNING]),
             metric_store=prom_client,
-            mini_wandb=MiniWandb(),
+            rank_registry=RankRegistry(mini_wandb=MiniWandb()),
             controller_exporter=exporter,
-            scrape_target_manager=None,
         )
 
         with patch.object(httpx.Client, "get", return_value=_make_http_response(_make_prom_response())):
             await controller._tick()
 
-        assert get_sample_value(registry, "ft_training_job_status") == 1.0
-        assert get_sample_value(registry, "ft_controller_tick_count_total") == 1.0
+        assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == 1.0
+        assert get_sample_value(registry, mn.CONTROLLER_TICK_COUNT + "_total") == 1.0
 
     @pytest.mark.asyncio
     async def test_no_scrape_target_manager_in_prometheus_mode(self) -> None:
@@ -67,9 +69,8 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=prom_client,
-            mini_wandb=MiniWandb(),
+            rank_registry=RankRegistry(mini_wandb=MiniWandb()),
             controller_exporter=exporter,
-            scrape_target_manager=None,
         )
 
         await controller.register_rank(
@@ -77,7 +78,7 @@ class TestControllerPrometheusMode:
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert controller._rank_placement == {0: "node-0"}
+        assert controller._rank_registry.rank_placement == {0: "node-0"}
 
     @pytest.mark.asyncio
     async def test_training_metrics_propagated_to_exporter(self) -> None:
@@ -88,9 +89,8 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=PrometheusClient(url="http://fake:9090"),
-            mini_wandb=mini_wandb,
+            rank_registry=RankRegistry(mini_wandb=mini_wandb),
             controller_exporter=exporter,
-            scrape_target_manager=None,
         )
 
         await controller.register_rank(
@@ -105,5 +105,5 @@ class TestControllerPrometheusMode:
         with patch.object(httpx.Client, "get", return_value=_make_http_response(_make_prom_response())):
             await controller._tick()
 
-        assert get_sample_value(registry, "ft_training_loss_latest") == 2.5
-        assert get_sample_value(registry, "ft_training_mfu_latest") == 0.42
+        assert get_sample_value(registry, mn.TRAINING_LOSS_LATEST) == 2.5
+        assert get_sample_value(registry, mn.TRAINING_MFU_LATEST) == 0.42
