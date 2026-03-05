@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import ray
 
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from pydantic import ConfigDict
+
+from miles.utils.ft.models import FtBaseModel
 from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_wandb import MiniWandb
@@ -23,12 +25,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class FtControllerConfig:
-    platform: str = "stub"
+class FtControllerConfig(FtBaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    platform: Literal["stub", "k8s-ray"] = "stub"
     ray_address: str = "http://127.0.0.1:8265"
     entrypoint: str = ""
-    metric_store_backend: str = "mini"
+    metric_store_backend: Literal["mini", "prometheus"] = "mini"
     prometheus_url: str = "http://prometheus:9090"
     controller_exporter_port: int = 9400
     tick_interval: float = 30.0
