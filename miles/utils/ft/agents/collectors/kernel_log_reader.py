@@ -70,6 +70,11 @@ class DmesgSubprocessReader:
                 self._last_dmesg_time = new_time
                 if result.stdout:
                     return result.stdout.strip().splitlines()
+            else:
+                logger.warning(
+                    "dmesg returned non-zero returncode=%d stderr=%s",
+                    result.returncode, result.stderr[:500] if result.stderr else "",
+                )
         except Exception:
             logger.warning("dmesg fallback failed", exc_info=True)
 
