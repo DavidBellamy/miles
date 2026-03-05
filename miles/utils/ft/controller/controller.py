@@ -14,6 +14,7 @@ from miles.utils.ft.controller.mini_prometheus.protocol import (
 from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_helpers import (
     retry_async,
+    retry_succeeded,
     safe_notify,
     stop_clear_submit,
 )
@@ -320,14 +321,31 @@ class FtController:
                 "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
                 decision.bad_node_ids, decision.reason,
             )
+            failed_nodes: list[str] = []
             for node_id in decision.bad_node_ids:
-                await retry_async(
+                result = await retry_async(
                     lambda nid=node_id: self._node_manager.mark_node_bad(
                         nid, reason=decision.reason,
                     ),
                     description=f"mark_node_bad({node_id})",
                 )
-            await stop_clear_submit(self._training_job, self._mini_wandb)
+                if not retry_succeeded(result):
+                    failed_nodes.append(node_id)
+
+            if failed_nodes:
+                msg = f"mark_node_bad failed for nodes: {failed_nodes}"
+                logger.error("mark_bad_partial_failure %s", msg)
+                await safe_notify(
+                    self._notifier, title="Mark-Bad Failure", content=msg,
+                )
+
+            restart_ok = await stop_clear_submit(self._training_job, self._mini_wandb)
+            if not restart_ok:
+                msg = "stop_clear_submit failed after mark_bad_and_restart"
+                logger.error(msg)
+                await safe_notify(
+                    self._notifier, title="Restart Failure", content=msg,
+                )
             return
 
         if decision.action == ActionType.ENTER_RECOVERY:
