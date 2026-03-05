@@ -2,11 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from unittest.mock import patch
 
 import pytest
 
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
+    InterMachineCommDiagnostic,
+)
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.conftest import (
@@ -15,6 +20,29 @@ from tests.fast.utils.ft.conftest import (
     StubDiagnostic,
     make_fake_agents,
 )
+
+
+def _mock_inter_machine_run(
+    node_pass_map: dict[str, bool],
+) -> contextlib.AbstractContextManager[None]:
+    """Patch InterMachineCommDiagnostic.run to return results per node_id.
+
+    ``node_pass_map`` maps node_id → True (pass) or False (fail).
+    """
+    async def _fake_run(
+        self: InterMachineCommDiagnostic,
+        node_id: str,
+        timeout_seconds: int = 180,
+    ) -> DiagnosticResult:
+        passed = node_pass_map.get(node_id, True)
+        return DiagnosticResult(
+            diagnostic_type="inter_machine",
+            node_id=node_id,
+            passed=passed,
+            details="pass" if passed else "fail",
+        )
+
+    return patch.object(InterMachineCommDiagnostic, "run", _fake_run)
 
 
 # ---------------------------------------------------------------------------
@@ -275,14 +303,14 @@ class TestDiagnosticSchedulerInterMachine:
     @pytest.mark.asyncio
     async def test_inter_machine_all_pass(self) -> None:
         agents = make_fake_agents({
-            "node-0": {"inter_machine": True},
-            "node-1": {"inter_machine": True},
-            "node-2": {"inter_machine": True},
+            "node-0": {}, "node-1": {}, "node-2": {},
         })
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        with _mock_inter_machine_run({"node-0": True, "node-1": True, "node-2": True}):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
@@ -292,14 +320,14 @@ class TestDiagnosticSchedulerInterMachine:
         # A is bad → pairs (A,B) and (C,A) fail, (B,C) passes
         # A has failure_count=2, B has 1, C has 1 → A is bad
         agents = make_fake_agents({
-            "node-0": {"inter_machine": False},
-            "node-1": {"inter_machine": True},
-            "node-2": {"inter_machine": True},
+            "node-0": {}, "node-1": {}, "node-2": {},
         })
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        with _mock_inter_machine_run({"node-0": False, "node-1": True, "node-2": True}):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-0" in decision.bad_node_ids
@@ -307,53 +335,43 @@ class TestDiagnosticSchedulerInterMachine:
     @pytest.mark.asyncio
     async def test_inter_machine_cannot_localize_all_fail(self) -> None:
         agents = make_fake_agents({
-            "node-0": {"inter_machine": False},
-            "node-1": {"inter_machine": False},
-            "node-2": {"inter_machine": False},
+            "node-0": {}, "node-1": {}, "node-2": {},
         })
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
-        # All nodes involved in failures → can't localize → NOTIFY_HUMAN
+        with _mock_inter_machine_run({"node-0": False, "node-1": False, "node-2": False}):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.asyncio
     async def test_inter_machine_two_nodes_pair_fails(self) -> None:
-        # 2 nodes: pair (A,B) fails → both marked bad
-        agents = make_fake_agents({
-            "node-0": {"inter_machine": False},
-            "node-1": {"inter_machine": False},
-        })
+        agents = make_fake_agents({"node-0": {}, "node-1": {}})
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
-        # 2 nodes, both fail → all nodes in failures → can't localize
+        with _mock_inter_machine_run({"node-0": False, "node-1": False}):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        # 2 nodes, both fail → all nodes equal failure count → can't localize
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.asyncio
     async def test_inter_machine_single_node_skipped(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"inter_machine": True},
-        })
+        agents = make_fake_agents({"node-0": {}})
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
-        # Single node → skip inter-machine → all pass
+        with _mock_inter_machine_run({"node-0": True}):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
         assert decision.action == ActionType.NOTIFY_HUMAN
 
-    @pytest.mark.asyncio
-    async def test_inter_machine_pairing_is_round_robin(self) -> None:
-        from miles.utils.ft.controller.diagnostics.scheduler import (
-            DiagnosticScheduler as DS,
-        )
-
-        # Verify pair structure with 4 nodes
+    def test_inter_machine_pairing_is_round_robin(self) -> None:
         node_ids = ["node-0", "node-1", "node-2", "node-3"]
         expected_pairs = [
             ("node-0", "node-1"),
@@ -367,41 +385,45 @@ class TestDiagnosticSchedulerInterMachine:
         ]
         assert pairs == expected_pairs
 
-    @pytest.mark.asyncio
-    async def test_inter_machine_port_assignment(self) -> None:
+    def test_inter_machine_port_assignment(self) -> None:
         from miles.utils.ft.controller.diagnostics.scheduler import (
             _INTER_MACHINE_BASE_PORT,
         )
 
-        # 3 nodes → 3 pairs → ports 29500, 29501, 29502
         assert _INTER_MACHINE_BASE_PORT == 29500
 
     @pytest.mark.asyncio
-    async def test_inter_machine_agent_timeout(self) -> None:
-        class _TimeoutAgent:
-            def set_diagnostic(self, diagnostic: object) -> None:
-                pass
-
-            def remove_diagnostic(self, diagnostic_type: str) -> None:
-                pass
-
-            async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120,
-            ) -> DiagnosticResult:
-                raise asyncio.TimeoutError("timed out")
-
-        good_agents = make_fake_agents({"node-0": {"inter_machine": True}})
-        agents: dict[str, object] = {
-            **good_agents,
-            "node-1": _TimeoutAgent(),
-            "node-2": make_fake_agents({"node-2": {"inter_machine": True}})["node-2"],
-        }
+    async def test_inter_machine_diagnostic_exception(self) -> None:
+        # If diag.run() raises, the pair should fail
+        agents = make_fake_agents({
+            "node-0": {}, "node-1": {}, "node-2": {},
+        })
         scheduler = DiagnosticScheduler(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
-        # node-1 times out in pairs (node-0, node-1) and (node-1, node-2)
+        call_count = 0
+
+        async def _raising_run(
+            self: InterMachineCommDiagnostic,
+            node_id: str,
+            timeout_seconds: int = 180,
+        ) -> DiagnosticResult:
+            nonlocal call_count
+            call_count += 1
+            if node_id == "node-1":
+                raise asyncio.TimeoutError("timed out")
+            return DiagnosticResult(
+                diagnostic_type="inter_machine",
+                node_id=node_id,
+                passed=True,
+                details="pass",
+            )
+
+        with patch.object(InterMachineCommDiagnostic, "run", _raising_run):
+            decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        # node-1 raises in pairs (node-0,node-1) and (node-1,node-2)
         # node-1 has failure_count=2, others have 1 each → node-1 is bad
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids

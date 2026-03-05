@@ -4,7 +4,6 @@ import asyncio
 import logging
 from typing import Any
 
-from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
     InterMachineCommDiagnostic,
 )
@@ -12,7 +11,6 @@ from miles.utils.ft.models import ActionType, Decision, DiagnosticResult
 
 logger = logging.getLogger(__name__)
 
-_INTER_MACHINE_TYPE = "inter_machine"
 _INTER_MACHINE_BASE_PORT = 29500
 
 
@@ -68,7 +66,7 @@ class DiagnosticScheduler:
             if not remaining_agents:
                 break
 
-            if diagnostic_type == _INTER_MACHINE_TYPE:
+            if diagnostic_type == InterMachineCommDiagnostic.diagnostic_type:
                 bad_node_ids = await self._run_inter_machine_step(
                     agents=remaining_agents,
                     timeout_seconds=self._default_timeout_seconds,
@@ -157,6 +155,10 @@ class DiagnosticScheduler:
         pair simultaneously, then uses failure counts to isolate the bad
         node.
 
+        Each pair gets its own diagnostic instance called directly (not
+        injected into agents) to avoid race conditions when a node
+        participates in multiple concurrent pairs.
+
         Returns list of bad node IDs (empty if all pass or cannot localize).
         """
         node_ids = sorted(agents.keys())
@@ -169,10 +171,7 @@ class DiagnosticScheduler:
             (node_ids[i], node_ids[(i + 1) % len(node_ids)])
             for i in range(len(node_ids))
         ]
-        logger.info(
-            "inter_machine_step_start pairs=%s",
-            [(m, w) for m, w in pairs],
-        )
+        logger.info("inter_machine_step_start pairs=%s", pairs)
 
         tasks = []
         for pair_index, (master_id, worker_id) in enumerate(pairs):
@@ -183,7 +182,6 @@ class DiagnosticScheduler:
                 worker_id=worker_id,
                 master_addr=master_addr,
                 port=port,
-                agents=agents,
                 timeout_seconds=timeout_seconds,
             ))
 
@@ -197,37 +195,21 @@ class DiagnosticScheduler:
         worker_id: str,
         master_addr: str,
         port: int,
-        agents: dict[str, Any],
         timeout_seconds: int,
     ) -> tuple[str, str, bool]:
-        """Run one pair test. Returns (master_id, worker_id, passed)."""
-        master_diag = InterMachineCommDiagnostic(
+        """Run one pair test. Returns (master_id, worker_id, passed).
+
+        Creates a single diagnostic instance per pair and calls run()
+        directly for each side (no agent injection needed).
+        """
+        diag = InterMachineCommDiagnostic(
             master_addr=master_addr, master_port=port,
         )
-        worker_diag = InterMachineCommDiagnostic(
-            master_addr=master_addr, master_port=port,
-        )
-
-        master_agent = agents[master_id]
-        worker_agent = agents[worker_id]
-
-        self._inject_diagnostic(master_agent, master_diag)
-        self._inject_diagnostic(worker_agent, worker_diag)
 
         try:
             master_result, worker_result = await asyncio.gather(
-                self._call_agent_diagnostic(
-                    agent=master_agent,
-                    node_id=master_id,
-                    diagnostic_type=_INTER_MACHINE_TYPE,
-                    timeout_seconds=timeout_seconds,
-                ),
-                self._call_agent_diagnostic(
-                    agent=worker_agent,
-                    node_id=worker_id,
-                    diagnostic_type=_INTER_MACHINE_TYPE,
-                    timeout_seconds=timeout_seconds,
-                ),
+                diag.run(node_id=master_id, timeout_seconds=timeout_seconds),
+                diag.run(node_id=worker_id, timeout_seconds=timeout_seconds),
             )
             passed = master_result.passed and worker_result.passed
         except Exception:
@@ -237,9 +219,6 @@ class DiagnosticScheduler:
                 exc_info=True,
             )
             passed = False
-        finally:
-            self._remove_diagnostic(master_agent, _INTER_MACHINE_TYPE)
-            self._remove_diagnostic(worker_agent, _INTER_MACHINE_TYPE)
 
         logger.info(
             "inter_machine_pair_result master=%s worker=%s passed=%s",
@@ -268,12 +247,12 @@ class DiagnosticScheduler:
                 failure_count[master_id] += 1
                 failure_count[worker_id] += 1
 
-        max_count = max(failure_count.values())
+        counts = list(failure_count.values())
+        max_count = max(counts)
         if max_count == 0:
             return []
 
-        min_count = min(failure_count.values())
-        if min_count == max_count:
+        if min(counts) == max_count:
             logger.warning("inter_machine_all_failed — cannot localize bad node")
             return []
 
@@ -285,18 +264,6 @@ class DiagnosticScheduler:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _inject_diagnostic(agent: Any, diagnostic: BaseDiagnostic) -> None:
-        set_fn = getattr(agent, "set_diagnostic", None)
-        if set_fn is not None:
-            set_fn(diagnostic)
-
-    @staticmethod
-    def _remove_diagnostic(agent: Any, diagnostic_type: str) -> None:
-        remove_fn = getattr(agent, "remove_diagnostic", None)
-        if remove_fn is not None:
-            remove_fn(diagnostic_type)
 
     def _get_node_address(self, node_id: str) -> str:
         if self._node_addresses and node_id in self._node_addresses:

@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
+
+from miles.utils.ft.models import DiagnosticResult
+
+logger = logging.getLogger(__name__)
 
 _AVG_BUS_BW_PATTERN = re.compile(r"#\s*Avg bus bandwidth\s*:\s*([\d.]+)")
 _BUSBW_COLUMN_INDEX = 7
@@ -37,3 +43,102 @@ def parse_avg_bus_bandwidth(output: str) -> float | None:
             return None
 
     return None
+
+
+async def run_nccl_test(
+    cmd: list[str],
+    node_id: str,
+    diagnostic_type: str,
+    expected_bandwidth_gbps: float,
+    timeout_seconds: int,
+    log_prefix: str,
+    env: dict[str, str] | None = None,
+) -> DiagnosticResult:
+    """Run an nccl-tests binary and return a DiagnosticResult.
+
+    Shared subprocess lifecycle used by both IntraMachineCommDiagnostic
+    and InterMachineCommDiagnostic.
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **({"env": env} if env is not None else {}),
+        )
+    except OSError:
+        logger.warning(
+            "%s_exec_failed node=%s binary=%s",
+            log_prefix, node_id, cmd[0],
+            exc_info=True,
+        )
+        return DiagnosticResult(
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details=f"failed to execute {cmd[0]}",
+        )
+
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(), timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        logger.warning(
+            "%s_timeout node=%s timeout=%s",
+            log_prefix, node_id, timeout_seconds,
+            exc_info=True,
+        )
+        return DiagnosticResult(
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details=f"timed out after {timeout_seconds}s",
+        )
+
+    stdout = stdout_bytes.decode(errors="replace")
+    stderr = stderr_bytes.decode(errors="replace")
+
+    if process.returncode != 0:
+        logger.warning(
+            "%s_nonzero_exit node=%s rc=%s stderr=%s",
+            log_prefix, node_id, process.returncode, stderr[:500],
+        )
+        return DiagnosticResult(
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details=f"exit code {process.returncode}: {stderr[:500]}",
+        )
+
+    bandwidth = parse_avg_bus_bandwidth(stdout)
+    if bandwidth is None:
+        logger.warning(
+            "%s_parse_failure node=%s output_len=%d",
+            log_prefix, node_id, len(stdout),
+        )
+        return DiagnosticResult(
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details="failed to parse bandwidth from output",
+        )
+
+    passed = bandwidth >= expected_bandwidth_gbps
+    if passed:
+        details = f"bandwidth {bandwidth:.2f} GB/s >= threshold {expected_bandwidth_gbps:.2f} GB/s"
+    else:
+        details = f"bandwidth {bandwidth:.2f} GB/s < threshold {expected_bandwidth_gbps:.2f} GB/s"
+
+    logger.info(
+        "%s_result node=%s bandwidth=%.2f threshold=%.2f passed=%s",
+        log_prefix, node_id, bandwidth, expected_bandwidth_gbps, passed,
+    )
+    return DiagnosticResult(
+        diagnostic_type=diagnostic_type,
+        node_id=node_id,
+        passed=passed,
+        details=details,
+    )
