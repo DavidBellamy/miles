@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal, NamedTuple, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StepValue(NamedTuple):
@@ -55,9 +55,6 @@ class TriggerType(str, Enum):
     HANG = "hang"
     NAN_LOSS = "nan_loss"
     CRASH = "crash"
-    HARDWARE = "hardware"
-    NETWORK = "network"
-    MFU_DECLINE = "mfu_decline"
 
 
 class NodeFault(FtBaseModel):
@@ -67,7 +64,7 @@ class NodeFault(FtBaseModel):
 
 class Decision(FtBaseModel):
     action: ActionType
-    bad_node_ids: list[str] = []
+    bad_node_ids: list[str] = Field(default_factory=list)
     reason: str
     trigger: TriggerType = TriggerType.NONE
 
@@ -100,6 +97,18 @@ class DiagnosticResult(FtBaseModel):
     node_id: str
     passed: bool
     details: str
+
+    @classmethod
+    def pass_result(
+        cls, *, diagnostic_type: str, node_id: str, details: str,
+    ) -> "DiagnosticResult":
+        return cls(diagnostic_type=diagnostic_type, node_id=node_id, passed=True, details=details)
+
+    @classmethod
+    def fail_result(
+        cls, *, diagnostic_type: str, node_id: str, details: str,
+    ) -> "DiagnosticResult":
+        return cls(diagnostic_type=diagnostic_type, node_id=node_id, passed=False, details=details)
 
 
 class RecoveryPhase(str, Enum):
