@@ -10,7 +10,7 @@ import pytest
 
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import RecoveryPhase
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
     make_fake_agents,

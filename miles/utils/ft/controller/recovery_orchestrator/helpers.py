@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.platform.protocols import JobStatus, NotificationProtocol, TrainingJobProtocol
+from miles.utils.ft.protocols.platform import JobStatus, NotificationProtocol, TrainingJobProtocol
 
 logger = logging.getLogger(__name__)
 

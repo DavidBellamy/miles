@@ -5,7 +5,7 @@ import pytest
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator.helpers import stop_clear_submit
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import FakeTrainingJob
 
 

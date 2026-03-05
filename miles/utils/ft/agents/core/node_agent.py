@@ -5,8 +5,8 @@ import logging
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.protocols.agents import DiagnosticProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class FtNodeAgent:
         node_id: str,
         collectors: list[BaseCollector] | None = None,
         collect_interval_seconds: float | None = None,
-        diagnostics: list[BaseDiagnostic] | None = None,
+        diagnostics: list[DiagnosticProtocol] | None = None,
     ) -> None:
         self._node_id = node_id
         self._collectors = collectors or []
@@ -27,7 +27,7 @@ class FtNodeAgent:
             for collector in self._collectors:
                 collector.collect_interval = collect_interval_seconds
 
-        self._diagnostics: dict[str, BaseDiagnostic] = {d.diagnostic_type: d for d in (diagnostics or [])}
+        self._diagnostics: dict[str, DiagnosticProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
         self._exporter = PrometheusExporter()
         self._collector_tasks: list[asyncio.Task[None]] = []
@@ -75,7 +75,7 @@ class FtNodeAgent:
     # Diagnostics
     # ------------------------------------------------------------------
 
-    def set_diagnostic(self, diagnostic: BaseDiagnostic) -> None:
+    def set_diagnostic(self, diagnostic: DiagnosticProtocol) -> None:
         """Register (or replace) a diagnostic by its diagnostic_type."""
         self._diagnostics[diagnostic.diagnostic_type] = diagnostic
 

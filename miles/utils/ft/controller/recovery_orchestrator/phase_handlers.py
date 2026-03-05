@@ -18,7 +18,7 @@ from miles.utils.ft.controller.recovery_orchestrator.context import (
     RecoveryContext,
 )
 from miles.utils.ft.models import ActionType, RecoveryPhase, TriggerType
-from miles.utils.ft.platform.protocols import (
+from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     JobStatus,
     NodeManagerProtocol,

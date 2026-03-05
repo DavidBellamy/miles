@@ -11,7 +11,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, Mi
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.models import ActionType, Decision
-from miles.utils.ft.platform.protocols import (
+from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     JobStatus,
     NodeManagerProtocol,

@@ -3,7 +3,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.models import StepValue, TimedStepValue
+from miles.utils.ft.protocols.metrics import StepValue, TimedStepValue
 
 logger = logging.getLogger(__name__)
 

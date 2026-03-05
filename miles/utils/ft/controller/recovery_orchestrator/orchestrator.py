@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.protocols.metrics import MetricStoreProtocol
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery_orchestrator.context import RecoveryContext
 from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
@@ -18,7 +18,7 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
     step_reattempting,
 )
 from miles.utils.ft.models import RecoveryPhase, TriggerType
-from miles.utils.ft.platform.protocols import (
+from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     NodeManagerProtocol,
     NotificationProtocol,

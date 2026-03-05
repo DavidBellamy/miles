@@ -1,31 +1,7 @@
-from datetime import datetime, timedelta
 from enum import Enum
-from typing import Literal, NamedTuple, Protocol
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class StepValue(NamedTuple):
-    step: int
-    value: float
-
-
-class TimedStepValue(NamedTuple):
-    step: int
-    timestamp: datetime
-    value: float
-
-
-class TrainingMetricStoreProtocol(Protocol):
-    def latest(self, metric_name: str) -> float | None: ...
-
-    def query_last_n_steps(
-        self, metric_name: str, last_n: int,
-    ) -> list[StepValue]: ...
-
-    def query_time_window(
-        self, metric_name: str, window: timedelta,
-    ) -> list[TimedStepValue]: ...
 
 
 class FtBaseModel(BaseModel):
@@ -119,13 +95,6 @@ class UnknownDiagnosticError(Exception):
     """Raised when a node agent is asked to run a diagnostic type it does not have."""
 
 
-class NodeAgentProtocol(Protocol):
-    async def run_diagnostic(
-        self, diagnostic_type: str, timeout_seconds: int = 120,
-        **kwargs: object,
-    ) -> DiagnosticResult: ...
-
-
 class RecoveryPhase(str, Enum):
     CHECK_ALERTS = "check_alerts"
     REATTEMPTING = "reattempting"
@@ -141,6 +110,13 @@ class ControllerMode(str, Enum):
     RECOVERY = "recovery"
 
 
+_BAD_NODES_CONFIRMED_PHASES: frozenset[RecoveryPhase] = frozenset({
+    RecoveryPhase.EVICT_AND_RESTART,
+    RecoveryPhase.NOTIFY,
+    RecoveryPhase.DONE,
+})
+
+
 class ControllerStatus(FtBaseModel):
     mode: ControllerMode
     recovery_phase: RecoveryPhase | None
@@ -148,15 +124,9 @@ class ControllerStatus(FtBaseModel):
     tick_count: int
     active_run_id: str | None
     bad_nodes: list[str]
+    recovery_in_progress: bool
+    bad_nodes_confirmed: bool
 
-
-FT_CONTROLLER_ACTOR_NAME: str = "ft_controller"  # deprecated: use ft_controller_actor_name()
-
-
-def ft_controller_actor_name(ft_id: str) -> str:
-    if not ft_id:
-        return "ft_controller"
-    return f"ft_controller_{ft_id}"
 
 RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
     RecoveryPhase.CHECK_ALERTS: 1,

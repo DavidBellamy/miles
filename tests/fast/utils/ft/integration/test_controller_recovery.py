@@ -15,7 +15,7 @@ from tests.fast.utils.ft.conftest import (
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 
 # -------------------------------------------------------------------
 # Scenario 1: GPU lost → direct eviction (MARK_BAD_AND_RESTART)

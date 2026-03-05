@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.platform.ray_training_job import RayTrainingJob, _parse_ray_status, resolve_to_ray_node_ids
 
 

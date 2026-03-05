@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any
 
-from miles.utils.ft.models import ft_controller_actor_name
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
 

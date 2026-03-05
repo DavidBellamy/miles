@@ -10,7 +10,8 @@ import asyncio
 import logging
 from typing import NamedTuple
 
-from miles.utils.ft.models import DiagnosticResult, NodeAgentProtocol
+from miles.utils.ft.models import DiagnosticResult
+from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 

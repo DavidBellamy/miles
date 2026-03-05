@@ -16,7 +16,7 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
     _reattempt_poll,
     step_monitoring,
 )
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import FakeTrainingJob
 
 

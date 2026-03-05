@@ -16,7 +16,14 @@ from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metr
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import ActionType, ControllerMode, ControllerStatus, Decision, RecoveryPhase
+from miles.utils.ft.models import (
+    ActionType,
+    ControllerMode,
+    ControllerStatus,
+    Decision,
+    RecoveryPhase,
+    _BAD_NODES_CONFIRMED_PHASES,
+)
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol
 from miles.utils.ft.protocols.platform import (
@@ -110,14 +117,18 @@ class FtController:
         self._shutting_down = True
 
     def get_status(self) -> ControllerStatus:
-        if self._recovery_orchestrator is not None:
+        recovery_in_progress = self._recovery_orchestrator is not None
+
+        if recovery_in_progress:
             mode = ControllerMode.RECOVERY
             recovery_phase = self._recovery_orchestrator.phase
             phase_history: list[RecoveryPhase] | None = list(self._recovery_orchestrator.phase_history)
+            bad_nodes_confirmed = recovery_phase in _BAD_NODES_CONFIRMED_PHASES
         else:
             mode = ControllerMode.MONITORING
             recovery_phase = None
             phase_history = self._last_phase_history
+            bad_nodes_confirmed = False
 
         return ControllerStatus(
             mode=mode,
@@ -126,6 +137,8 @@ class FtController:
             tick_count=self._tick_count,
             active_run_id=self._rank_registry.active_run_id,
             bad_nodes=sorted(self._diagnosing_nodes),
+            recovery_in_progress=recovery_in_progress,
+            bad_nodes_confirmed=bad_nodes_confirmed,
         )
 
     # -------------------------------------------------------------------

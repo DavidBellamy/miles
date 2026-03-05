@@ -11,7 +11,7 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
-from miles.utils.ft.models import ActionType, ControllerMode, Decision
+from miles.utils.ft.models import ActionType, ControllerMode, Decision, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeNodeManager,

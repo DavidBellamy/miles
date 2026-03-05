@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.metrics.protocol import ScrapeTargetManagerProtocol
-from miles.utils.ft.models import NodeAgentProtocol
+from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.protocols.metrics import ScrapeTargetManagerProtocol
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from miles.utils.ft.controller.detectors import (
 )
 from miles.utils.ft.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
 from miles.utils.ft.models import ActionType, MetricSample
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 
 _RANK_PLACEMENT: dict[int, str] = {0: "node-0", 1: "node-1"}
 

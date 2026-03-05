@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol, ScrapeTargetManagerProtocol
+from miles.utils.ft.protocols.metrics import (
+    MetricStoreProtocol,
+    ScrapeTargetManagerProtocol,
+)
 
 __all__ = [
     "MetricStoreProtocol",
@@ -30,8 +33,7 @@ async def start_metric_store_task(store: MetricStoreProtocol) -> asyncio.Task[No
 
 
 async def stop_metric_store_task(
-    store: MetricStoreProtocol,
-    task: asyncio.Task[None],
+    store: MetricStoreProtocol, task: asyncio.Task[None],
 ) -> None:
     await store.stop()
     task.cancel()

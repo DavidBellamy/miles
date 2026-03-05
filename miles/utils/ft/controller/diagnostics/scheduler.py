@@ -18,10 +18,10 @@ from miles.utils.ft.models import (
     ActionType,
     Decision,
     DiagnosticResult,
-    NodeAgentProtocol,
     TriggerType,
     UnknownDiagnosticError,
 )
+from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 
