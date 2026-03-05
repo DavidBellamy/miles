@@ -79,9 +79,10 @@ class DiagnosticScheduler:
             )
 
         if suspect_node_ids is not None:
+            suspect_set = set(suspect_node_ids)
             remaining_agents: dict[str, NodeAgentProtocol] = {
                 nid: agent for nid, agent in self._agents.items()
-                if nid in suspect_node_ids
+                if nid in suspect_set
             }
         else:
             remaining_agents: dict[str, NodeAgentProtocol] = dict(self._agents)
