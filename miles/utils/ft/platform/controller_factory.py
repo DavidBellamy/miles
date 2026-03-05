@@ -137,6 +137,25 @@ def _build_notifier(platform: str) -> WebhookNotifier | StubNotifier | None:
     return None
 
 
+def _build_metric_store(
+    config: FtControllerConfig,
+    controller_exporter: ControllerExporter,
+) -> tuple[MiniPrometheus | PrometheusClient, MiniPrometheus | None]:
+    """Return (metric_store, scrape_target_manager) based on config backend."""
+    if config.metric_store_backend == "mini":
+        mini_prom = MiniPrometheus(config=MiniPrometheusConfig())
+        mini_prom.add_scrape_target(
+            target_id="controller",
+            address=controller_exporter.address,
+        )
+        return mini_prom, mini_prom
+
+    if config.metric_store_backend == "prometheus":
+        return PrometheusClient(url=config.prometheus_url), None
+
+    raise ValueError(f"Unknown metric-store-backend: {config.metric_store_backend}")
+
+
 def build_ft_controller(
     config: FtControllerConfig | None = None,
     *,
@@ -168,20 +187,7 @@ def build_ft_controller(
     )
 
     controller_exporter = ControllerExporter(port=config.controller_exporter_port)
-
-    if config.metric_store_backend == "mini":
-        mini_prom = MiniPrometheus(config=MiniPrometheusConfig())
-        mini_prom.add_scrape_target(
-            target_id="controller",
-            address=controller_exporter.address,
-        )
-        metric_store = mini_prom
-        scrape_target_manager = mini_prom
-    elif config.metric_store_backend == "prometheus":
-        metric_store = PrometheusClient(url=config.prometheus_url)
-        scrape_target_manager = None
-    else:
-        raise ValueError(f"Unknown metric-store-backend: {config.metric_store_backend}")
+    metric_store, scrape_target_manager = _build_metric_store(config, controller_exporter)
 
     mini_wandb = MiniWandb()
     rank_registry = RankRegistry(
