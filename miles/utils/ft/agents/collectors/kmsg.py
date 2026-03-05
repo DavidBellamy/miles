@@ -101,6 +101,7 @@ class KmsgCollector(BaseCollector):
             name=mn.KERNEL_EVENT_COUNT,
             labels={},
             value=float(count),
+            metric_type="counter",
         )]
 
 
