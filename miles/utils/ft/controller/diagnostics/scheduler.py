@@ -132,6 +132,7 @@ class DiagnosticScheduler:
 
             pids = list(rank_pids.values())
             diag = StackTraceDiagnostic(pids=pids)
+
             try:
                 result = await diag.run(
                     node_id=node_id,
@@ -156,8 +157,8 @@ class DiagnosticScheduler:
         await asyncio.gather(*(_collect_node(nid) for nid in self._agents))
 
         suspect_from_aggregation = StackTraceAggregator().aggregate(traces=traces)
-
         all_suspects = sorted(set(suspect_from_failures) | set(suspect_from_aggregation))
+
         logger.info(
             "stack_trace_pre_step_done traces_collected=%d suspect_from_failures=%s suspect_from_aggregation=%s",
             len(traces), suspect_from_failures, suspect_from_aggregation,
