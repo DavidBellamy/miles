@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,10 +14,17 @@ from miles.utils.ft.e2e.fault_injector import (
 )
 
 
+def _get_inner_class() -> type:
+    """Unwrap Ray's ActorClass wrapper to get the plain Python class."""
+    meta = getattr(FaultInjectorActor, "__ray_metadata__", None)
+    if meta is not None:
+        return meta.modified_class
+    return FaultInjectorActor  # type: ignore[return-value]
+
+
 def _make_actor() -> FaultInjectorActor:
-    actor = FaultInjectorActor.__new__(FaultInjectorActor)
-    actor.__init__()
-    return actor
+    cls = _get_inner_class()
+    return cls()
 
 
 class TestFindTrainingProcesses:
@@ -113,6 +122,64 @@ class TestDiskOperations:
         assert not Path(path2).exists()
         assert actor._filled_paths == []
         assert actor._stress_pids == []
+
+
+class TestSignalOperations:
+    def test_kill_process_sends_sigkill(self) -> None:
+        actor = _make_actor()
+        with patch("os.kill") as mock_kill:
+            actor.kill_process(pid=42)
+            mock_kill.assert_called_once_with(42, signal.SIGKILL)
+
+    def test_kill_process_custom_signal(self) -> None:
+        actor = _make_actor()
+        with patch("os.kill") as mock_kill:
+            actor.kill_process(pid=42, sig=signal.SIGTERM)
+            mock_kill.assert_called_once_with(42, signal.SIGTERM)
+
+    def test_stop_process_sends_sigstop(self) -> None:
+        actor = _make_actor()
+        with patch("os.kill") as mock_kill:
+            actor.stop_process(pid=99)
+            mock_kill.assert_called_once_with(99, signal.SIGSTOP)
+
+    def test_continue_process_sends_sigcont(self) -> None:
+        actor = _make_actor()
+        with patch("os.kill") as mock_kill:
+            actor.continue_process(pid=99)
+            mock_kill.assert_called_once_with(99, signal.SIGCONT)
+
+
+class TestGpuStressOperations:
+    def test_start_gpu_stress_records_pid(self) -> None:
+        actor = _make_actor()
+        mock_proc = MagicMock()
+        mock_proc.pid = 1234
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            pid = actor.start_gpu_stress()
+
+        assert pid == 1234
+        assert 1234 in actor._stress_pids
+
+    def test_stop_gpu_stress_kills_and_removes_pid(self) -> None:
+        actor = _make_actor()
+        actor._stress_pids.append(555)
+
+        with patch("os.kill") as mock_kill:
+            actor.stop_gpu_stress(pid=555)
+
+        mock_kill.assert_called_once_with(555, signal.SIGKILL)
+        assert 555 not in actor._stress_pids
+
+    def test_stop_gpu_stress_ignores_process_lookup_error(self) -> None:
+        actor = _make_actor()
+        actor._stress_pids.append(999)
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            actor.stop_gpu_stress(pid=999)
+
+        assert 999 not in actor._stress_pids
 
 
 class TestTrainingCmdlinePatterns:
