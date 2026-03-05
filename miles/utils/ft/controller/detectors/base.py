@@ -27,6 +27,8 @@ class BaseFaultDetector(ABC):
     are fine because they are immutable after init.
     """
 
+    is_critical: bool = False
+
     @abstractmethod
     def evaluate(self, ctx: DetectorContext) -> Decision: ...
 

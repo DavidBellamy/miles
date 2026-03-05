@@ -77,6 +77,26 @@ class RecoveryOrchestrator:
     def is_done(self) -> bool:
         return self._context.phase == RecoveryPhase.DONE
 
+    def add_bad_nodes(self, node_ids: list[str]) -> None:
+        """Merge newly-discovered bad nodes into the eviction list.
+
+        If the orchestrator is currently in REATTEMPTING or MONITORING,
+        escalate directly to EVICT_AND_RESTART so the new bad nodes are
+        handled promptly.
+        """
+        added = [nid for nid in node_ids if nid not in self._context.bad_node_ids]
+        if not added:
+            return
+
+        self._context.bad_node_ids.extend(added)
+        logger.info(
+            "recovery_add_bad_nodes added=%s total=%s phase=%s",
+            added, self._context.bad_node_ids, self._context.phase.value,
+        )
+
+        if self._context.phase in (RecoveryPhase.REATTEMPTING, RecoveryPhase.MONITORING):
+            self._transition(RecoveryPhase.EVICT_AND_RESTART)
+
     async def step(self) -> None:
         if self.is_done():
             return

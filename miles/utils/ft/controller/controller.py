@@ -177,6 +177,7 @@ class FtController:
         job_status = await self._training_job.get_training_status()
 
         if self._recovery_orchestrator is not None:
+            self._run_critical_detectors_during_recovery(job_status)
             await self._recovery_orchestrator.step()
             self._diagnosing_nodes = set(self._recovery_orchestrator.bad_node_ids)
 
@@ -206,6 +207,40 @@ class FtController:
         self._update_exporter_metrics(job_status)
 
         await self._execute_decision(decision)
+
+    # -------------------------------------------------------------------
+    # Internal: critical detectors during recovery
+    # -------------------------------------------------------------------
+
+    def _run_critical_detectors_during_recovery(self, job_status: JobStatus) -> None:
+        """Run is_critical detectors even while recovery is active.
+
+        If a critical detector fires MARK_BAD_AND_RESTART with new bad nodes,
+        merge them into the orchestrator's eviction list.
+        """
+        ctx = DetectorContext(
+            metric_store=self._metric_store,
+            mini_wandb=self._mini_wandb,
+            rank_placement=self._rank_registry.rank_placement,
+            job_status=job_status,
+        )
+
+        for detector in self._detectors:
+            if not detector.is_critical:
+                continue
+            try:
+                decision = detector.evaluate(ctx)
+            except Exception:
+                logger.error(
+                    "critical_detector_failed detector=%s",
+                    type(detector).__name__,
+                    exc_info=True,
+                )
+                continue
+
+            if decision.action == ActionType.MARK_BAD_AND_RESTART and decision.bad_node_ids:
+                assert self._recovery_orchestrator is not None
+                self._recovery_orchestrator.add_bad_nodes(decision.bad_node_ids)
 
     # -------------------------------------------------------------------
     # Internal: detector chain
