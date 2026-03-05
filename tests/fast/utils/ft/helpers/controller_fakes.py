@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+from typing import NamedTuple
+
+from prometheus_client import CollectorRegistry
+
+from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.platform.protocols import (
+    DiagnosticSchedulerProtocol,
+    JobStatus,
+    NodeManagerProtocol,
+    TrainingJobProtocol,
+)
+
+
+# ---------------------------------------------------------------------------
+# Platform fakes
+# ---------------------------------------------------------------------------
+
+
+class FakeNodeManager:
+    """In-memory implementation of NodeManagerProtocol for testing."""
+
+    def __init__(self) -> None:
+        self._bad_nodes: set[str] = set()
+
+    async def mark_node_bad(self, node_id: str, reason: str = "") -> None:
+        self._bad_nodes.add(node_id)
+
+    async def unmark_node_bad(self, node_id: str) -> None:
+        self._bad_nodes.discard(node_id)
+
+    def is_node_bad(self, node_id: str) -> bool:
+        return node_id in self._bad_nodes
+
+    async def get_bad_nodes(self) -> list[str]:
+        return sorted(self._bad_nodes)
+
+
+class FakeNotifier:
+    """Records all send() calls for assertion in tests."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str]] = []
+
+    async def send(self, title: str, content: str, severity: str) -> None:
+        self.calls.append((title, content, severity))
+
+    async def aclose(self) -> None:
+        pass
+
+
+class FakeTrainingJob:
+    """Programmable implementation of TrainingJobProtocol for testing."""
+
+    def __init__(self, status_sequence: list[JobStatus] | None = None) -> None:
+        self._status_sequence = status_sequence or [JobStatus.RUNNING]
+        self._call_count: int = 0
+        self._stopped: bool = False
+        self._submitted: bool = False
+        self._run_id: str = "fake-initial"
+
+    async def get_training_status(self) -> JobStatus:
+        index = min(self._call_count, len(self._status_sequence) - 1)
+        status = self._status_sequence[index]
+        self._call_count += 1
+        return status
+
+    async def stop_training(self, timeout_seconds: int = 300) -> None:
+        self._stopped = True
+
+    async def submit_training(self) -> str:
+        self._submitted = True
+        self._call_count = 0
+        self._run_id = f"fake-{id(self)}"
+        return self._run_id
+
+
+# ---------------------------------------------------------------------------
+# Test detectors
+# ---------------------------------------------------------------------------
+
+
+class FixedDecisionDetector(BaseFaultDetector):
+    """Detector that always returns a fixed Decision. Tracks call count."""
+
+    def __init__(self, decision: Decision) -> None:
+        self.call_count = 0
+        self._decision = decision
+
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        self.call_count += 1
+        return self._decision
+
+
+_ALWAYS_NONE_DECISION = Decision(action=ActionType.NONE, reason="always none")
+_ALWAYS_MARK_BAD_DECISION = Decision(
+    action=ActionType.MARK_BAD_AND_RESTART,
+    bad_node_ids=["node-1"],
+    reason="test fault detected",
+)
+
+
+def AlwaysNoneDetector() -> FixedDecisionDetector:
+    return FixedDecisionDetector(decision=_ALWAYS_NONE_DECISION)
+
+
+def AlwaysMarkBadDetector() -> FixedDecisionDetector:
+    return FixedDecisionDetector(decision=_ALWAYS_MARK_BAD_DECISION)
+
+
+# ---------------------------------------------------------------------------
+# Controller test harness
+# ---------------------------------------------------------------------------
+
+
+class ControllerTestHarness(NamedTuple):
+    controller: FtController
+    node_manager: FakeNodeManager
+    training_job: FakeTrainingJob
+    metric_store: MiniPrometheus
+    mini_wandb: MiniWandb
+    controller_exporter: ControllerExporter
+    notifier: FakeNotifier | None
+
+
+def make_test_controller(
+    detectors: list[BaseFaultDetector] | None = None,
+    status_sequence: list[JobStatus] | None = None,
+    notifier: FakeNotifier | None = FakeNotifier,
+    tick_interval: float = 0.01,
+    controller_exporter: ControllerExporter | None = None,
+    diagnostic_scheduler: object | None = None,
+) -> ControllerTestHarness:
+    """Construct a Controller and all its dependencies for testing.
+
+    ``notifier`` defaults to a fresh FakeNotifier instance. Pass ``None``
+    explicitly to create a Controller without a notifier.
+
+    ``diagnostic_scheduler`` defaults to a real DiagnosticScheduler with
+    empty pipeline (same behavior as old stub). Pass a FakeDiagnosticScheduler
+    for recovery-specific tests.
+    """
+    real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
+    node_manager = FakeNodeManager()
+    training_job = FakeTrainingJob(status_sequence=status_sequence)
+    metric_store = MiniPrometheus(config=MiniPrometheusConfig())
+    mini_wandb = MiniWandb()
+    if controller_exporter is None:
+        controller_exporter = ControllerExporter(registry=CollectorRegistry())
+    controller = FtController(
+        node_manager=node_manager,
+        training_job=training_job,
+        metric_store=metric_store,
+        mini_wandb=mini_wandb,
+        notifier=real_notifier,
+        detectors=detectors,
+        tick_interval=tick_interval,
+        controller_exporter=controller_exporter,
+        scrape_target_manager=metric_store,
+        diagnostic_scheduler=diagnostic_scheduler,
+    )
+    return ControllerTestHarness(
+        controller=controller,
+        node_manager=node_manager,
+        training_job=training_job,
+        metric_store=metric_store,
+        mini_wandb=mini_wandb,
+        controller_exporter=controller_exporter,
+        notifier=real_notifier,
+    )
