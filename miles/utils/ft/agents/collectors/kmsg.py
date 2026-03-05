@@ -95,7 +95,8 @@ class KmsgCollector(BaseCollector):
     def _count_kernel_events(self, lines: list[str]) -> list[MetricSample]:
         count = sum(
             1 for line in lines
-            if any(kw in line.lower() for kw in _KERNEL_EVENT_KEYWORDS)
+            for line_lower in (line.lower(),)
+            if any(kw in line_lower for kw in _KERNEL_EVENT_KEYWORDS)
         )
         return [MetricSample(
             name=mn.KERNEL_EVENT_COUNT,
