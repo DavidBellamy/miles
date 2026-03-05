@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 from miles.utils.ft.launcher import app
 from miles.utils.ft.platform.controller_factory import _build_notifier
-from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
+from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 from miles.utils.ft.platform.stubs import StubNotifier
 
 runner = CliRunner()
@@ -52,7 +52,7 @@ class TestLauncherCli:
 
 class TestBuildNotifier:
     def test_webhook_url_returns_lark_notifier(self) -> None:
-        with patch.dict("os.environ", {"FT_LARK_WEBHOOK_URL": "https://hook.example.com"}):
+        with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://hook.example.com"}):
             notifier = _build_notifier(platform="stub")
         assert isinstance(notifier, LarkWebhookNotifier)
 
@@ -67,7 +67,7 @@ class TestBuildNotifier:
         assert notifier is None
 
     def test_empty_webhook_url_treated_as_unset(self) -> None:
-        with patch.dict("os.environ", {"FT_LARK_WEBHOOK_URL": "  "}):
+        with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "  "}):
             notifier = _build_notifier(platform="stub")
         assert isinstance(notifier, StubNotifier)
 
@@ -77,7 +77,7 @@ class TestBuildNotifier:
             with caplog.at_level(logging.WARNING):
                 notifier = _build_notifier(platform="k8s-ray")
         assert notifier is None
-        assert "FT_LARK_WEBHOOK_URL" in caplog.text
+        assert "MILES_FT_NOTIFY_WEBHOOK_URL" in caplog.text
 
 
 class TestLauncherSubmitAndRun:
