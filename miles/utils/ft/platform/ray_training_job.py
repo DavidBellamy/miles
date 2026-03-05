@@ -87,9 +87,9 @@ class RayTrainingJob:
         run_id = uuid4().hex[:8]
         env_override = {
             **self._runtime_env.get("env_vars", {}),
-            "FT_TRAINING_RUN_ID": run_id,
-            "FT_ID": self._ft_id,
-            "FT_K8S_LABEL_SUFFIX": self._k8s_label_suffix,
+            "MILES_FT_TRAINING_RUN_ID": run_id,
+            "MILES_FT_ID": self._ft_id,
+            "MILES_FT_K8S_LABEL_SUFFIX": self._k8s_label_suffix,
         }
         runtime_env = {**self._runtime_env, "env_vars": env_override}
 

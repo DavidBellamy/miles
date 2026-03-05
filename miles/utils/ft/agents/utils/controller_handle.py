@@ -23,7 +23,7 @@ class ControllerHandleMixin:
     """
 
     def __init__(self, ft_id: str = "") -> None:
-        self._ft_id = ft_id or os.environ.get("FT_ID", "")
+        self._ft_id = ft_id or os.environ.get("MILES_FT_ID", "")
         self._controller_handle: Any | None = None
         self._last_lookup_failure_time: float | None = None
 

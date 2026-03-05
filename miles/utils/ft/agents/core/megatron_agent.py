@@ -26,10 +26,10 @@ class FtMegatronAgent(ControllerHandleMixin):
     """
 
     def __init__(self, rank: int, world_size: int) -> None:
-        super().__init__(ft_id=os.environ.get("FT_ID", ""))
+        super().__init__(ft_id=os.environ.get("MILES_FT_ID", ""))
         self._rank = rank
         self._world_size = world_size
-        self._run_id: str = os.environ.get("FT_TRAINING_RUN_ID", "")
+        self._run_id: str = os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
         self._node_id: str = socket.gethostname()
 
         self._exporter = PrometheusExporter()
@@ -129,7 +129,7 @@ class FtMegatronAgent(ControllerHandleMixin):
 
     def _register_rank(self) -> None:
         if not self._run_id:
-            logger.info("No FT_TRAINING_RUN_ID set, skipping rank registration")
+            logger.info("No MILES_FT_TRAINING_RUN_ID set, skipping rank registration")
             return
 
         controller = self._get_controller_handle()

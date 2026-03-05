@@ -2,7 +2,7 @@
 
 Required environment variables:
   RAY_ADDRESS         — Ray cluster dashboard URL (e.g. http://head-node:8265)
-  FT_E2E_TRAINING_ENTRYPOINT — Training job entrypoint command
+  MILES_FT_E2E_TRAINING_ENTRYPOINT — Training job entrypoint command
 
 Required cluster: >= 4 GPU nodes.
 """
@@ -98,9 +98,9 @@ async def ft_system(
     ray_cluster: None, ray_address: str,
 ) -> AsyncGenerator[FtSystem, None]:
     """Start a fresh FT Controller with mini metric store for each test."""
-    entrypoint = os.environ.get("FT_E2E_TRAINING_ENTRYPOINT", "").strip()
+    entrypoint = os.environ.get("MILES_FT_E2E_TRAINING_ENTRYPOINT", "").strip()
     if not entrypoint:
-        pytest.skip("FT_E2E_TRAINING_ENTRYPOINT not set")
+        pytest.skip("MILES_FT_E2E_TRAINING_ENTRYPOINT not set")
 
     controller_exporter = ControllerExporter(port=0)
     mini_prom = MiniPrometheus(config=MiniPrometheusConfig())

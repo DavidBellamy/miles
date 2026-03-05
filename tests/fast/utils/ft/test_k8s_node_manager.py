@@ -167,7 +167,7 @@ class TestQueryBadNodesSyncHelper:
         mock_cls.assert_called_once_with(label_suffix="test1")
 
     def test_reads_label_suffix_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("FT_K8S_LABEL_SUFFIX", "envsfx")
+        monkeypatch.setenv("MILES_FT_K8S_LABEL_SUFFIX", "envsfx")
         with patch(
             "miles.utils.ft.platform.k8s_node_manager.K8sNodeManager"
         ) as mock_cls:

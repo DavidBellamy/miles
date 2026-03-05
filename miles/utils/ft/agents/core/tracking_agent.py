@@ -17,8 +17,8 @@ class FtTrackingAgent(ControllerHandleMixin):
     """
 
     def __init__(self, run_id: str | None = None) -> None:
-        super().__init__(ft_id=os.environ.get("FT_ID", ""))
-        self._run_id = run_id or os.environ.get("FT_TRAINING_RUN_ID", "")
+        super().__init__(ft_id=os.environ.get("MILES_FT_ID", ""))
+        self._run_id = run_id or os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
 
     def log(self, *, metrics: dict[str, float], step: int) -> None:
         if not self._run_id:

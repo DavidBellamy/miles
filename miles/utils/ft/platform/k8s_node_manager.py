@@ -111,7 +111,7 @@ def query_bad_nodes(label_suffix: str | None = None) -> list[str] | None:
 
     Args:
         label_suffix: K8s label suffix for isolation. If None, reads from
-            the ``FT_K8S_LABEL_SUFFIX`` environment variable (default empty).
+            the ``MILES_FT_K8S_LABEL_SUFFIX`` environment variable (default empty).
 
     Returns a list of node names on success, or None if the query failed.
     Raises RuntimeError if called from within an async context (running event
@@ -120,7 +120,7 @@ def query_bad_nodes(label_suffix: str | None = None) -> list[str] | None:
     import asyncio
 
     if label_suffix is None:
-        label_suffix = os.environ.get("FT_K8S_LABEL_SUFFIX", "")
+        label_suffix = os.environ.get("MILES_FT_K8S_LABEL_SUFFIX", "")
 
     try:
         asyncio.get_running_loop()

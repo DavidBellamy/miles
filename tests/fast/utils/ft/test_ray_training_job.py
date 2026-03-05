@@ -37,7 +37,7 @@ class TestSubmitTraining:
         mock_client.submit_job.assert_called_once()
         call_kwargs = mock_client.submit_job.call_args.kwargs
         assert call_kwargs["entrypoint"] == "python train.py"
-        assert call_kwargs["runtime_env"]["env_vars"]["FT_TRAINING_RUN_ID"] == run_id
+        assert call_kwargs["runtime_env"]["env_vars"]["MILES_FT_TRAINING_RUN_ID"] == run_id
 
     @pytest.mark.anyio
     async def test_multiple_submits_produce_different_run_ids(self) -> None:
@@ -93,8 +93,8 @@ class TestSubmitTraining:
 
         call_kwargs = mock_client.submit_job.call_args.kwargs
         env_vars = call_kwargs["runtime_env"]["env_vars"]
-        assert env_vars["FT_ID"] == "myft"
-        assert env_vars["FT_K8S_LABEL_SUFFIX"] == "sfx1"
+        assert env_vars["MILES_FT_ID"] == "myft"
+        assert env_vars["MILES_FT_K8S_LABEL_SUFFIX"] == "sfx1"
 
     @pytest.mark.anyio
     async def test_does_not_mutate_original_runtime_env(self) -> None:

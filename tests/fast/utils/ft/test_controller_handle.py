@@ -80,7 +80,7 @@ class TestControllerHandleMixin:
             mock_get_actor.assert_called_once_with("ft_controller")
 
     def test_ft_id_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("FT_ID", "env789")
+        monkeypatch.setenv("MILES_FT_ID", "env789")
         agent = _StubAgent()
 
         mock_handle = MagicMock()

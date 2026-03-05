@@ -181,7 +181,7 @@ class TestFtMegatronAgentRegisterRank:
         mock_get_handle.return_value = mock_controller
 
         with patch.dict(
-            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
         ), patch("ray.get", mock_ray_get):
             agent = FtMegatronAgent(rank=0, world_size=4)
             try:
@@ -210,7 +210,7 @@ class TestFtMegatronAgentRegisterRank:
             return None
 
         with patch.dict(
-            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
         ), patch("ray.get", side_effect=ray_get_side_effect), patch(
             "time.sleep"
         ):
@@ -229,7 +229,7 @@ class TestFtMegatronAgentRegisterRank:
         mock_get_handle.return_value = mock_controller
 
         with patch.dict(
-            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
         ), patch(
             "ray.get", side_effect=RuntimeError("always fails")
         ), patch("time.sleep"):
@@ -252,7 +252,7 @@ class TestFtMegatronAgentRegisterRank:
     ) -> None:
         mock_get_handle.return_value = None
 
-        with patch.dict("os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}):
+        with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}):
             agent = FtMegatronAgent(rank=0, world_size=4)
             try:
                 assert agent._run_id == "test-run-1"
@@ -268,7 +268,7 @@ class TestFtMegatronAgentRegisterRank:
         mock_get_handle.return_value = mock_controller
 
         with patch.dict(
-            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
         ), patch("ray.get", mock_ray_get):
             agent = FtMegatronAgent(rank=0, world_size=4)
             try:
@@ -289,7 +289,7 @@ class TestFtMegatronAgentRegisterRank:
         mock_get_handle.return_value = mock_controller
 
         with patch.dict(
-            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
         ), patch("ray.get", mock_ray_get):
             agent = FtMegatronAgent(rank=0, world_size=4)
             try:

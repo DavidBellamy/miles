@@ -6,7 +6,7 @@ fault injection → detection → recovery → training continuation.
 ## Prerequisites
 
 - **Ray cluster**: >= 4 GPU nodes, accessible via `RAY_ADDRESS`
-- **Training entrypoint**: small-model training command via `FT_E2E_TRAINING_ENTRYPOINT`
+- **Training entrypoint**: small-model training command via `MILES_FT_E2E_TRAINING_ENTRYPOINT`
 - **K8s access**: Controller uses K8s API for node management
 
 ## Environment Variables
@@ -14,7 +14,7 @@ fault injection → detection → recovery → training continuation.
 | Variable | Description |
 |----------|-------------|
 | `RAY_ADDRESS` | Ray dashboard URL (e.g. `http://head-node:8265`) |
-| `FT_E2E_TRAINING_ENTRYPOINT` | Training job command (e.g. `cd miles && python miles/run_train.py --small-model`) |
+| `MILES_FT_E2E_TRAINING_ENTRYPOINT` | Training job command (e.g. `cd miles && python miles/run_train.py --small-model`) |
 
 ## Running
 

@@ -46,12 +46,12 @@ class TestFtTrackingAgentLog:
         agent._controller_handle.log_step.remote.assert_not_called()
 
     def test_log_reads_run_id_from_env(self) -> None:
-        with patch.dict("os.environ", {"FT_TRAINING_RUN_ID": "env-run-1"}):
+        with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "env-run-1"}):
             agent = FtTrackingAgent()
             assert agent._run_id == "env-run-1"
 
     def test_log_explicit_run_id_overrides_env(self) -> None:
-        with patch.dict("os.environ", {"FT_TRAINING_RUN_ID": "env-run-1"}):
+        with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "env-run-1"}):
             agent = FtTrackingAgent(run_id="explicit-run")
             assert agent._run_id == "explicit-run"
 
