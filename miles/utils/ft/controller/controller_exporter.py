@@ -58,12 +58,12 @@ class ControllerExporter:
         )
         self._training_loss_latest = Gauge(
             mn.TRAINING_LOSS_LATEST,
-            "Latest training loss (mean across ranks)",
+            "Latest training loss from rank 0",
             registry=self._registry,
         )
         self._training_mfu_latest = Gauge(
             mn.TRAINING_MFU_LATEST,
-            "Latest training MFU (mean across ranks)",
+            "Latest training MFU from rank 0",
             registry=self._registry,
         )
 
