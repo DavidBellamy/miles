@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import pytest
@@ -83,21 +82,26 @@ class TestBuildFtControllerStub:
 
 class TestBuildFtControllerNotifier:
     def test_stub_platform_gets_stub_notifier(self) -> None:
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("FT_LARK_WEBHOOK_URL", None)
+        from miles.utils.ft.platform.stubs import StubNotifier
+
+        with patch("miles.utils.ft.platform.controller_factory.os.environ", {}):
             controller = build_ft_controller(
                 config=FtControllerConfig(platform="stub"),
                 start_exporter=False,
             )
-            assert controller._notifier is not None
+            assert isinstance(controller._notifier, StubNotifier)
 
     def test_lark_webhook_url_creates_lark_notifier(self) -> None:
-        with patch.dict(os.environ, {"FT_LARK_WEBHOOK_URL": "https://lark.example.com/hook"}):
+        from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+
+        with patch(
+            "miles.utils.ft.platform.controller_factory.os.environ",
+            {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://lark.example.com/hook"},
+        ):
             controller = build_ft_controller(
                 config=FtControllerConfig(platform="stub"),
                 start_exporter=False,
             )
-            from miles.utils.ft.platform.lark_notifier import LarkWebhookNotifier
             assert isinstance(controller._notifier, LarkWebhookNotifier)
 
 
