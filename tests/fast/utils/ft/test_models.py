@@ -10,8 +10,8 @@ from miles.utils.ft.models import (
     MetricSample,
     NodeFault,
     TriggerType,
-    ft_controller_actor_name,
 )
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 
 class TestMetricSample:
