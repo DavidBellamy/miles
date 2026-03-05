@@ -8,7 +8,7 @@ from typing import Iterator
 
 import polars as pl
 
-_SeriesKey = tuple[str, frozenset[tuple[str, str]]]
+SeriesKey = tuple[str, frozenset[tuple[str, str]]]
 
 EMPTY_INSTANT = pl.DataFrame(
     {"__name__": pl.Series([], dtype=pl.Utf8), "value": pl.Series([], dtype=pl.Float64)}
@@ -32,9 +32,9 @@ class TimeSeriesSample:
 
 
 def query_latest(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
     metric_name: str,
     label_filters: dict[str, str] | None = None,
 ) -> pl.DataFrame:
@@ -45,9 +45,9 @@ def query_latest(
 
 
 def query_range(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
     metric_name: str,
     window: timedelta,
     label_filters: dict[str, str] | None = None,
@@ -84,9 +84,9 @@ def _labels_match(labels: dict[str, str], filters: dict[str, str]) -> bool:
 
 
 def _iter_matching(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
     metric_name: str,
     label_filters: dict[str, str] | None,
 ) -> Iterator[tuple[dict[str, str], deque[TimeSeriesSample]]]:
@@ -103,9 +103,9 @@ def _iter_matching(
 
 
 def _instant_query(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
     metric_name: str,
     label_filters: dict[str, str] | None,
     value_fn: Callable[[deque[TimeSeriesSample]], float | None],
@@ -126,9 +126,9 @@ def _instant_query(
 
 
 def range_aggregate(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
     func_name: str,
     metric_name: str,
     window: timedelta,

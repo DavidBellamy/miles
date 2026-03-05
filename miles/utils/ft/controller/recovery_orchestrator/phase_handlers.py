@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Coroutine
+import math
 from datetime import datetime, timezone
-from typing import Any
 
 from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery_helpers import (
+    retry_async,
+    safe_notify,
+    stop_clear_submit,
+)
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery_orchestrator.context import (
+    PENDING_TIMEOUT_SECONDS,
     RecoveryContext,
-    _MAX_RETRIES,
-    _PENDING_TIMEOUT_SECONDS,
-    _is_finite,
 )
 from miles.utils.ft.models import ActionType, RecoveryPhase
 from miles.utils.ft.platform.protocols import (
@@ -65,7 +67,7 @@ async def _reattempt_submit(
     training_job: TrainingJobProtocol,
     mini_wandb: MiniWandb,
 ) -> RecoveryPhase | None:
-    success = await _stop_clear_submit(training_job, mini_wandb)
+    success = await stop_clear_submit(training_job, mini_wandb)
     if not success:
         return RecoveryPhase.NOTIFY
 
@@ -86,7 +88,7 @@ async def _reattempt_poll(
         iteration = mini_wandb.latest(metric_name="iteration", rank=0)
         ctx.reattempt_start_time = datetime.now(timezone.utc)
         ctx.reattempt_base_iteration = (
-            int(iteration) if iteration is not None and _is_finite(iteration) else 0
+            int(iteration) if iteration is not None and math.isfinite(iteration) else 0
         )
         logger.info("reattempt_running base_iteration=%s", ctx.reattempt_base_iteration)
         return RecoveryPhase.MONITORING
@@ -97,7 +99,7 @@ async def _reattempt_poll(
 
     if ctx.reattempt_submit_time is not None:
         elapsed = (datetime.now(timezone.utc) - ctx.reattempt_submit_time).total_seconds()
-        if elapsed > _PENDING_TIMEOUT_SECONDS:
+        if elapsed > PENDING_TIMEOUT_SECONDS:
             logger.warning("reattempt_pending_timeout elapsed=%.0f", elapsed)
             return RecoveryPhase.NOTIFY
 
@@ -142,7 +144,7 @@ async def step_monitoring(
 
 def _iteration_progress(ctx: RecoveryContext, mini_wandb: MiniWandb) -> int:
     current_iteration = mini_wandb.latest(metric_name="iteration", rank=0)
-    if current_iteration is None or not _is_finite(current_iteration):
+    if current_iteration is None or not math.isfinite(current_iteration):
         return 0
     base = ctx.reattempt_base_iteration or 0
     return int(current_iteration) - base
@@ -182,7 +184,7 @@ async def step_evict_and_restart(
     mini_wandb: MiniWandb,
 ) -> RecoveryPhase:
     for node_id in ctx.bad_node_ids:
-        success = await _retry_async(
+        success = await retry_async(
             lambda nid=node_id: node_manager.mark_node_bad(
                 nid, reason=f"recovery eviction: {ctx.trigger}",
             ),
@@ -191,7 +193,7 @@ async def step_evict_and_restart(
         if not success:
             return RecoveryPhase.NOTIFY
 
-    success = await _stop_clear_submit(training_job, mini_wandb)
+    success = await stop_clear_submit(training_job, mini_wandb)
     if not success:
         return RecoveryPhase.NOTIFY
 
@@ -216,11 +218,7 @@ async def step_notify(
     )
     logger.warning("recovery_notify reason=%s", message)
 
-    if notifier is not None:
-        try:
-            await notifier.send(title="Recovery Alert", content=message, severity="critical")
-        except Exception:
-            logger.exception("recovery_notifier_send_failed")
+    await safe_notify(notifier, title="Recovery Alert", content=message)
 
     return RecoveryPhase.DONE
 
@@ -251,7 +249,7 @@ async def _stop_clear_submit(
 async def _retry_async(
     func: Callable[[], Coroutine[Any, Any, Any]],
     description: str,
-    max_retries: int = _MAX_RETRIES,
+    max_retries: int = MAX_RETRIES,
 ) -> bool:
     for attempt in range(max_retries):
         try:

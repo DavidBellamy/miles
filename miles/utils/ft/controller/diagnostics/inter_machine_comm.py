@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from miles.utils.ft.controller.diagnostics._nccl_utils import run_nccl_test
+from miles.utils.ft.controller.diagnostics._nccl_utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models import DiagnosticResult
 
@@ -35,11 +35,7 @@ class InterMachineCommDiagnostic(BaseDiagnostic):
     async def run(
         self, node_id: str, timeout_seconds: int = 180,
     ) -> DiagnosticResult:
-        cmd = [
-            self._nccl_test_binary,
-            "-b", "1M", "-e", "1G", "-f", "2",
-            "-g", str(self._num_gpus),
-        ]
+        cmd = build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus)
 
         env = {**os.environ}
         if self._master_addr:

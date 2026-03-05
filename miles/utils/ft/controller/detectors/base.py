@@ -31,7 +31,7 @@ class BaseFaultDetector(ABC):
     def evaluate(self, ctx: DetectorContext) -> Decision: ...
 
 
-def _get_non_finite_loss(mini_wandb: TrainingMetricStoreProtocol) -> float | None:
+def get_non_finite_loss(mini_wandb: TrainingMetricStoreProtocol) -> float | None:
     """Return the loss value if it is non-finite (NaN/Inf), otherwise None."""
     latest_loss = mini_wandb.latest("loss", rank=0)
     if latest_loss is not None and not math.isfinite(latest_loss):

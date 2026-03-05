@@ -8,7 +8,7 @@ import polars as pl
 
 from miles.utils.ft.controller.mini_prometheus.query import (
     TimeSeriesSample,
-    _SeriesKey,
+    SeriesKey,
     query_latest as _query_latest,
     query_range as _query_range,
     range_aggregate as _range_aggregate,
@@ -26,9 +26,9 @@ class MiniPrometheusConfig:
 class MiniPrometheus:
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
         self._config = config or MiniPrometheusConfig()
-        self._series: dict[_SeriesKey, deque[TimeSeriesSample]] = {}
-        self._label_maps: dict[_SeriesKey, dict[str, str]] = {}
-        self._name_index: dict[str, set[_SeriesKey]] = {}
+        self._series: dict[SeriesKey, deque[TimeSeriesSample]] = {}
+        self._label_maps: dict[SeriesKey, dict[str, str]] = {}
+        self._name_index: dict[str, set[SeriesKey]] = {}
         self._last_eviction_time: datetime | None = None
 
         self._scrape_loop = ScrapeLoop(
@@ -77,7 +77,7 @@ class MiniPrometheus:
         for sample in samples:
             labels = dict(sample.labels)
             labels.setdefault("node_id", target_id)
-            key: _SeriesKey = (sample.name, frozenset(labels.items()))
+            key: SeriesKey = (sample.name, frozenset(labels.items()))
 
             if key not in self._series:
                 self._series[key] = deque()
@@ -159,7 +159,7 @@ class MiniPrometheus:
 
     def _evict_expired(self) -> None:
         cutoff = datetime.now(timezone.utc) - self._config.retention
-        empty_keys: list[_SeriesKey] = []
+        empty_keys: list[SeriesKey] = []
 
         for key, samples in self._series.items():
             while samples and samples[0].timestamp < cutoff:

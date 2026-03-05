@@ -1,14 +1,14 @@
 from miles.utils.ft.controller.detectors.base import (
     BaseFaultDetector,
     DetectorContext,
-    _get_non_finite_loss,
+    get_non_finite_loss,
 )
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 
 
 class NanLossDetector(BaseFaultDetector):
     def evaluate(self, ctx: DetectorContext) -> Decision:
-        bad_loss = _get_non_finite_loss(ctx.mini_wandb)
+        bad_loss = get_non_finite_loss(ctx.mini_wandb)
 
         if bad_loss is not None:
             return Decision(

@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from miles.utils.ft.models import RecoveryPhase
 
-_PENDING_TIMEOUT_SECONDS: int = 300
-_MAX_RETRIES: int = 3
-
-
-def _is_finite(value: float) -> bool:
-    return math.isfinite(value)
+PENDING_TIMEOUT_SECONDS: int = 300
+MAX_RETRIES: int = 3
 
 
 @dataclass

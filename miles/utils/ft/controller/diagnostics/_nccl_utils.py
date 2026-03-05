@@ -12,6 +12,10 @@ _AVG_BUS_BW_PATTERN = re.compile(r"#\s*Avg bus bandwidth\s*:\s*([\d.]+)")
 _BUSBW_COLUMN_INDEX = 7
 
 
+def build_nccl_test_cmd(binary: str, num_gpus: int) -> list[str]:
+    return [binary, "-b", "1M", "-e", "1G", "-f", "2", "-g", str(num_gpus)]
+
+
 def parse_avg_bus_bandwidth(output: str) -> float | None:
     """Parse average bus bandwidth (GB/s) from nccl-tests text output.
 
