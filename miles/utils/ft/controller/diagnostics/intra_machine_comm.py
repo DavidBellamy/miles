@@ -27,13 +27,11 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
     async def run(
         self, node_id: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult:
-        cmd = build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus)
-
         return await run_nccl_test(
-            cmd=cmd,
+            cmd=build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus),
             node_id=node_id,
             diagnostic_type=self.diagnostic_type,
             expected_bandwidth_gbps=self._expected_bandwidth_gbps,
             timeout_seconds=timeout_seconds,
-            log_prefix="intra_machine",
+            log_prefix=self.diagnostic_type,
         )

@@ -35,19 +35,17 @@ class InterMachineCommDiagnostic(BaseDiagnostic):
     async def run(
         self, node_id: str, timeout_seconds: int = 180,
     ) -> DiagnosticResult:
-        cmd = build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus)
-
         env = {**os.environ}
         if self._master_addr:
             env["MASTER_ADDR"] = self._master_addr
         env["MASTER_PORT"] = str(self._master_port)
 
         return await run_nccl_test(
-            cmd=cmd,
+            cmd=build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus),
             node_id=node_id,
             diagnostic_type=self.diagnostic_type,
             expected_bandwidth_gbps=self._expected_bandwidth_gbps,
             timeout_seconds=timeout_seconds,
-            log_prefix="inter_machine",
+            log_prefix=self.diagnostic_type,
             env=env,
         )
