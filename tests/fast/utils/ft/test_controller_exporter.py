@@ -4,6 +4,8 @@ from prometheus_client import CollectorRegistry
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.models import RecoveryPhase
+from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 
@@ -15,7 +17,7 @@ class TestControllerExporterGauges:
     def test_update_mode(self) -> None:
         registry, exporter = make_test_exporter()
 
-        exporter.update_mode(1)
+        exporter.update_mode(is_recovery=True)
 
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
 
@@ -31,14 +33,14 @@ class TestControllerExporterGauges:
     def test_update_recovery_phase(self) -> None:
         registry, exporter = make_test_exporter()
 
-        exporter.update_recovery_phase(2)
+        exporter.update_recovery_phase(RecoveryPhase.REATTEMPTING)
 
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) == 2.0
 
     def test_update_training_job_status(self) -> None:
         registry, exporter = make_test_exporter()
 
-        exporter.update_training_job_status(-1)
+        exporter.update_training_job_status(JobStatus.FAILED)
 
         assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == -1.0
 

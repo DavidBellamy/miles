@@ -6,8 +6,17 @@ from http.server import HTTPServer
 from prometheus_client import CollectorRegistry, Counter, Gauge, start_http_server
 
 import miles.utils.ft.metric_names as mn
+from miles.utils.ft.models import RECOVERY_PHASE_TO_INT, RecoveryPhase
+from miles.utils.ft.platform.protocols import JobStatus
 
 logger = logging.getLogger(__name__)
+
+_JOB_STATUS_TO_NUMERIC: dict[JobStatus, int] = {
+    JobStatus.RUNNING: 1,
+    JobStatus.STOPPED: 0,
+    JobStatus.FAILED: -1,
+    JobStatus.PENDING: 2,
+}
 
 
 class ControllerExporter:
@@ -73,17 +82,17 @@ class ControllerExporter:
             self._httpd = None
             logger.info("controller_exporter_stopped")
 
-    def update_mode(self, mode: int) -> None:
-        self._mode.set(mode)
+    def update_mode(self, *, is_recovery: bool) -> None:
+        self._mode.set(1 if is_recovery else 0)
 
     def update_tick_count(self) -> None:
         self._tick_count.inc()
 
-    def update_recovery_phase(self, phase: int) -> None:
-        self._recovery_phase.set(phase)
+    def update_recovery_phase(self, phase: RecoveryPhase | None) -> None:
+        self._recovery_phase.set(RECOVERY_PHASE_TO_INT.get(phase, 0) if phase else 0)
 
-    def update_training_job_status(self, status: int) -> None:
-        self._training_job_status.set(status)
+    def update_training_job_status(self, status: JobStatus) -> None:
+        self._training_job_status.set(_JOB_STATUS_TO_NUMERIC.get(status, 0))
 
     def update_training_metrics(
         self,

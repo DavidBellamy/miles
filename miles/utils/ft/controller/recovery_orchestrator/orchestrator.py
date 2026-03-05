@@ -16,7 +16,7 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
     step_notify,
     step_reattempting,
 )
-from miles.utils.ft.models import RecoveryPhase, RECOVERY_PHASE_TO_INT, TriggerType
+from miles.utils.ft.models import RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
     NodeManagerProtocol,
@@ -133,5 +133,4 @@ class RecoveryOrchestrator:
     def _update_exporter(self) -> None:
         if self._controller_exporter is None:
             return
-        phase_int = RECOVERY_PHASE_TO_INT.get(self._context.phase, 0)
-        self._controller_exporter.update_recovery_phase(phase_int)
+        self._controller_exporter.update_recovery_phase(self._context.phase)

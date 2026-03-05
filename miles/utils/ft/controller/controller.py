@@ -29,13 +29,6 @@ from miles.utils.ft.platform.protocols import (
 
 logger = logging.getLogger(__name__)
 
-_JOB_STATUS_TO_NUMERIC: dict[JobStatus, int] = {
-    JobStatus.RUNNING: 1,
-    JobStatus.STOPPED: 0,
-    JobStatus.FAILED: -1,
-    JobStatus.PENDING: 2,
-}
-
 _ALL_DETECTORS_PASSED = Decision(action=ActionType.NONE, reason="all detectors passed")
 
 
@@ -271,15 +264,13 @@ class FtController:
         if self._controller_exporter is None:
             return
 
-        status_value = _JOB_STATUS_TO_NUMERIC.get(job_status, 0)
-        self._controller_exporter.update_training_job_status(status_value)
+        self._controller_exporter.update_training_job_status(job_status)
         self._controller_exporter.update_tick_count()
 
-        if self._recovery_orchestrator is not None:
-            self._controller_exporter.update_mode(1)
-        else:
-            self._controller_exporter.update_mode(0)
-            self._controller_exporter.update_recovery_phase(0)
+        is_recovery = self._recovery_orchestrator is not None
+        self._controller_exporter.update_mode(is_recovery=is_recovery)
+        if not is_recovery:
+            self._controller_exporter.update_recovery_phase(None)
 
         loss = self._mini_wandb.latest(metric_name="loss", rank=0)
         mfu = self._mini_wandb.latest(metric_name="mfu", rank=0)
