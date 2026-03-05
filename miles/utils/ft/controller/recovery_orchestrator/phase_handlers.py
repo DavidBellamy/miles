@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator.helpers import (
+    RetryResult,
     retry_async,
     safe_notify,
     stop_clear_submit,
@@ -16,7 +17,7 @@ from miles.utils.ft.controller.recovery_orchestrator.context import (
     PENDING_TIMEOUT_SECONDS,
     RecoveryContext,
 )
-from miles.utils.ft.models import ActionType, RecoveryPhase
+from miles.utils.ft.models import ActionType, RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
     JobStatus,
@@ -187,6 +188,19 @@ async def step_diagnosing(
 # -------------------------------------------------------------------
 
 
+async def _evict_node(
+    node_manager: NodeManagerProtocol,
+    node_id: str,
+    trigger: TriggerType,
+) -> RetryResult[None]:
+    return await retry_async(
+        lambda: node_manager.mark_node_bad(
+            node_id, reason=f"recovery eviction: {trigger}",
+        ),
+        description=f"mark_node_bad({node_id})",
+    )
+
+
 async def step_evict_and_restart(
     ctx: RecoveryContext,
     node_manager: NodeManagerProtocol,
@@ -198,12 +212,7 @@ async def step_evict_and_restart(
         return RecoveryPhase.NOTIFY
 
     results = await asyncio.gather(*(
-        retry_async(
-            lambda nid=node_id: node_manager.mark_node_bad(
-                nid, reason=f"recovery eviction: {ctx.trigger}",
-            ),
-            description=f"mark_node_bad({node_id})",
-        )
+        _evict_node(node_manager, node_id=node_id, trigger=ctx.trigger)
         for node_id in ctx.bad_node_ids
     ))
     if not all(r.ok for r in results):
