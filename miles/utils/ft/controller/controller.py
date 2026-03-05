@@ -14,11 +14,12 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import ActionType, ControllerMode, ControllerStatus, Decision, NodeAgentProtocol, RecoveryPhase
-from miles.utils.ft.platform.protocols import (
+from miles.utils.ft.models import ActionType, ControllerMode, ControllerStatus, Decision, RecoveryPhase
+from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.protocols.metrics import MetricStoreProtocol
+from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     JobStatus,
     NodeManagerProtocol,
@@ -74,6 +75,7 @@ class FtController:
         self._shutting_down: bool = False
         self._tick_count: int = 0
         self._recovery_orchestrator: RecoveryOrchestrator | None = None
+        self._recovery_start_time: float | None = None
         self._diagnosing_nodes: set[str] = set()
         self._last_phase_history: list[RecoveryPhase] | None = None
 
@@ -198,9 +200,20 @@ class FtController:
             self._diagnosing_nodes = set(self._recovery_orchestrator.bad_node_ids)
 
             if self._recovery_orchestrator.is_done():
-                logger.info("recovery_complete trigger=%s", self._recovery_orchestrator.trigger)
+                recovery_elapsed = (
+                    time.monotonic() - self._recovery_start_time
+                    if self._recovery_start_time is not None
+                    else 0.0
+                )
+                logger.info(
+                    "recovery_complete trigger=%s duration_seconds=%.1f",
+                    self._recovery_orchestrator.trigger, recovery_elapsed,
+                )
+                if self._controller_exporter is not None:
+                    self._controller_exporter.observe_recovery_duration(recovery_elapsed)
                 self._last_phase_history = list(self._recovery_orchestrator.phase_history)
                 self._recovery_orchestrator = None
+                self._recovery_start_time = None
                 self._diagnosing_nodes.clear()
 
             self._update_exporter_metrics(job_status)
@@ -319,6 +332,17 @@ class FtController:
         if decision.action == ActionType.NONE:
             return
 
+        trigger_str = decision.trigger.value if decision.trigger else "unknown"
+        logger.info(
+            "decision_event decision_action=%s trigger=%s bad_node_ids=%s run_id=%s tick=%d",
+            decision.action.value, trigger_str, decision.bad_node_ids,
+            self._rank_registry.active_run_id, self._tick_count,
+        )
+        if self._controller_exporter is not None:
+            self._controller_exporter.record_decision(
+                action=decision.action.value, trigger=trigger_str,
+            )
+
         if decision.action == ActionType.MARK_BAD_AND_RESTART:
             await handle_mark_bad_and_restart(
                 decision=decision,
@@ -353,6 +377,7 @@ class FtController:
                 )
                 return
 
+            self._recovery_start_time = time.monotonic()
             self._recovery_orchestrator = await handle_enter_recovery(
                 decision=decision,
                 node_manager=self._node_manager,

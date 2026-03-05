@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from prometheus_client import CollectorRegistry
-from tests.fast.utils.ft.helpers import get_sample_value, make_test_exporter
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
+from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 
 class TestControllerExporterGauges:
@@ -73,12 +73,56 @@ class TestControllerExporterAddress:
         assert exporter.address == "http://localhost:9500"
 
 
+class TestControllerExporterDecisionCounter:
+    def test_record_decision_increments_labeled_counter(self) -> None:
+        registry, exporter = make_test_exporter()
+
+        exporter.record_decision(action="enter_recovery", trigger="training_crash")
+        exporter.record_decision(action="enter_recovery", trigger="training_crash")
+        exporter.record_decision(action="mark_bad_and_restart", trigger="hardware")
+
+        assert get_sample_value(
+            registry, mn.CONTROLLER_DECISION_TOTAL + "_total",
+            labels={"action": "enter_recovery", "trigger": "training_crash"},
+        ) == 2.0
+        assert get_sample_value(
+            registry, mn.CONTROLLER_DECISION_TOTAL + "_total",
+            labels={"action": "mark_bad_and_restart", "trigger": "hardware"},
+        ) == 1.0
+
+    def test_record_decision_unknown_trigger(self) -> None:
+        registry, exporter = make_test_exporter()
+
+        exporter.record_decision(action="enter_recovery", trigger="unknown")
+
+        assert get_sample_value(
+            registry, mn.CONTROLLER_DECISION_TOTAL + "_total",
+            labels={"action": "enter_recovery", "trigger": "unknown"},
+        ) == 1.0
+
+
+class TestControllerExporterRecoveryDuration:
+    def test_observe_recovery_duration(self) -> None:
+        registry, exporter = make_test_exporter()
+
+        exporter.observe_recovery_duration(45.3)
+
+        count = get_sample_value(
+            registry, mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_count",
+        )
+        assert count == 1.0
+
+        total = get_sample_value(
+            registry, mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_sum",
+        )
+        assert total == 45.3
+
+
 class TestControllerExporterLifecycle:
     def test_stop_shuts_down_http_server(self) -> None:
         _, exporter = make_test_exporter()
 
         import socket
-
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("", 0))
         port = sock.getsockname()[1]

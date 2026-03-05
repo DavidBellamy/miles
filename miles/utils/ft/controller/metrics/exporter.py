@@ -7,7 +7,7 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, star
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import RECOVERY_PHASE_TO_INT, RecoveryPhase
-from miles.utils.ft.platform.protocols import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,17 @@ class ControllerExporter:
             "Wall-clock duration of each controller tick",
             registry=self._registry,
         )
+        self._decision_total = Counter(
+            mn.CONTROLLER_DECISION_TOTAL,
+            "Total non-NONE decisions by action and trigger",
+            labelnames=["action", "trigger"],
+            registry=self._registry,
+        )
+        self._recovery_duration_seconds = Histogram(
+            mn.CONTROLLER_RECOVERY_DURATION_SECONDS,
+            "Duration of complete recovery cycles",
+            registry=self._registry,
+        )
 
     @property
     def address(self) -> str:
@@ -101,6 +112,12 @@ class ControllerExporter:
 
     def update_tick_duration(self, seconds: float) -> None:
         self._tick_duration_seconds.observe(seconds)
+
+    def record_decision(self, action: str, trigger: str) -> None:
+        self._decision_total.labels(action=action, trigger=trigger).inc()
+
+    def observe_recovery_duration(self, seconds: float) -> None:
+        self._recovery_duration_seconds.observe(seconds)
 
     def update_training_metrics(
         self,

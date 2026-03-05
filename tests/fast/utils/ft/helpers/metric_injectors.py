@@ -23,12 +23,16 @@ from miles.utils.ft.platform.protocols import JobStatus
 def get_sample_value(
     registry: CollectorRegistry,
     metric_name: str,
+    labels: dict[str, str] | None = None,
 ) -> float | None:
     """Read the current value of a metric from a CollectorRegistry."""
     for metric_family in registry.collect():
         for sample in metric_family.samples:
-            if sample.name == metric_name:
-                return sample.value
+            if sample.name != metric_name:
+                continue
+            if labels is not None and dict(sample.labels) != labels:
+                continue
+            return sample.value
     return None
 
 
