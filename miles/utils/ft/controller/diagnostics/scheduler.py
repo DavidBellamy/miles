@@ -74,7 +74,7 @@ class DiagnosticScheduler:
         if not self._pipeline:
             logger.info("diagnostic_pipeline_empty — all pass by default")
             return Decision(
-                action=ActionType.NOTIFY_HUMAN,
+                action=ActionType.NONE,
                 reason="all diagnostics passed (empty pipeline)",
             )
 
@@ -115,7 +115,7 @@ class DiagnosticScheduler:
 
         logger.info("diagnostic_pipeline_all_passed trigger=%s", trigger_reason)
         return Decision(
-            action=ActionType.NOTIFY_HUMAN,
+            action=ActionType.NONE,
             reason="all diagnostics passed — no bad nodes found",
         )
 
