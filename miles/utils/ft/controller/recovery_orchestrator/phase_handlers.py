@@ -27,6 +27,8 @@ from miles.utils.ft.platform.protocols import (
 
 logger = logging.getLogger(__name__)
 
+_WANDB_ITERATION_METRIC = "iteration"
+
 
 # -------------------------------------------------------------------
 # CHECK_ALERTS
@@ -86,7 +88,7 @@ async def _reattempt_poll(
     status = await training_job.get_training_status()
 
     if status == JobStatus.RUNNING:
-        iteration = mini_wandb.latest(metric_name="iteration")
+        iteration = mini_wandb.latest(metric_name=_WANDB_ITERATION_METRIC)
         ctx.reattempt_start_time = datetime.now(timezone.utc)
         ctx.reattempt_base_iteration = (
             int(iteration) if iteration is not None and math.isfinite(iteration) else 0
@@ -144,7 +146,7 @@ async def step_monitoring(
 
 
 def _iteration_progress(ctx: RecoveryContext, mini_wandb: MiniWandb) -> int:
-    current_iteration = mini_wandb.latest(metric_name="iteration")
+    current_iteration = mini_wandb.latest(metric_name=_WANDB_ITERATION_METRIC)
     if current_iteration is None or not math.isfinite(current_iteration):
         return 0
     base = ctx.reattempt_base_iteration or 0
@@ -235,5 +237,3 @@ async def step_notify(
     await safe_notify(notifier, title="Recovery Alert", content=message)
 
     return RecoveryPhase.DONE
-
-
