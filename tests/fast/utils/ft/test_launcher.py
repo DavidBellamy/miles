@@ -150,6 +150,29 @@ class TestLauncherSubmitAndRun:
         assert config.runtime_env == runtime_env
 
 
+class TestLauncherInvalidInput:
+    def test_invalid_runtime_env_json_fails(self) -> None:
+        result = runner.invoke(app, [
+            "--platform", "stub",
+            "--runtime-env-json", "not-valid-json",
+            "--", "python3", "train.py",
+        ])
+        assert result.exit_code != 0
+
+    def test_empty_entrypoint_produces_empty_string(self) -> None:
+        with (
+            patch("miles.utils.ft.launcher.build_ft_controller") as mock_build,
+            patch("miles.utils.ft.launcher.asyncio.run"),
+            patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"),
+        ):
+            mock_build.return_value = MagicMock()
+            result = runner.invoke(app, ["--platform", "stub"])
+
+        assert result.exit_code == 0, result.output
+        config = mock_build.call_args.kwargs["config"]
+        assert config.entrypoint == ""
+
+
 class TestLauncherWiring:
     def test_main_uses_build_detector_chain(self) -> None:
         """Verify launcher wires build_detector_chain() into FtController."""
