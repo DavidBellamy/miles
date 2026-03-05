@@ -164,6 +164,9 @@ def make_test_controller(
     tick_interval: float = 0.01,
     controller_exporter: ControllerExporter | None = None,
     diagnostic_scheduler: object | None = None,
+    recovery_cooldown_minutes: float = 30.0,
+    recovery_cooldown_max_count: int = 3,
+    registration_grace_ticks: int = 5,
 ) -> ControllerTestHarness:
     """Construct a Controller and all its dependencies for testing.
 
@@ -198,6 +201,9 @@ def make_test_controller(
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
         diagnostic_scheduler=diagnostic_scheduler,
+        recovery_cooldown_minutes=recovery_cooldown_minutes,
+        recovery_cooldown_max_count=recovery_cooldown_max_count,
+        registration_grace_ticks=registration_grace_ticks,
     )
 
     return ControllerTestHarness(

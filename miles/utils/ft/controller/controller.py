@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.controller.actions import (
     handle_enter_recovery,
@@ -41,6 +42,9 @@ class FtController:
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
         diagnostic_scheduler: DiagnosticSchedulerProtocol | None = None,
+        recovery_cooldown_minutes: float = 30.0,
+        recovery_cooldown_max_count: int = 3,
+        registration_grace_ticks: int = 5,
     ) -> None:
         self._node_manager = node_manager
         self._training_job = training_job
@@ -60,6 +64,11 @@ class FtController:
                 rank_pids_provider=self._rank_registry.get_rank_pids_for_node,
             )
         )
+
+        self._recovery_cooldown_minutes = recovery_cooldown_minutes
+        self._recovery_cooldown_max_count = recovery_cooldown_max_count
+        self._recovery_history: list[tuple[str, datetime]] = []
+        self._registration_grace_ticks = registration_grace_ticks
 
         self._shutting_down: bool = False
         self._tick_count: int = 0
@@ -300,6 +309,31 @@ class FtController:
                 notifier=self._notifier,
             )
         elif decision.action == ActionType.ENTER_RECOVERY:
+            now = datetime.now(timezone.utc)
+            self._recovery_history.append((decision.trigger, now))
+
+            cutoff = now - timedelta(minutes=self._recovery_cooldown_minutes)
+            recent_count = sum(
+                1 for trigger, ts in self._recovery_history
+                if trigger == decision.trigger and ts >= cutoff
+            )
+
+            if recent_count >= self._recovery_cooldown_max_count:
+                logger.warning(
+                    "recovery_cooldown_escalation trigger=%s count=%d max=%d window_minutes=%s",
+                    decision.trigger, recent_count, self._recovery_cooldown_max_count,
+                    self._recovery_cooldown_minutes,
+                )
+                await handle_notify_human(
+                    decision=Decision(
+                        action=ActionType.NOTIFY_HUMAN,
+                        reason=f"Recovery cooldown: {decision.trigger.value} triggered {recent_count} times in {self._recovery_cooldown_minutes}min",
+                        trigger=decision.trigger,
+                    ),
+                    notifier=self._notifier,
+                )
+                return
+
             self._recovery_orchestrator = await handle_enter_recovery(
                 decision=decision,
                 node_manager=self._node_manager,
