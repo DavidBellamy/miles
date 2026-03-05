@@ -1,6 +1,6 @@
 """GpuDiagnostic — pynvml extended checks + GPU matmul correctness verification.
 
-Launches ``_gpu_check_script`` as a subprocess so that pynvml init/shutdown
+Launches ``gpu_check_script`` as a subprocess so that pynvml init/shutdown
 and torch computation never block the NodeAgent event loop.
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ class GpuDiagnostic(BaseDiagnostic):
         try:
             process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m",
-                "miles.utils.ft.controller.diagnostics._gpu_check_script",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

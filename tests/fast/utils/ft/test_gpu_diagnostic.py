@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from miles.utils.ft.controller.diagnostics._gpu_check_script import GpuCheckResult
+from miles.utils.ft.controller.diagnostics.gpu_check_script import GpuCheckResult
 from miles.utils.ft.controller.diagnostics.gpu_diagnostic import GpuDiagnostic
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for _gpu_check_script — pynvml + matmul checks."""
+"""Unit tests for gpu_check_script — pynvml + matmul checks."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from miles.utils.ft.controller.diagnostics._gpu_check_script import (
+from miles.utils.ft.controller.diagnostics.gpu_check_script import (
     GpuCheckResult,
     NvmlCheckResult,
     _check_nvml,
@@ -90,7 +90,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
         ):
@@ -107,7 +107,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
         ):
@@ -123,7 +123,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=False,
             ),
         ):
@@ -143,7 +143,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=False,
             ),
         ):
@@ -161,7 +161,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
         ):
@@ -177,7 +177,7 @@ class TestCheckSingleGpu:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
         ):
@@ -201,11 +201,11 @@ class TestMain:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
                 return_value=_MOCK_MATMUL_REF,
             ),
             patch("sys.stdout", stdout_capture),
@@ -226,11 +226,11 @@ class TestMain:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
                 return_value=_MOCK_MATMUL_REF,
             ),
             patch("sys.stdout", stdout_capture),
@@ -253,11 +253,11 @@ class TestMain:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._check_matmul",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
                 return_value=True,
             ),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
                 return_value=_MOCK_MATMUL_REF,
             ),
             patch("sys.stdout", stdout_capture),
@@ -278,7 +278,7 @@ class TestMain:
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
             patch(
-                "miles.utils.ft.controller.diagnostics._gpu_check_script._generate_matmul_reference",
+                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
                 return_value=_MOCK_MATMUL_REF,
             ),
             patch("sys.stdout", stdout_capture),
