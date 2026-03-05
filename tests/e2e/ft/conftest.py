@@ -12,7 +12,7 @@ import asyncio
 import logging
 import os
 import time
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -232,23 +232,6 @@ async def target_node(ray_cluster: None) -> str:
 # ---------------------------------------------------------------------------
 # Helper functions for E2E assertions
 # ---------------------------------------------------------------------------
-
-
-def wait_for_condition(
-    check_fn: Callable[[], Any],
-    timeout: float,
-    interval: float = 5.0,
-    description: str = "condition",
-) -> Any:
-    """Poll check_fn until it returns a truthy value or timeout."""
-    deadline = time.monotonic() + timeout
-    last_result = None
-    while time.monotonic() < deadline:
-        last_result = check_fn()
-        if last_result:
-            return last_result
-        time.sleep(interval)
-    raise TimeoutError(f"Timed out waiting for {description} after {timeout}s")
 
 
 async def wait_for_recovery_complete(
