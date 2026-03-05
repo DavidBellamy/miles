@@ -82,6 +82,11 @@ class ControllerExporter:
             "Duration of complete recovery cycles",
             registry=self._registry,
         )
+        self._last_tick_timestamp = Gauge(
+            mn.CONTROLLER_LAST_TICK_TIMESTAMP,
+            "Wall-clock epoch timestamp of last completed tick",
+            registry=self._registry,
+        )
 
     @property
     def address(self) -> str:
@@ -118,6 +123,9 @@ class ControllerExporter:
 
     def observe_recovery_duration(self, seconds: float) -> None:
         self._recovery_duration_seconds.observe(seconds)
+
+    def update_last_tick_timestamp(self, timestamp: float) -> None:
+        self._last_tick_timestamp.set(timestamp)
 
     def update_training_metrics(
         self,

@@ -5,7 +5,7 @@ from prometheus_client import CollectorRegistry
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.models import RecoveryPhase
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 
@@ -60,6 +60,26 @@ class TestControllerExporterGauges:
 
         assert get_sample_value(registry, mn.TRAINING_LOSS_LATEST) == 1.0
         assert get_sample_value(registry, mn.TRAINING_MFU_LATEST) == 0.5
+
+
+class TestControllerExporterLastTickTimestamp:
+    def test_update_last_tick_timestamp_sets_gauge(self) -> None:
+        registry, exporter = make_test_exporter()
+
+        exporter.update_last_tick_timestamp(1709654400.0)
+
+        assert get_sample_value(registry, mn.CONTROLLER_LAST_TICK_TIMESTAMP) == 1709654400.0
+
+    def test_last_tick_timestamp_increases_on_subsequent_calls(self) -> None:
+        registry, exporter = make_test_exporter()
+
+        exporter.update_last_tick_timestamp(1000.0)
+        first = get_sample_value(registry, mn.CONTROLLER_LAST_TICK_TIMESTAMP)
+
+        exporter.update_last_tick_timestamp(2000.0)
+        second = get_sample_value(registry, mn.CONTROLLER_LAST_TICK_TIMESTAMP)
+
+        assert second > first
 
 
 class TestControllerExporterAddress:

@@ -192,6 +192,7 @@ class FtController:
             duration = time.monotonic() - t0
             if self._controller_exporter is not None:
                 self._controller_exporter.update_tick_duration(duration)
+                self._controller_exporter.update_last_tick_timestamp(time.time())
 
     async def _tick_inner(self) -> None:
         if (
