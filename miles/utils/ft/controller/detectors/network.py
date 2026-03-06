@@ -1,10 +1,8 @@
 from datetime import timedelta
 
-import polars as pl
-
-from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models.fault import Decision, NodeFault
+from miles.utils.ft.controller.detectors.hardware_checks import check_nic_down_in_window
+from miles.utils.ft.models.fault import Decision
 
 _DEFAULT_ALERT_WINDOW = timedelta(minutes=5)
 _DEFAULT_ALERT_THRESHOLD = 2
@@ -27,26 +25,9 @@ class NetworkAlertDetector(BaseFaultDetector):
         self._alert_threshold = alert_threshold
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
-        df = ctx.metric_store.query_range(NODE_NETWORK_UP, window=self._alert_window)
-        if df.is_empty():
-            return Decision.from_node_faults([], fallback_reason="no NIC data in window")
-
-        down_samples = df.filter(pl.col("value") == 0.0)
-        if down_samples.is_empty():
-            return Decision.from_node_faults([], fallback_reason="no NIC alerts in window")
-
-        node_down_counts: dict[str, int] = {}
-        for row in down_samples.iter_rows(named=True):
-            node_id = row["node_id"]
-            node_down_counts[node_id] = node_down_counts.get(node_id, 0) + 1
-
-        faults: list[NodeFault] = [
-            NodeFault(
-                node_id=node_id,
-                reason=f"NIC down {count} times on {node_id} in {self._alert_window}",
-            )
-            for node_id, count in sorted(node_down_counts.items())
-            if count >= self._alert_threshold
-        ]
-
+        faults = check_nic_down_in_window(
+            ctx.metric_store,
+            window=self._alert_window,
+            threshold=self._alert_threshold,
+        )
         return Decision.from_node_faults(faults, fallback_reason="NIC alerts below threshold")

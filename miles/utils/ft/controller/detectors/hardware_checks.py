@@ -8,6 +8,7 @@ metric queries and threshold constants.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 import polars as pl
 
@@ -19,6 +20,19 @@ logger = logging.getLogger(__name__)
 
 CRITICAL_XID_CODES: frozenset[int] = frozenset({48, 62, 64, 79})
 DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
+
+
+def check_all_hardware_faults(
+    metric_store: MetricQueryProtocol,
+    critical_xid_codes: frozenset[int] = CRITICAL_XID_CODES,
+    disk_available_threshold_bytes: float = DISK_AVAILABLE_THRESHOLD_BYTES,
+) -> list[NodeFault]:
+    return [
+        *check_gpu_lost(metric_store),
+        *check_critical_xid(metric_store, critical_xid_codes=critical_xid_codes),
+        *check_disk_fault(metric_store, disk_available_threshold_bytes=disk_available_threshold_bytes),
+        *check_majority_nic_down(metric_store),
+    ]
 
 
 def check_gpu_lost(metric_store: MetricQueryProtocol) -> list[NodeFault]:
@@ -82,6 +96,35 @@ def check_disk_fault(
     ]
 
 
+def check_nic_down_in_window(
+    metric_store: MetricQueryProtocol,
+    window: timedelta,
+    threshold: int,
+) -> list[NodeFault]:
+    """Count NIC-down samples per node over *window*; fault nodes at or above *threshold*."""
+    df = metric_store.query_range(NODE_NETWORK_UP, window=window)
+    if df.is_empty():
+        return []
+
+    down_samples = df.filter(pl.col("value") == 0.0)
+    if down_samples.is_empty():
+        return []
+
+    node_down_counts: dict[str, int] = {}
+    for row in down_samples.iter_rows(named=True):
+        node_id = row["node_id"]
+        node_down_counts[node_id] = node_down_counts.get(node_id, 0) + 1
+
+    return [
+        NodeFault(
+            node_id=node_id,
+            reason=f"NIC down {count} times on {node_id} in {window}",
+        )
+        for node_id, count in sorted(node_down_counts.items())
+        if count >= threshold
+    ]
+
+
 def check_majority_nic_down(metric_store: MetricQueryProtocol) -> list[NodeFault]:
     df = metric_store.query_latest(NODE_NETWORK_UP)
     if df.is_empty():
@@ -100,17 +143,4 @@ def check_majority_nic_down(metric_store: MetricQueryProtocol) -> list[NodeFault
         NodeFault(node_id=node_id, reason=f"majority NIC down on {node_id} ({down_count}/{total_count})")
         for node_id, (down_count, total_count) in node_stats.items()
         if total_count > 0 and down_count > total_count / 2
-    ]
-
-
-def check_all_hardware_faults(
-    metric_store: MetricQueryProtocol,
-    critical_xid_codes: frozenset[int] = CRITICAL_XID_CODES,
-    disk_available_threshold_bytes: float = DISK_AVAILABLE_THRESHOLD_BYTES,
-) -> list[NodeFault]:
-    return [
-        *check_gpu_lost(metric_store),
-        *check_critical_xid(metric_store, critical_xid_codes=critical_xid_codes),
-        *check_disk_fault(metric_store, disk_available_threshold_bytes=disk_available_threshold_bytes),
-        *check_majority_nic_down(metric_store),
     ]
