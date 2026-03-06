@@ -8,44 +8,13 @@ training from the latest checkpoint.
 
 ```mermaid
 graph TB
-    subgraph platform ["Platform Layer (platform/)"]
-        K8s["K8s Node Manager"]
-        RayJob["Ray Training Job"]
-        Notifiers["Webhook Notifiers"]
-    end
+    Agents["Agents\n(per-node collectors,\nper-rank heartbeat)"]
+    Controller["Controller\n(detectors, recovery,\nmetric stores)"]
+    Platform["Platform Layer\n(K8s, Ray Job,\nwebhook notifiers)"]
 
-    subgraph core ["Core Layer"]
-        subgraph controller ["Controller (controller/)"]
-            Tick["Tick Loop"]
-            Detectors["Detector Chain"]
-            Recovery["Recovery Orchestrator"]
-            Diagnostics["On-demand Diagnostics"]
-            MiniProm["MiniPrometheus"]
-            MiniWandb["MiniWandb"]
-        end
-
-        subgraph agents ["Agents (agents/)"]
-            NodeAgent["FtNodeAgent\n(one per node)"]
-            Collectors["Collectors\nGPU / Network / Disk / Kmsg"]
-            RankAgent["FtTrainingRankAgent\n(one per rank)"]
-        end
-    end
-
-    Tick --> Detectors
-    Detectors -->|"fault detected"| Recovery
-    Recovery --> Diagnostics
-    Recovery --> K8s
-    Recovery --> RayJob
-    Recovery --> Notifiers
-
-    Collectors --> NodeAgent
-    NodeAgent -->|"Prometheus scrape"| MiniProm
-    RankAgent -->|"heartbeat scrape"| MiniProm
-    RankAgent -->|"log_step() push"| MiniWandb
-    MiniProm --> Detectors
-    MiniWandb --> Detectors
-
-    Diagnostics -->|"run on target node"| NodeAgent
+    Agents -->|"metrics"| Controller
+    Controller -->|"diagnostics"| Agents
+    Controller -->|"evict / restart / notify"| Platform
 ```
 
 Two layers inside this module:
