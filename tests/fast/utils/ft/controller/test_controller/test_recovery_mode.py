@@ -97,7 +97,7 @@ class TestEnterRecovery:
             controller_exporter=exporter,
         )
 
-        assert get_sample_value(registry, mn.CONTROLLER_MODE) is None
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
 
         await harness.controller._tick()
 
