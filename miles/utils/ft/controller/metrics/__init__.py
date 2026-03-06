@@ -22,14 +22,23 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+_SCRAPE_RESTART_DELAY_SECONDS = 10.0
+
+
 async def start_metric_store_task(store: MetricStoreLifecycle) -> asyncio.Task[None]:
     async def _run() -> None:
-        try:
-            await store.start()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.error("scrape_loop_crashed", exc_info=True)
+        while True:
+            try:
+                await store.start()
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                logger.error(
+                    "scrape_loop_crashed, restarting in %.0fs",
+                    _SCRAPE_RESTART_DELAY_SECONDS,
+                    exc_info=True,
+                )
+                await asyncio.sleep(_SCRAPE_RESTART_DELAY_SECONDS)
 
     task = asyncio.create_task(_run())
     logger.info("scrape_loop_started")
