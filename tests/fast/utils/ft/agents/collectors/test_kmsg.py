@@ -376,3 +376,74 @@ class TestKmsgCollectorInterval:
     def test_default_collect_interval(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         assert collector.collect_interval == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Real file I/O tests (no FakeKmsgReader)
+# ---------------------------------------------------------------------------
+
+
+class TestKmsgCollectorRealFile:
+    """End-to-end: write XID/kernel-event strings to a tmp file,
+    verify KmsgCollector parses them via real KmsgFileReader."""
+
+    @pytest.mark.anyio
+    async def test_xid_detected_from_real_file(self, tmp_path: Path) -> None:
+        kmsg_file = tmp_path / "kmsg"
+        kmsg_file.write_text("")
+
+        collector = KmsgCollector(kmsg_path=kmsg_file)
+
+        with open(kmsg_file, "a") as f:
+            f.write("NVRM: Xid (PCI:0000:3b:00): 48, pid=1234\n")
+
+        result = await collector.collect()
+        xid_samples = _filter_metrics(result, "miles_ft_xid_code_recent")
+        assert len(xid_samples) == 1
+        assert xid_samples[0].labels == {"xid": "48"}
+        assert xid_samples[0].value == 1.0
+
+    @pytest.mark.anyio
+    async def test_kernel_panic_detected_from_real_file(self, tmp_path: Path) -> None:
+        kmsg_file = tmp_path / "kmsg"
+        kmsg_file.write_text("")
+
+        collector = KmsgCollector(kmsg_path=kmsg_file)
+
+        with open(kmsg_file, "a") as f:
+            f.write("Kernel panic - not syncing: Fatal exception\n")
+
+        result = await collector.collect()
+        kernel = _filter_metrics(result, "miles_ft_kernel_event_count")
+        assert kernel[0].value == 1.0
+
+    @pytest.mark.anyio
+    async def test_incremental_reads_across_collects(self, tmp_path: Path) -> None:
+        """Two collect() calls, each seeing only newly appended lines."""
+        kmsg_file = tmp_path / "kmsg"
+        kmsg_file.write_text("")
+
+        collector = KmsgCollector(kmsg_path=kmsg_file)
+
+        with open(kmsg_file, "a") as f:
+            f.write("NVRM: Xid (PCI:0000:3b:00): 48, pid=1\n")
+        r1 = await collector.collect()
+        assert any(
+            s.labels.get("xid") == "48" and s.value == 1.0
+            for s in r1.metrics if s.name == "miles_ft_xid_code_recent"
+        )
+
+        with open(kmsg_file, "a") as f:
+            f.write("NVRM: Xid (PCI:0000:5e:00): 31, pid=2\n")
+        r2 = await collector.collect()
+        xid_codes = {
+            s.labels["xid"] for s in r2.metrics
+            if s.name == "miles_ft_xid_code_recent" and s.value == 1.0
+        }
+        assert xid_codes == {"48", "31"}
+
+    @pytest.mark.anyio
+    async def test_real_dmesg_fallback_does_not_crash(self) -> None:
+        collector = KmsgCollector(kmsg_path=Path("/nonexistent/kmsg"))
+        result = await collector.collect()
+        assert result is not None
