@@ -78,7 +78,7 @@ async def run_inter_machine_diagnostics(
     async with _managed_agents(nodes) as agents:
         node_addresses = _build_node_addresses(nodes)
         orchestrator = InterMachineOrchestrator(
-            agents=agents,
+            node_agents=agents,
             node_addresses=node_addresses,
         )
 
