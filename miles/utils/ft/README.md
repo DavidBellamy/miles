@@ -7,14 +7,14 @@ training from the latest checkpoint.
 ## Architecture
 
 ```mermaid
-graph TB
-    Agents["Agents\n(per-node collectors,\nper-rank heartbeat)"]
-    Controller["Controller\n(detectors, recovery,\nmetric stores)"]
-    Platform["Platform Layer\n(K8s, Ray Job,\nwebhook notifiers)"]
+graph LR
+    Agents["Agents"]
+    Controller["Controller"]
+    Platform["Platform"]
 
-    Agents -->|"metrics"| Controller
-    Controller -->|"diagnostics"| Agents
-    Controller -->|"evict / restart / notify"| Platform
+    Agents -- "metrics" --> Controller
+    Controller -- "diagnostics" --> Agents
+    Controller -- "evict / restart / notify" --> Platform
 ```
 
 Two layers inside this module:
