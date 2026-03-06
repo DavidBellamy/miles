@@ -1,12 +1,33 @@
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
+from miles.utils.ft.collectors.base import BaseCollector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models import MetricSample
 from tests.fast.utils.ft.conftest import TestCollector
+
+
+@asynccontextmanager
+async def _running_agent_with_prom(
+    node_id: str,
+    collectors: list[BaseCollector],
+) -> AsyncGenerator[tuple[FtNodeAgent, MiniPrometheus], None]:
+    agent = FtNodeAgent(node_id=node_id, collectors=collectors)
+    try:
+        await agent.start()
+        await asyncio.sleep(0.3)
+
+        prom = MiniPrometheus(config=MiniPrometheusConfig())
+        prom.add_scrape_target(target_id=node_id, address=agent.get_exporter_address())
+        await prom.scrape_once()
+        yield agent, prom
+    finally:
+        await agent.stop()
 
 
 class TestNodeAgentMiniPrometheusIntegration:
@@ -22,25 +43,12 @@ class TestNodeAgentMiniPrometheusIntegration:
             ],
             collect_interval=0.1,
         )
-        agent = FtNodeAgent(
-            node_id="integ-node-0",
-            collectors=[test_collector],
-        )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
 
-            prom = MiniPrometheus(config=MiniPrometheusConfig())
-            address = agent.get_exporter_address()
-            prom.add_scrape_target(target_id="integ-node-0", address=address)
-            await prom.scrape_once()
-
+        async with _running_agent_with_prom("integ-node-0", [test_collector]) as (_agent, prom):
             df = prom.query_latest("gpu_temperature_celsius")
             assert not df.is_empty()
             values = df["value"].to_list()
             assert 72.5 in values
-        finally:
-            await agent.stop()
 
     @pytest.mark.anyio
     async def test_updated_values_visible_after_rescrape(self) -> None:
@@ -54,19 +62,8 @@ class TestNodeAgentMiniPrometheusIntegration:
             ],
             collect_interval=0.1,
         )
-        agent = FtNodeAgent(
-            node_id="integ-node-1",
-            collectors=[test_collector],
-        )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
 
-            prom = MiniPrometheus(config=MiniPrometheusConfig())
-            address = agent.get_exporter_address()
-            prom.add_scrape_target(target_id="integ-node-1", address=address)
-
-            await prom.scrape_once()
+        async with _running_agent_with_prom("integ-node-1", [test_collector]) as (_agent, prom):
             df1 = prom.query_latest("gpu_temperature_celsius")
             assert 60.0 in df1["value"].to_list()
 
@@ -90,8 +87,6 @@ class TestNodeAgentMiniPrometheusIntegration:
             range_values = df_range["value"].to_list()
             assert 60.0 in range_values
             assert 85.0 in range_values
-        finally:
-            await agent.stop()
 
     @pytest.mark.anyio
     async def test_multiple_metrics_all_queryable(self) -> None:
@@ -115,19 +110,8 @@ class TestNodeAgentMiniPrometheusIntegration:
             ],
             collect_interval=0.1,
         )
-        agent = FtNodeAgent(
-            node_id="integ-node-2",
-            collectors=[test_collector],
-        )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
 
-            prom = MiniPrometheus(config=MiniPrometheusConfig())
-            address = agent.get_exporter_address()
-            prom.add_scrape_target(target_id="integ-node-2", address=address)
-            await prom.scrape_once()
-
+        async with _running_agent_with_prom("integ-node-2", [test_collector]) as (_agent, prom):
             df_temp = prom.query_latest("gpu_temperature_celsius")
             assert 70.0 in df_temp["value"].to_list()
 
@@ -136,8 +120,6 @@ class TestNodeAgentMiniPrometheusIntegration:
 
             df_power = prom.query_latest("gpu_power_watts")
             assert 250.0 in df_power["value"].to_list()
-        finally:
-            await agent.stop()
 
     @pytest.mark.anyio
     async def test_label_filter_query(self) -> None:
@@ -156,22 +138,9 @@ class TestNodeAgentMiniPrometheusIntegration:
             ],
             collect_interval=0.1,
         )
-        agent = FtNodeAgent(
-            node_id="integ-node-3",
-            collectors=[test_collector],
-        )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
 
-            prom = MiniPrometheus(config=MiniPrometheusConfig())
-            address = agent.get_exporter_address()
-            prom.add_scrape_target(target_id="integ-node-3", address=address)
-            await prom.scrape_once()
-
+        async with _running_agent_with_prom("integ-node-3", [test_collector]) as (_agent, prom):
             df = prom.query_latest("gpu_temperature_celsius", label_filters={"gpu": "1"})
             assert not df.is_empty()
             assert 78.0 in df["value"].to_list()
             assert len(df) == 1
-        finally:
-            await agent.stop()
