@@ -49,7 +49,7 @@ class TestHangWithStackTraceSuspect:
             ]
         ):
             scheduler = DiagnosticScheduler(
-                node_agents=agents,
+                agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
@@ -84,7 +84,7 @@ class TestHangWithStackTraceSuspect:
             ]
         ):
             scheduler = DiagnosticScheduler(
-                node_agents=agents,
+                agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
@@ -112,9 +112,9 @@ class TestCrashSkipsStackTrace:
             }
         )
 
-        with patch("miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic") as mock_diag_cls:
+        with patch("miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic") as mock_diag_cls:
             scheduler = DiagnosticScheduler(
-                node_agents=agents,
+                agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
@@ -154,7 +154,7 @@ class TestHangWithCollectionFailure:
             ]
         ):
             scheduler = DiagnosticScheduler(
-                node_agents=agents,
+                agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
