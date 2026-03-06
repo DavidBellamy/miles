@@ -1,28 +1,46 @@
 """Launch a standard FT training run for E2E fault-tolerance tests.
-Structurally mirrors tests/e2e/short/test_qwen2.5_0.5B_gsm8k_short.py.
+
+Structurally mirrors tests/e2e/short/test_qwen2.5_0.5B_gsm8k_short.py
+but uses ExecuteTrainConfig(full_fault_tolerance=True) so the launcher
+creates an FtController alongside the training job.
+
+Requires MILES_SCRIPT_EXTERNAL_RAY=1 (uses an existing Ray cluster).
 """
 
 import os
+from dataclasses import dataclass
 
 import miles.utils.external_utils.command_utils as U
 from miles.utils.external_utils.command_utils import ExecuteTrainConfig
 
-TIGHT_DEVICE_MEMORY = U.get_bool_env_var("MILES_TEST_TIGHT_DEVICE_MEMORY", "1")
-
-FEW_GPU = U.get_bool_env_var("MILES_TEST_FEW_GPU", "1")
-
 MODEL_NAME = "Qwen2.5-0.5B-Instruct"
 MODEL_TYPE = "qwen2.5-0.5B"
-NUM_GPUS = 4 if FEW_GPU else 8
+
+
+@dataclass
+class ScriptArgs(ExecuteTrainConfig):
+    tight_device_memory: bool = U.get_bool_env_var("MILES_TEST_TIGHT_DEVICE_MEMORY", "1")
+    few_gpu: bool = U.get_bool_env_var("MILES_TEST_FEW_GPU", "1")
+    full_fault_tolerance: bool = True
+
+    @property
+    def num_gpus(self) -> int:
+        return 4 if self.few_gpu else 8
 
 
 def prepare() -> None:
-    U.exec_command("mkdir -p /root/models /root/datasets")
-    U.exec_command(f"huggingface-cli download Qwen/{MODEL_NAME} --local-dir /root/models/{MODEL_NAME}")
-    U.hf_download_dataset("zhuzilin/gsm8k")
+    U.exec_command_all_ray_node("mkdir -p /root/models /root/datasets")
+    U.exec_command_all_ray_node(
+        f"huggingface-cli download Qwen/{MODEL_NAME} --local-dir /root/models/{MODEL_NAME}"
+    )
+    U.exec_command_all_ray_node(
+        "hf download --repo-type dataset zhuzilin/gsm8k --local-dir /root/datasets/gsm8k"
+    )
 
 
-def execute() -> None:
+def execute(args: ScriptArgs) -> None:
+    num_gpus = args.num_gpus
+
     ckpt_args = f"--hf-checkpoint /root/models/{MODEL_NAME}/ " f"--ref-load /root/models/{MODEL_NAME}/ "
 
     rollout_args = (
@@ -82,7 +100,7 @@ def execute() -> None:
 
     sglang_args = (
         "--rollout-num-gpus-per-engine 1 "
-        f"--sglang-mem-fraction-static {0.6 if TIGHT_DEVICE_MEMORY else 0.7} "
+        f"--sglang-mem-fraction-static {0.6 if args.tight_device_memory else 0.7} "
         "--sglang-enable-metrics "
     )
 
@@ -99,8 +117,8 @@ def execute() -> None:
         "--accumulate-allreduce-grads-in-fp32 "
         "--attention-softmax-in-fp32 "
         "--attention-backend flash "
-        "--actor-num-nodes 1 "
-        f"--actor-num-gpus-per-node {NUM_GPUS} "
+        f"--actor-num-nodes {args.num_nodes} "
+        f"--actor-num-gpus-per-node {num_gpus} "
         "--colocate "
         "--megatron-to-hf-mode bridge "
     )
@@ -120,16 +138,17 @@ def execute() -> None:
 
     U.execute_train(
         train_args=train_args,
-        num_gpus_per_node=NUM_GPUS,
+        num_gpus_per_node=num_gpus,
         megatron_model_type=MODEL_TYPE,
-        config=ExecuteTrainConfig(full_fault_tolerance=True),
+        config=args,
         extra_env_vars={"MILES_EXPERIMENTAL_ROLLOUT_REFACTOR": "1"},
     )
 
 
 if __name__ == "__main__":
-    assert U.get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), "must use external Ray"
+    assert U.get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), "MILES_SCRIPT_EXTERNAL_RAY must be set"
+    args = ScriptArgs()
     prepare()
     for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
         os.environ.pop(proxy_var, None)
-    execute()
+    execute(args)
