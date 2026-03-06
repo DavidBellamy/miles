@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import psutil
 
-from miles.utils.ft.e2e.fault_injector import _TRAINING_CMDLINE_PATTERNS, FaultInjectorActor
+from miles.utils.ft.fault_injectors.fault_injector import _TRAINING_CMDLINE_PATTERNS, FaultInjectorActor
 
 
 def _get_inner_class() -> type:

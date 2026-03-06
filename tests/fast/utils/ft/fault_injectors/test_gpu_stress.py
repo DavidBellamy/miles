@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from miles.utils.ft.e2e.gpu_stress import _stress_loop, app
+from miles.utils.ft.fault_injectors.gpu_stress import _stress_loop, app
 
 runner = CliRunner()
 
