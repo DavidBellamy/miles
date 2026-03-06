@@ -7,6 +7,7 @@ import time
 from kubernetes_asyncio import config as k8s_config
 from kubernetes_asyncio.client import ApiClient, CoreV1Api
 
+from miles.utils.ft.protocols.platform import NodeManagerProtocol
 from miles.utils.ft.utils.retry import retry_async_or_raise
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ LABEL_KEY = _BASE_LABEL_KEY
 REASON_LABEL_KEY = _BASE_REASON_LABEL_KEY
 
 
-class K8sNodeManager:
+class K8sNodeManager(NodeManagerProtocol):
     """Manage bad-node labels on Kubernetes nodes via the K8s API.
 
     Implements NodeManagerProtocol using kubernetes_asyncio for async calls.
