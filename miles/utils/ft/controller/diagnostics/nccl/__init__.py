@@ -5,6 +5,10 @@ from miles.utils.ft.controller.diagnostics.nccl.orchestrator import (
     PairResult,
     cross_compare,
 )
+from miles.utils.ft.controller.diagnostics.nccl.standalone import (
+    run_inter_machine_diagnostics,
+    run_intra_machine_diagnostics,
+)
 from miles.utils.ft.controller.diagnostics.nccl.utils import (
     build_nccl_test_cmd,
     parse_avg_bus_bandwidth,
@@ -19,5 +23,7 @@ __all__ = [
     "build_nccl_test_cmd",
     "cross_compare",
     "parse_avg_bus_bandwidth",
+    "run_inter_machine_diagnostics",
+    "run_intra_machine_diagnostics",
     "run_nccl_test",
 ]
