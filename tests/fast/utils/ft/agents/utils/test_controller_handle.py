@@ -4,7 +4,6 @@ Uses a minimal concrete subclass so the mixin is tested in isolation
 rather than indirectly through each agent class.
 """
 
-import time
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -52,35 +51,34 @@ class TestControllerHandleMixin:
         assert result is mock_handle
         assert len(resolver.calls) == 0
 
-    def test_negative_cache_within_cooldown(self) -> None:
-        resolver = _FakeResolver()
-        agent = _StubAgent(actor_resolver=resolver)
-        agent._last_lookup_failure_time = time.monotonic()
-
-        result = agent._get_controller_handle()
-
-        assert result is None
-        assert len(resolver.calls) == 0
-
-    def test_retries_after_cooldown(self) -> None:
+    def test_lookup_on_cache_miss(self) -> None:
         mock_handle = MagicMock()
         resolver = _FakeResolver(handle=mock_handle)
         agent = _StubAgent(actor_resolver=resolver)
-        agent._last_lookup_failure_time = time.monotonic() - 60.0
 
         result = agent._get_controller_handle()
 
         assert result is mock_handle
+        assert len(resolver.calls) == 1
 
-    def test_reset(self) -> None:
-        agent = _StubAgent(actor_resolver=_FakeResolver())
-        agent._controller_handle = MagicMock()
-        agent._last_lookup_failure_time = time.monotonic()
+    def test_failure_returns_none(self) -> None:
+        resolver = _FakeResolver(should_fail=True)
+        agent = _StubAgent(actor_resolver=resolver)
 
-        agent._reset_controller_handle()
+        result = agent._get_controller_handle()
 
-        assert agent._controller_handle is None
-        assert agent._last_lookup_failure_time is None
+        assert result is None
+        assert len(resolver.calls) == 1
+
+    def test_retries_on_every_call_after_failure(self) -> None:
+        resolver = _FakeResolver(should_fail=True)
+        agent = _StubAgent(actor_resolver=resolver)
+
+        agent._get_controller_handle()
+        agent._get_controller_handle()
+        agent._get_controller_handle()
+
+        assert len(resolver.calls) == 3
 
     def test_ft_id_scopes_actor_name(self) -> None:
         resolver = _FakeResolver(handle=MagicMock())
@@ -107,12 +105,3 @@ class TestControllerHandleMixin:
 
         agent._get_controller_handle()
         assert resolver.calls == ["ft_controller_env789"]
-
-    def test_failure_sets_cooldown(self) -> None:
-        resolver = _FakeResolver(should_fail=True)
-        agent = _StubAgent(actor_resolver=resolver)
-
-        result = agent._get_controller_handle()
-
-        assert result is None
-        assert agent._last_lookup_failure_time is not None

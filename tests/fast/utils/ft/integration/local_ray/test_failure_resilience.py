@@ -1,4 +1,4 @@
-"""Local Ray: Failure resilience — controller death, stale handles, cooldown, agent graceful degradation."""
+"""Local Ray: Failure resilience — controller death, stale handles, agent graceful degradation."""
 from __future__ import annotations
 
 import time
@@ -9,9 +9,6 @@ import ray
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.agents.utils.controller_handle import (
-    ControllerHandleMixin,
-)
 from miles.utils.ft.models import ControllerMode
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
@@ -66,22 +63,6 @@ class TestStaleHandleAfterKill:
         status = ray.get(handle.get_status.remote(), timeout=5)
         assert status.mode == ControllerMode.MONITORING
         assert status.tick_count == 0
-
-
-class TestCooldownAfterLookupFailure:
-    """ControllerHandleMixin suppresses repeated lookup attempts after failure."""
-
-    def test_cooldown_suppresses_immediate_retry(
-        self, local_ray: None,
-    ) -> None:
-        mixin = ControllerHandleMixin(ft_id="nonexistent_test_1234")
-
-        handle = mixin._get_controller_handle()
-        assert handle is None
-        assert mixin._last_lookup_failure_time is not None
-
-        handle = mixin._get_controller_handle()
-        assert handle is None
 
 
 class TestControllerTimeoutBehavior:
