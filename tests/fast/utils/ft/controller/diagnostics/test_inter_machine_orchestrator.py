@@ -9,7 +9,7 @@ from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
     cross_compare,
 )
 from miles.utils.ft.models._diagnostics import DiagnosticResult
-from tests.fast.utils.ft.conftest import FakeNodeAgent
+from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
 
 def _make_passing_agent(node_id: str) -> FakeNodeAgent:
@@ -197,3 +197,72 @@ class TestRunEdgeCases:
         bad = await orch.run(node_ids=["A", "B"], timeout_seconds=30)
 
         assert bad == []
+
+
+# ===================================================================
+# _run_single_pair — agent RPC hang
+# ===================================================================
+
+
+class TestRunSinglePairAgentHang:
+    @pytest.mark.anyio
+    async def test_hanging_master_agent_times_out(self) -> None:
+        """When master agent RPC hangs, the pair should fail after timeout."""
+        agents: dict = {
+            "master": HangingNodeAgent(node_id="master"),
+            "worker": _make_passing_agent("worker"),
+        }
+        orch = InterMachineOrchestrator(agents=agents)
+
+        result = await orch._run_single_pair(
+            master_id="master", worker_id="worker",
+            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+        )
+
+        assert result.passed is False
+        assert result.master_id == "master"
+        assert result.worker_id == "worker"
+
+    @pytest.mark.anyio
+    async def test_hanging_worker_agent_times_out(self) -> None:
+        agents: dict = {
+            "master": _make_passing_agent("master"),
+            "worker": HangingNodeAgent(node_id="worker"),
+        }
+        orch = InterMachineOrchestrator(agents=agents)
+
+        result = await orch._run_single_pair(
+            master_id="master", worker_id="worker",
+            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+        )
+
+        assert result.passed is False
+
+    @pytest.mark.anyio
+    async def test_both_hanging_agents_time_out(self) -> None:
+        agents: dict = {
+            "A": HangingNodeAgent(node_id="A"),
+            "B": HangingNodeAgent(node_id="B"),
+        }
+        orch = InterMachineOrchestrator(agents=agents)
+
+        result = await orch._run_single_pair(
+            master_id="A", worker_id="B",
+            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+        )
+
+        assert result.passed is False
+
+    @pytest.mark.anyio
+    async def test_run_with_hanging_agent_isolates_bad_node(self) -> None:
+        """Full run() with one hanging node should localize it as the bad node."""
+        agents: dict = {
+            "A": _make_passing_agent("A"),
+            "B": HangingNodeAgent(node_id="B"),
+            "C": _make_passing_agent("C"),
+        }
+        orch = InterMachineOrchestrator(agents=agents)
+
+        bad = await orch.run(node_ids=["A", "B", "C"], timeout_seconds=0)
+
+        assert "B" in bad

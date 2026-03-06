@@ -96,6 +96,18 @@ class FakeDiagnosticScheduler:
         return self._decision
 
 
+class HangingDiagnosticScheduler:
+    """Scheduler whose run_diagnostic_pipeline never returns (simulates hang)."""
+
+    async def run_diagnostic_pipeline(
+        self,
+        trigger_reason: str,
+        suspect_node_ids: list[str] | None = None,
+    ) -> Decision:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
 # ---------------------------------------------------------------------------
 # Agent test helpers (node agents for diagnostic scheduling)
 # ---------------------------------------------------------------------------
@@ -123,6 +135,20 @@ class FakeNodeAgent:
                 details=f"unknown diagnostic type: {diagnostic_type}",
             )
         return result
+
+
+class HangingNodeAgent:
+    """Agent whose run_diagnostic never returns (simulates unreachable node / RPC hang)."""
+
+    def __init__(self, node_id: str = "hanging") -> None:
+        self._node_id = node_id
+
+    async def run_diagnostic(
+        self, diagnostic_type: str, timeout_seconds: int = 120,
+        **kwargs: object,
+    ) -> DiagnosticResult:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
 
 
 def make_fake_agents(

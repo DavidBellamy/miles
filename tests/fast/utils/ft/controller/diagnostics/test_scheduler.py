@@ -17,6 +17,7 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.helpers import (
     FakeNodeAgent,
+    HangingNodeAgent,
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_STUCK,
     StubDiagnostic,
@@ -746,3 +747,110 @@ class TestStackTracePreStep:
             assert "node-1" in decision.bad_node_ids
             assert "node-2" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids
+
+
+# ---------------------------------------------------------------------------
+# Agent RPC hang tests
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRpcHang:
+    """Verify _call_agent_diagnostic times out when agent RPC never returns."""
+
+    @pytest.mark.anyio
+    async def test_hanging_agent_returns_fail_result(self) -> None:
+        good_agents = make_fake_agents({"node-0": {"gpu": True}})
+        agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=0,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-hang" in decision.bad_node_ids
+        assert "node-0" not in decision.bad_node_ids
+
+    @pytest.mark.anyio
+    async def test_hanging_agent_does_not_block_healthy_agents(self) -> None:
+        """All agents run in parallel; a hanging agent must not prevent others from completing."""
+        good_agents = make_fake_agents({
+            "node-0": {"gpu": True},
+            "node-1": {"gpu": True},
+        })
+        agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=0,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-hang" in decision.bad_node_ids
+        assert "node-0" not in decision.bad_node_ids
+        assert "node-1" not in decision.bad_node_ids
+
+    @pytest.mark.anyio
+    async def test_all_agents_hanging_returns_mark_bad(self) -> None:
+        agents: dict = {
+            "node-0": HangingNodeAgent(node_id="node-0"),
+            "node-1": HangingNodeAgent(node_id="node-1"),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=0,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
+
+
+# ---------------------------------------------------------------------------
+# Pipeline-level timeout tests
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineTimeout:
+    @pytest.mark.anyio
+    async def test_pipeline_timeout_returns_notify_human(self) -> None:
+        """When the entire pipeline exceeds pipeline_timeout_seconds, return NOTIFY_HUMAN."""
+        agents: dict = {
+            "node-0": HangingNodeAgent(node_id="node-0"),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=9999,
+            pipeline_timeout_seconds=0,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert "timed out" in decision.reason
+
+    @pytest.mark.anyio
+    async def test_pipeline_timeout_fires_before_per_call_timeout(self) -> None:
+        """Pipeline timeout should fire even when per-call timeout is very large."""
+        agents: dict = {
+            "node-0": HangingNodeAgent(node_id="node-0"),
+            "node-1": HangingNodeAgent(node_id="node-1"),
+        }
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=99999,
+            pipeline_timeout_seconds=0,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+
+        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert "timed out" in decision.reason

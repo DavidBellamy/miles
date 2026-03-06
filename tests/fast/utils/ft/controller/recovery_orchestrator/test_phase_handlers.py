@@ -28,6 +28,7 @@ from tests.fast.utils.ft.conftest import (
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
+    HangingDiagnosticScheduler,
 )
 
 
@@ -311,6 +312,25 @@ class TestStepDiagnosing:
             reason="all diagnostics passed",
         )
         scheduler = FakeDiagnosticScheduler(decision=decision)
+        ctx = _make_ctx()
+
+        result = await step_diagnosing(ctx, scheduler)
+
+        assert result == RecoveryPhase.NOTIFY
+
+    @pytest.mark.anyio
+    async def test_hanging_scheduler_completes_via_pipeline_timeout(self) -> None:
+        """step_diagnosing returns NOTIFY when pipeline timeout fires on a hanging agent."""
+        from tests.fast.utils.ft.conftest import HangingNodeAgent
+        from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+
+        agents: dict = {"node-0": HangingNodeAgent(node_id="node-0")}
+        scheduler = DiagnosticScheduler(
+            agents=agents,
+            pipeline=["gpu"],
+            default_timeout_seconds=9999,
+            pipeline_timeout_seconds=0,
+        )
         ctx = _make_ctx()
 
         result = await step_diagnosing(ctx, scheduler)

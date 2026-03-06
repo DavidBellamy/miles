@@ -32,6 +32,8 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
 from tests.fast.utils.ft.helpers.diagnostic_fakes import (
     FakeDiagnosticScheduler,
     FakeNodeAgent,
+    HangingDiagnosticScheduler,
+    HangingNodeAgent,
     SlowDiagnostic,
     StubDiagnostic,
     make_fake_agents,
@@ -70,6 +72,8 @@ __all__ = [
     "FakeKmsgReader",
     "FakeNodeAgent",
     "FakeNodeManager",
+    "HangingDiagnosticScheduler",
+    "HangingNodeAgent",
     "FakeNotifier",
     "FakeTrainingJob",
     "FixedDecisionDetector",
