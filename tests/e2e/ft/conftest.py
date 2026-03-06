@@ -29,6 +29,7 @@ from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
 from miles.utils.ft.utils.polling import poll_until
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from tests.fast.utils.ft.helpers import scenarios as _scenarios
 
 logger = logging.getLogger(__name__)
 
@@ -400,20 +401,30 @@ async def wait_for_mode_transition(
     )
 
 
-def assert_phase_path_contains(
-    status: ControllerStatus,
-    required: list[RecoveryPhase],
-) -> None:
-    """Assert that phase_history contains the required phases in order (subsequence match)."""
-    history = status.phase_history
-    assert history is not None, "phase_history is None — was recovery never entered?"
+assert_phase_path_contains = _scenarios.assert_phase_path_contains
 
-    idx = 0
-    for phase in history:
-        if idx < len(required) and phase == required[idx]:
-            idx += 1
 
-    assert idx == len(required), (
-        f"Expected phase path to contain {[p.value for p in required]} in order, "
-        f"but got history {[p.value for p in history]}"
-    )
+class E2eFaultInjector:
+    """FaultInjectionProtocol implementation for E2E tests.
+
+    Wraps the remote FaultInjector actor to kill/stop real training processes.
+    """
+
+    def __init__(
+        self,
+        injector_handle: ray.actor.ActorHandle,
+        target_node: str,
+    ) -> None:
+        self._injector = injector_handle
+        self._target_node = target_node
+
+    async def crash_training(self) -> None:
+        pid = find_training_pid(self._injector, node_id=self._target_node)
+        ray.get(self._injector.kill_process.remote(pid=pid, sig=9))
+
+    async def recover_training(self) -> None:
+        pass
+
+    async def inject_hang(self) -> None:
+        pid = find_training_pid(self._injector, node_id=self._target_node)
+        ray.get(self._injector.stop_process.remote(pid=pid))

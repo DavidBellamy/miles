@@ -1,6 +1,8 @@
 """E2E: Training hang via SIGSTOP → detection → recovery.
 
 Slowest E2E test due to the hang detection timeout (~5-10 min).
+Uses E2eFaultInjector with scenario_hang_detection for the initial
+detection phase, then verifies full recovery with E2E-specific checks.
 """
 
 from __future__ import annotations
@@ -12,13 +14,14 @@ import pytest
 import ray
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
+    E2eFaultInjector,
     FaultInjectorFactory,
     assert_phase_path_contains,
-    find_training_pid,
     get_status,
     wait_for_mode_transition,
     wait_for_training_stable,
 )
+from tests.fast.utils.ft.helpers.scenarios import scenario_hang_detection
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +42,17 @@ async def test_hang_detection_and_recovery(
         timeout=180.0,
     )
 
-    injector = fault_injector.deploy_to(node_id=target_node)
-    target_pid = find_training_pid(injector, node_id=target_node)
+    fault = E2eFaultInjector(
+        injector_handle=fault_injector.deploy_to(node_id=target_node),
+        target_node=target_node,
+    )
+
     t_inject = time.monotonic()
-    ray.get(injector.stop_process.remote(pid=target_pid))
-    logger.info("SIGSTOP sent to pid=%d on node=%s", target_pid, target_node)
+    await scenario_hang_detection(
+        handle=ft_controller_handle,
+        injector=fault,
+        hang_timeout=720.0,
+    )
 
     status = await wait_for_mode_transition(
         handle=ft_controller_handle,
@@ -54,8 +63,6 @@ async def test_hang_detection_and_recovery(
 
     t_detect = time.monotonic() - t_inject
     logger.info("hang_detected_and_recovered t_detect=%.1fs", t_detect)
-
-    assert status.mode == ControllerMode.MONITORING
 
     assert t_detect < _MAX_DETECTION_SECONDS, (
         f"Hang detection took {t_detect:.0f}s, expected < {_MAX_DETECTION_SECONDS}s "

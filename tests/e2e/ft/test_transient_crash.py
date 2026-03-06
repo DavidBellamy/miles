@@ -1,46 +1,44 @@
-"""E2E: Transient crash — single kill → auto-recovery."""
+"""E2E: Transient crash — single kill → auto-recovery.
+
+Uses the shared scenario_transient_crash from helpers/scenarios.py,
+with E2eFaultInjector providing the real process-kill implementation.
+"""
 
 from __future__ import annotations
 
 import time
 
 import ray
-from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from miles.utils.ft.models import RecoveryPhase
 from tests.e2e.ft.conftest import (
+    E2eFaultInjector,
     FaultInjectorFactory,
     assert_phase_path_contains,
-    find_training_pid,
     get_status,
-    wait_for_mode_transition,
     wait_for_training_stable,
 )
+from tests.fast.utils.ft.helpers.scenarios import scenario_transient_crash
+
 
 async def test_transient_crash_auto_recovery(
     ft_controller_handle: ray.actor.ActorHandle,
     fault_injector: FaultInjectorFactory,
     target_node: str,
 ) -> None:
-    await wait_for_training_stable(
-        handle=ft_controller_handle,
-        n_iterations=3,
-        timeout=180.0,
+    fault = E2eFaultInjector(
+        injector_handle=fault_injector.deploy_to(node_id=target_node),
+        target_node=target_node,
     )
-    pre_status = get_status(ft_controller_handle)
-    assert pre_status.mode == ControllerMode.MONITORING
 
-    injector = fault_injector.deploy_to(node_id=target_node)
-    target_pid = find_training_pid(injector, node_id=target_node)
     t_inject = time.monotonic()
-    ray.get(injector.kill_process.remote(pid=target_pid, sig=9))
-
-    status = await wait_for_mode_transition(
+    await scenario_transient_crash(
         handle=ft_controller_handle,
-        target_mode=ControllerMode.MONITORING,
-        timeout=300.0,
+        injector=fault,
+        stable_iterations=3,
+        stable_timeout=180.0,
+        recovery_timeout=300.0,
     )
-
     t_recover = time.monotonic() - t_inject
-    assert status.mode == ControllerMode.MONITORING
 
     await wait_for_training_stable(
         handle=ft_controller_handle,
@@ -49,10 +47,6 @@ async def test_transient_crash_auto_recovery(
     )
 
     final_status = get_status(ft_controller_handle)
-    assert (
-        final_status.bad_nodes == []
-    ), f"Expected no bad nodes for transient crash, got: {final_status.bad_nodes}"
-
     assert_phase_path_contains(final_status, [
         RecoveryPhase.CHECK_ALERTS,
         RecoveryPhase.REATTEMPTING,

@@ -117,6 +117,13 @@ async def scenario_transient_crash(
 
     Returns the final ControllerStatus after recovery completes.
     """
+    if stable_iterations > 0:
+        await wait_for_training_stable(
+            handle=handle,
+            n_iterations=stable_iterations,
+            timeout=stable_timeout,
+        )
+
     pre_status = get_status(handle)
     assert pre_status.mode == ControllerMode.MONITORING
 
