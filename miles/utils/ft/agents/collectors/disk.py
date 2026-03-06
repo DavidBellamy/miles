@@ -50,19 +50,25 @@ class DiskCollector(BaseCollector):
 
         samples: list[MetricSample] = []
         for device_dir in sorted(sys_block.iterdir()):
-            stat_file = device_dir / "stat"
-            try:
-                text = stat_file.read_text().strip()
-                fields = text.split()
-                if len(fields) >= 10:
-                    io_time_ms = int(fields[9])
-                    samples.append(MetricSample(
-                        name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
-                        labels={"device": device_dir.name},
-                        value=io_time_ms / 1000.0,
-                    ))
-            except Exception:
-                logger.warning(
-                    "Failed to read disk stat for %s", device_dir.name, exc_info=True,
-                )
+            samples.extend(self._collect_single_device_io(device_dir))
         return samples
+
+    @staticmethod
+    def _collect_single_device_io(device_dir: Path) -> list[MetricSample]:
+        stat_file = device_dir / "stat"
+        try:
+            text = stat_file.read_text().strip()
+            fields = text.split()
+            if len(fields) >= 10:
+                io_time_ms = int(fields[9])
+                return [MetricSample(
+                    name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
+                    labels={"device": device_dir.name},
+                    value=io_time_ms / 1000.0,
+                )]
+            return []
+        except Exception:
+            logger.warning(
+                "Failed to read disk stat for %s", device_dir.name, exc_info=True,
+            )
+            return []
