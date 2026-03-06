@@ -1,12 +1,4 @@
-"""E2E: Disk full → hardware detection → eviction.
-
-Validates the highest-confidence hardware detection path (~32.5% per ByteRobust):
-  1. Fill disk on target node (write large file)
-  2. HighConfidenceHardwareDetector triggers MARK_BAD_AND_RESTART
-  3. Target node is marked as bad
-  4. Training restarts on remaining healthy nodes
-  5. Cleanup: remove filled file
-"""
+"""E2E: Disk full → hardware detection → eviction."""
 
 from __future__ import annotations
 

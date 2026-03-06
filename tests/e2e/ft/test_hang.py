@@ -1,12 +1,6 @@
 """E2E: Training hang via SIGSTOP → detection → recovery.
 
-Validates hang detection when iteration stops progressing:
-  1. Send SIGSTOP to freeze a training process
-  2. HangDetector triggers after iteration stalls for N minutes
-  3. Controller enters ENTER_RECOVERY → restarts training
-  4. Training resumes from checkpoint and stabilizes
-
-This is the slowest E2E test due to the hang detection timeout (~5-10 min).
+Slowest E2E test due to the hang detection timeout (~5-10 min).
 """
 
 from __future__ import annotations

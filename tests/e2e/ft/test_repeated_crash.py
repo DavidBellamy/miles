@@ -1,12 +1,4 @@
-"""E2E: Repeated crash → reattempt fails → DIAGNOSING.
-
-Validates the escalation path:
-  1. Kill training process (first time)
-  2. Controller reattempts → enters MONITORING
-  3. Kill training process again during MONITORING
-  4. Controller detects repeated failure → enters DIAGNOSING
-  5. With StubDiagnosticScheduler → all diagnostics pass → NOTIFY_HUMAN
-"""
+"""E2E: Repeated crash → reattempt fails → DIAGNOSING."""
 
 from __future__ import annotations
 

@@ -1,16 +1,7 @@
 """E2E: MFU decline detection via GPU stress.
 
-Validates MfuDeclineDetector when GPU compute is contended:
-  1. Wait for baseline MFU to stabilize
-  2. Start GPU stress workload on target node
-  3. MFU drops → MfuDeclineDetector triggers
-  4. Outcome depends on GPU temperature correlation:
-     - Eviction path: temperature correlates → EVICT_AND_RESTART → node marked bad
-     - Notify path: no temperature correlation → NOTIFY → human notified
-  5. Cleanup GPU stress
-
-GPU stress may not always cause temperature rise, so both outcomes are
-valid — but each path has specific invariants that must hold.
+GPU stress may not always cause temperature rise, so both outcomes
+(eviction vs notify) are valid.
 """
 
 from __future__ import annotations

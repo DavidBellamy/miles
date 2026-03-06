@@ -1,9 +1,4 @@
-"""E2E negative test: no false positives during normal training.
-
-Validates that the controller does NOT trigger recovery when training
-runs normally without any fault injection. This catches overly sensitive
-detectors or noisy metric thresholds.
-"""
+"""E2E negative test: no false positives during normal training."""
 
 from __future__ import annotations
 

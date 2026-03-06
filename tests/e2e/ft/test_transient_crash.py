@@ -1,12 +1,4 @@
-"""E2E: Transient crash — single kill → auto-recovery.
-
-The most common recovery path (~22.7% of failures per ByteRobust):
-  1. Kill one training process
-  2. Controller detects crash → ENTER_RECOVERY
-  3. CHECK_ALERTS finds no hardware issues → REATTEMPTING
-  4. Training restarts and stabilizes → MONITORING → DONE
-  5. No nodes marked as bad (transient fault)
-"""
+"""E2E: Transient crash — single kill → auto-recovery."""
 
 from __future__ import annotations
 
