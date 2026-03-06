@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from tests.fast.utils.ft.helpers import create_sysfs_interface
 
 from miles.utils.ft.agents.collectors.network import NetworkCollector
@@ -121,3 +122,25 @@ class TestNetworkCollector:
     def test_default_collect_interval(self) -> None:
         collector = NetworkCollector(sysfs_net_path=Path("/nonexistent"))
         assert collector.collect_interval == 30.0
+
+
+class TestNetworkCollectorRealHardware:
+    """Zero-mock tests against real /sys/class/net."""
+
+    @pytest.mark.anyio
+    async def test_collect_returns_network_metrics(self) -> None:
+        collector = NetworkCollector()
+        result = await collector.collect()
+
+        names = {s.name for s in result.metrics}
+        assert "miles_ft_node_network_up" in names
+
+    @pytest.mark.anyio
+    async def test_infiniband_interfaces_detected(self) -> None:
+        """H200 nodes should have InfiniBand interfaces."""
+        collector = NetworkCollector(interface_patterns=["ib*"])
+        result = await collector.collect()
+        ib_samples = [s for s in result.metrics if "ib" in s.labels.get("device", "")]
+        assert len(ib_samples) > 0, "H200 node should have InfiniBand interfaces"
+        up_samples = [s for s in ib_samples if s.name == "miles_ft_node_network_up"]
+        assert any(s.value == 1.0 for s in up_samples)
