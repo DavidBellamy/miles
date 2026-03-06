@@ -113,9 +113,11 @@ async def step_monitoring(
 async def step_diagnosing(
     ctx: RecoveryContext,
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol,
+    rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
 ) -> RecoveryPhase:
     decision = await diagnostic_orchestrator.run_diagnostic_pipeline(
         trigger_reason=ctx.trigger,
+        rank_pids_provider=rank_pids_provider,
     )
 
     if decision.action == ActionType.MARK_BAD_AND_RESTART:

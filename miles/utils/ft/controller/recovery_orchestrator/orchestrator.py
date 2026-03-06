@@ -41,6 +41,7 @@ class RecoveryOrchestrator:
         diagnostic_orchestrator: DiagnosticOrchestratorProtocol,
         controller_exporter: ControllerExporter | None = None,
         on_new_run: Callable[[str], None] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
         global_timeout_seconds: int = 1800,
         monitoring_success_iterations: int = 10,
         monitoring_timeout_seconds: int = 600,
@@ -52,6 +53,7 @@ class RecoveryOrchestrator:
         self._diagnostic_orchestrator = diagnostic_orchestrator
         self._controller_exporter = controller_exporter or NullControllerExporter()
         self._on_new_run = on_new_run
+        self._rank_pids_provider = rank_pids_provider
         self._alert_checker = AlertChecker(metric_store=metric_store)
 
         self._context = RecoveryContext(
@@ -143,7 +145,7 @@ class RecoveryOrchestrator:
             RecoveryPhase.CHECK_ALERTS: lambda: step_check_alerts(ctx, self._alert_checker),
             RecoveryPhase.REATTEMPTING: lambda: step_reattempting(ctx, self._training_job, self._mini_wandb, on_new_run=self._on_new_run),
             RecoveryPhase.MONITORING: lambda: step_monitoring(ctx, self._training_job, self._mini_wandb),
-            RecoveryPhase.DIAGNOSING: lambda: step_diagnosing(ctx, self._diagnostic_orchestrator),
+            RecoveryPhase.DIAGNOSING: lambda: step_diagnosing(ctx, self._diagnostic_orchestrator, rank_pids_provider=self._rank_pids_provider),
             RecoveryPhase.EVICT_AND_RESTART: lambda: step_evict_and_restart(
                 ctx, self._node_manager, self._training_job, self._mini_wandb, on_new_run=self._on_new_run,
             ),

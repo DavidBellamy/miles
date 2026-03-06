@@ -51,10 +51,10 @@ class TestHangWithStackTraceSuspect:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -86,10 +86,10 @@ class TestHangWithStackTraceSuspect:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.NOTIFY_HUMAN
@@ -116,10 +116,10 @@ class TestCrashSkipsStackTrace:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
+                rank_pids_provider=pids_provider,
             )
 
             mock_diag_cls.assert_not_called()
@@ -156,10 +156,10 @@ class TestHangWithCollectionFailure:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART

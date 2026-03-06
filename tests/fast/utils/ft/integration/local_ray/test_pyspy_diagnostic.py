@@ -186,11 +186,11 @@ class TestOrchestratorHangTraceFullChain:
         orchestrator = DiagnosticOrchestrator(
             agents={},
             pipeline=[],
-            rank_pids_provider=pids_provider,
         )
 
         decision = await orchestrator.run_diagnostic_pipeline(
             trigger_reason=TriggerType.HANG,
+            rank_pids_provider=pids_provider,
         )
 
         ray.kill(worker_a, no_restart=True)

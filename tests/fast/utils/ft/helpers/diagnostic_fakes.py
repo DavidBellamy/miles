@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from typing import Generator
 from unittest.mock import AsyncMock, patch
 
@@ -85,6 +86,7 @@ class FakeDiagnosticOrchestrator:
         self,
         trigger_reason: str,
         suspect_node_ids: list[str] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision:
         self.call_count += 1
         self.last_trigger_reason = trigger_reason
@@ -99,6 +101,7 @@ class HangingDiagnosticOrchestrator:
         self,
         trigger_reason: str,
         suspect_node_ids: list[str] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")

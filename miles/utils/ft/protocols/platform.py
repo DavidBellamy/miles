@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -47,6 +48,7 @@ class DiagnosticOrchestratorProtocol(Protocol):
         self,
         trigger_reason: TriggerType,
         suspect_node_ids: list[str] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision: ...
 
 

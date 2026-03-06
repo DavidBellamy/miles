@@ -204,9 +204,7 @@ class TestDefaultDiagnosticOrchestratorWiring:
             mini_wandb=MiniWandb(),
         )
 
-        orchestrator = controller._platform_deps.diagnostic_orchestrator
-        assert isinstance(orchestrator, DiagnosticOrchestrator)
-        assert callable(orchestrator._rank_pids_provider)
+        assert callable(controller._platform_deps.rank_pids_provider)
 
 
 class TestDefaultDiagnosticPipeline:

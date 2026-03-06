@@ -409,10 +409,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert mock_diag_cls.call_count == 2
@@ -435,10 +435,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
+                rank_pids_provider=pids_provider,
             )
 
             mock_diag_cls.assert_not_called()
@@ -485,10 +485,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -512,10 +512,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.NOTIFY_HUMAN
@@ -538,10 +538,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -568,10 +568,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -598,10 +598,10 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=raising_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
+                rank_pids_provider=raising_provider,
             )
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -628,11 +628,11 @@ class TestStackTracePreStep:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=pids_provider,
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
                 suspect_node_ids=["node-1"],
+                rank_pids_provider=pids_provider,
             )
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART

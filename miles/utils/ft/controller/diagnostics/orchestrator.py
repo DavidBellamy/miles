@@ -39,13 +39,11 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         default_timeout_seconds: int = 120,
         pipeline_timeout_seconds: int = 900,
         node_addresses: dict[str, str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> None:
         self._agents = agents
         self._pipeline = pipeline or []
         self._default_timeout_seconds = default_timeout_seconds
         self._pipeline_timeout_seconds = pipeline_timeout_seconds
-        self._rank_pids_provider = rank_pids_provider
         self._inter_machine = InterMachineOrchestrator(
             node_agents=agents,
             node_addresses=node_addresses,
@@ -55,6 +53,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         self,
         trigger_reason: TriggerType,
         suspect_node_ids: list[str] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision:
         logger.info(
             "diagnostic_pipeline_start trigger=%s suspect_nodes=%s pipeline=%s",
@@ -66,6 +65,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                 self._run_diagnostic_pipeline_inner(
                     trigger_reason=trigger_reason,
                     suspect_node_ids=suspect_node_ids,
+                    rank_pids_provider=rank_pids_provider,
                 ),
                 timeout=self._pipeline_timeout_seconds,
             )
@@ -83,11 +83,12 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         self,
         trigger_reason: TriggerType,
         suspect_node_ids: list[str] | None = None,
+        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision:
-        if trigger_reason == TriggerType.HANG and self._rank_pids_provider is not None:
+        if trigger_reason == TriggerType.HANG and rank_pids_provider is not None:
             suspect_from_trace = await collect_stack_trace_suspects(
                 agents=self._agents,
-                rank_pids_provider=self._rank_pids_provider,
+                rank_pids_provider=rank_pids_provider,
                 default_timeout_seconds=self._default_timeout_seconds,
             )
             if suspect_from_trace:
