@@ -5,12 +5,12 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.protocols.metrics import StepValue, TimedStepValue
+from miles.utils.ft.protocols.metrics import StepValue, TimedStepValue, TrainingMetricStoreProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class MiniWandb:
+class MiniWandb(TrainingMetricStoreProtocol):
     def __init__(
         self,
         active_run_id: str | None = None,
