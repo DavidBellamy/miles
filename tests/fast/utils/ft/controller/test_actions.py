@@ -125,9 +125,7 @@ class TestMarkBadPartialFailure:
             deps=deps,
         )
 
-        mark_bad_notifications = [c for c in notifier.calls if c[0] == "Mark-Bad Failure"]
-        assert len(mark_bad_notifications) == 1
-        assert "node-bad" in mark_bad_notifications[0][1]
+        assert len(notifier.calls) == 0
 
         assert training_job._stopped
         assert training_job._submitted
@@ -153,8 +151,7 @@ class TestMarkBadPartialFailure:
             deps=deps,
         )
 
-        mark_bad_notifications = [c for c in notifier.calls if c[0] == "Mark-Bad Failure"]
-        assert len(mark_bad_notifications) == 1
+        assert all(c[0] != "Mark-Bad Failure" for c in notifier.calls)
         assert training_job._submitted
 
 
@@ -182,8 +179,8 @@ class TestRestartFailure:
         assert len(restart_notifications) == 1
 
     @pytest.mark.anyio
-    async def test_double_failure_sends_both_notifications(self) -> None:
-        """Both mark_node_bad and submit_training fail — two notifications expected."""
+    async def test_double_failure_only_notifies_restart(self) -> None:
+        """Both mark_node_bad and submit_training fail — only restart failure notified."""
         node_manager = make_failing_node_manager()
         notifier = FakeNotifier()
         training_job = make_failing_training_job(fail_submit=True)
@@ -199,7 +196,7 @@ class TestRestartFailure:
         )
 
         titles = [c[0] for c in notifier.calls]
-        assert "Mark-Bad Failure" in titles
+        assert "Mark-Bad Failure" not in titles
         assert "Restart Failure" in titles
 
 
