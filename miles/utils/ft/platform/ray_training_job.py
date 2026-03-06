@@ -52,6 +52,10 @@ _TERMINAL_STATUSES = frozenset(("STOPPED", "FAILED", "SUCCEEDED"))
 _DEFAULT_POLL_INTERVAL_SECONDS = 5
 _DEFAULT_TIMEOUT_SECONDS = 300
 
+_SUBMIT_TIMEOUT_SECONDS = 60
+_GET_STATUS_TIMEOUT_SECONDS = 30
+_STOP_JOB_TIMEOUT_SECONDS = 30
+
 
 def _parse_ray_status(raw_status: Any) -> str:
     return str(raw_status).rsplit(".", maxsplit=1)[-1]
@@ -100,10 +104,13 @@ class RayTrainingJob:
                 entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 
         start = time.monotonic()
-        job_id = await asyncio.to_thread(
-            self._client.submit_job,
-            entrypoint=entrypoint,
-            runtime_env=runtime_env,
+        job_id = await asyncio.wait_for(
+            asyncio.to_thread(
+                self._client.submit_job,
+                entrypoint=entrypoint,
+                runtime_env=runtime_env,
+            ),
+            timeout=_SUBMIT_TIMEOUT_SECONDS,
         )
         elapsed = time.monotonic() - start
 
@@ -122,7 +129,10 @@ class RayTrainingJob:
             return
 
         start = time.monotonic()
-        await asyncio.to_thread(self._client.stop_job, self._job_id)
+        await asyncio.wait_for(
+            asyncio.to_thread(self._client.stop_job, self._job_id),
+            timeout=_STOP_JOB_TIMEOUT_SECONDS,
+        )
         logger.info("stop_training_requested job_id=%s", self._job_id)
 
         deadline = start + timeout_seconds
@@ -130,7 +140,10 @@ class RayTrainingJob:
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"Job {self._job_id} did not stop within {timeout_seconds}s")
 
-            raw_status = await asyncio.to_thread(self._client.get_job_status, self._job_id)
+            raw_status = await asyncio.wait_for(
+                asyncio.to_thread(self._client.get_job_status, self._job_id),
+                timeout=_GET_STATUS_TIMEOUT_SECONDS,
+            )
             status_str = _parse_ray_status(raw_status)
             if status_str in _TERMINAL_STATUSES:
                 elapsed = time.monotonic() - start
@@ -149,7 +162,10 @@ class RayTrainingJob:
             return JobStatus.STOPPED
 
         start = time.monotonic()
-        raw_status = await asyncio.to_thread(self._client.get_job_status, self._job_id)
+        raw_status = await asyncio.wait_for(
+            asyncio.to_thread(self._client.get_job_status, self._job_id),
+            timeout=_GET_STATUS_TIMEOUT_SECONDS,
+        )
         elapsed = time.monotonic() - start
 
         status_str = _parse_ray_status(raw_status)
