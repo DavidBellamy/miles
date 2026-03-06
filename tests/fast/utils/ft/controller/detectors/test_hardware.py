@@ -12,7 +12,7 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.detectors.hardware import HighConfidenceHardwareDetector
-from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.models import ActionType
 
 
 class TestHighConfidenceHardwareDetector:
@@ -37,26 +37,16 @@ class TestHighConfidenceHardwareDetector:
         assert "node-0" in decision.bad_node_ids
         assert "GPU unavailable" in decision.reason
 
-    @pytest.mark.parametrize("xid_code", [48, 62, 64, 79])
-    def test_critical_xid_triggers_mark_bad(self, xid_code: int) -> None:
+    def test_non_auto_recoverable_xid_triggers_mark_bad(self) -> None:
         store = make_fake_metric_store()
-        inject_critical_xid(store, node_id="node-0", xid_code=xid_code)
+        inject_critical_xid(store, node_id="node-0")
         detector = HighConfidenceHardwareDetector()
 
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-0" in decision.bad_node_ids
-        assert f"XID {xid_code}" in decision.reason
-
-    def test_non_critical_xid_ignored(self) -> None:
-        store = make_fake_metric_store()
-        inject_critical_xid(store, node_id="node-0", xid_code=31)
-        detector = HighConfidenceHardwareDetector()
-
-        decision = detector.evaluate(make_detector_context(metric_store=store))
-
-        assert decision.action == ActionType.NONE
+        assert "non-auto-recoverable XID" in decision.reason
 
     def test_disk_space_low(self) -> None:
         store = make_fake_metric_store()
@@ -120,7 +110,7 @@ class TestHighConfidenceHardwareDetector:
     def test_multi_node_faults(self) -> None:
         store = make_fake_metric_store()
         inject_gpu_unavailable(store, node_id="node-0", gpu="0")
-        inject_critical_xid(store, node_id="node-1", xid_code=48)
+        inject_critical_xid(store, node_id="node-1")
         detector = HighConfidenceHardwareDetector()
 
         decision = detector.evaluate(make_detector_context(metric_store=store))

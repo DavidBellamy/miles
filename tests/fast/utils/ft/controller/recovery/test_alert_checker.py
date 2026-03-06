@@ -2,7 +2,7 @@
 from datetime import timedelta
 
 from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
-from miles.utils.ft.models.metric_names import GPU_AVAILABLE, XID_CODE_RECENT
+from miles.utils.ft.models.metric_names import GPU_AVAILABLE
 from miles.utils.ft.models.metrics import GaugeSample
 from tests.fast.utils.ft.conftest import (
     inject_critical_xid,
@@ -39,7 +39,7 @@ class TestAlertCheckerMultiFaultSameNode:
     def test_multiple_faults_same_node_deduplicates_node_id(self) -> None:
         store = make_fake_metric_store()
         inject_gpu_unavailable(store, node_id="node-0", gpu="0")
-        inject_critical_xid(store, node_id="node-0", xid_code=48)
+        inject_critical_xid(store, node_id="node-0")
         checker = AlertChecker(metric_store=store)
 
         bad_node_ids, reasons = checker.check_alerts()
@@ -50,13 +50,13 @@ class TestAlertCheckerMultiFaultSameNode:
     def test_reasons_follow_check_order(self) -> None:
         store = make_fake_metric_store()
         inject_gpu_unavailable(store, node_id="node-0")
-        inject_critical_xid(store, node_id="node-0", xid_code=64)
+        inject_critical_xid(store, node_id="node-0")
         checker = AlertChecker(metric_store=store)
 
         _, reasons = checker.check_alerts()
 
         assert "GPU unavailable" in reasons[0]
-        assert "critical XID 64" in reasons[1]
+        assert "non-auto-recoverable XID" in reasons[1]
 
 
 class TestAlertCheckerMultiNode:

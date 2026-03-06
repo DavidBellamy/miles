@@ -105,6 +105,7 @@ class TestBuildXidSamples:
             current_codes={48, 31},
             prev_codes=set(),
             new_count=2,
+            non_auto_recoverable_count=1,
         )
 
         gauge_samples = [s for s in samples if s.name == "miles_ft_xid_code_recent"]
@@ -118,6 +119,7 @@ class TestBuildXidSamples:
             current_codes=set(),
             prev_codes={48},
             new_count=0,
+            non_auto_recoverable_count=0,
         )
 
         gauge_samples = [s for s in samples if s.name == "miles_ft_xid_code_recent"]
@@ -130,12 +132,39 @@ class TestBuildXidSamples:
             current_codes={48},
             prev_codes=set(),
             new_count=5,
+            non_auto_recoverable_count=2,
         )
 
         counter = [s for s in samples if s.name == "miles_ft_xid_count_total"]
         assert len(counter) == 1
         assert isinstance(counter[0], CounterSample)
         assert counter[0].delta == 5.0
+
+    def test_non_auto_recoverable_counter(self) -> None:
+        samples = _build_xid_samples(
+            current_codes={48},
+            prev_codes=set(),
+            new_count=3,
+            non_auto_recoverable_count=2,
+        )
+
+        counter = [s for s in samples if s.name == "miles_ft_xid_non_auto_recoverable_count_total"]
+        assert len(counter) == 1
+        assert isinstance(counter[0], CounterSample)
+        assert counter[0].delta == 2.0
+
+    def test_non_auto_recoverable_counter_zero_when_no_critical(self) -> None:
+        samples = _build_xid_samples(
+            current_codes={31},
+            prev_codes=set(),
+            new_count=1,
+            non_auto_recoverable_count=0,
+        )
+
+        counter = [s for s in samples if s.name == "miles_ft_xid_non_auto_recoverable_count_total"]
+        assert len(counter) == 1
+        assert isinstance(counter[0], CounterSample)
+        assert counter[0].delta == 0.0
 
 
 class TestCountKernelEvents:
@@ -234,6 +263,32 @@ class TestKmsgCollectorXid:
         count = _filter_metrics(result, "miles_ft_xid_count_total")
         assert isinstance(count[0], CounterSample)
         assert count[0].delta == 3.0
+
+    @pytest.mark.anyio
+    async def test_non_auto_recoverable_counter_with_critical_xid(self) -> None:
+        """XID 48 is non-auto-recoverable; XID 31 is not. Counter should reflect only XID 48."""
+        collector = _make_kmsg_collector([
+            "NVRM: Xid (PCI:0000:3b:00): 48, pid=1234",
+            "NVRM: Xid (PCI:0000:5e:00): 31, pid=5678",
+        ])
+
+        result = await collector.collect()
+        counter = _filter_metrics(result, "miles_ft_xid_non_auto_recoverable_count_total")
+        assert len(counter) == 1
+        assert isinstance(counter[0], CounterSample)
+        assert counter[0].delta == 1.0
+
+    @pytest.mark.anyio
+    async def test_non_auto_recoverable_counter_zero_for_benign_xids(self) -> None:
+        collector = _make_kmsg_collector([
+            "NVRM: Xid (PCI:0000:3b:00): 31, pid=1234",
+        ])
+
+        result = await collector.collect()
+        counter = _filter_metrics(result, "miles_ft_xid_non_auto_recoverable_count_total")
+        assert len(counter) == 1
+        assert isinstance(counter[0], CounterSample)
+        assert counter[0].delta == 0.0
 
     @pytest.mark.anyio
     async def test_xid_stale_gauge_cleared(self) -> None:

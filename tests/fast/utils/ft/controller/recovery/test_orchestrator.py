@@ -183,7 +183,7 @@ class TestCheckAlerts:
 
     def test_critical_xid_transitions_to_evict(self) -> None:
         orch, node_mgr, _, _, _, metric_store, _ = _make_orchestrator_with_store()
-        inject_critical_xid(metric_store, node_id="node-1", xid_code=48)
+        inject_critical_xid(metric_store, node_id="node-1")
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
 
@@ -470,9 +470,14 @@ class TestCheckAlertsNicDown:
 
 
 class TestCheckAlertsXidCodes:
-    def test_non_critical_xid_ignored(self) -> None:
+    def test_zero_non_auto_recoverable_counter_ignored(self) -> None:
+        """A zero non-auto-recoverable counter does not trigger eviction."""
         orch, _, _, _, _, metric_store, _ = _make_orchestrator_with_store()
-        inject_critical_xid(metric_store, node_id="node-0", xid_code=13)
+        from miles.utils.ft.models.metric_names import XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL
+        from miles.utils.ft.models.metrics import CounterSample
+        metric_store.ingest_samples(target_id="node-0", samples=[
+            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=0.0),
+        ])
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.REATTEMPTING
 

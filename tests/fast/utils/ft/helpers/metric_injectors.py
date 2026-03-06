@@ -10,13 +10,14 @@ from miles.utils.ft.models.metric_names import (
     NODE_FILESYSTEM_AVAIL_BYTES,
     NODE_NETWORK_UP,
     TRAINING_JOB_STATUS,
-    XID_CODE_RECENT,
+    XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
 )
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.models import GaugeSample
+from miles.utils.ft.models.metrics import CounterSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 
@@ -104,10 +105,10 @@ def inject_gpu_unavailable(
 
 
 def inject_critical_xid(
-    store: MiniPrometheus, node_id: str = "node-0", xid_code: int = 48,
+    store: MiniPrometheus, node_id: str = "node-0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        GaugeSample(name=XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
+        CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
     ])
 
 
