@@ -46,8 +46,7 @@ def _assert_external_ray() -> None:
 @pytest.fixture(scope="session")
 def ray_address() -> str:
     addr = os.environ.get("RAY_ADDRESS", "").strip()
-    if not addr:
-        pytest.skip("RAY_ADDRESS not set — skipping E2E tests")
+    assert addr, "Ray address must be provided"
     return addr
 
 
