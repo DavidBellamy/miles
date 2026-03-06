@@ -9,10 +9,6 @@ import pytest
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
-    PairResult,
-    cross_compare,
-)
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.helpers import (
@@ -389,62 +385,6 @@ class TestDiagnosticSchedulerInterMachine:
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
-
-
-class TestCrossCompare:
-    """Direct unit tests for cross_compare."""
-
-    def test_all_pass(self) -> None:
-        result = cross_compare(
-            node_ids=["A", "B", "C"],
-            pair_results=[
-                PairResult(master_id="A", worker_id="B", passed=True),
-                PairResult(master_id="B", worker_id="C", passed=True),
-                PairResult(master_id="C", worker_id="A", passed=True),
-            ],
-        )
-        assert result == []
-
-    def test_single_bad_node(self) -> None:
-        result = cross_compare(
-            node_ids=["A", "B", "C"],
-            pair_results=[
-                PairResult(master_id="A", worker_id="B", passed=False),
-                PairResult(master_id="B", worker_id="C", passed=True),
-                PairResult(master_id="C", worker_id="A", passed=False),
-            ],
-        )
-        assert result == ["A"]
-
-    def test_all_equal_failure_count_cannot_localize(self) -> None:
-        result = cross_compare(
-            node_ids=["A", "B", "C"],
-            pair_results=[
-                PairResult(master_id="A", worker_id="B", passed=False),
-                PairResult(master_id="B", worker_id="C", passed=False),
-                PairResult(master_id="C", worker_id="A", passed=False),
-            ],
-        )
-        assert result == []
-
-    def test_multiple_bad_nodes_with_highest_count(self) -> None:
-        result = cross_compare(
-            node_ids=["A", "B", "C", "D"],
-            pair_results=[
-                PairResult(master_id="A", worker_id="B", passed=False),
-                PairResult(master_id="B", worker_id="C", passed=False),
-                PairResult(master_id="C", worker_id="D", passed=True),
-                PairResult(master_id="D", worker_id="A", passed=False),
-            ],
-        )
-        assert result == ["A", "B"]
-
-    def test_empty_pair_results(self) -> None:
-        result = cross_compare(
-            node_ids=["A", "B"],
-            pair_results=[],
-        )
-        assert result == []
 
 
 class TestDiagnosticSchedulerLiveAgents:

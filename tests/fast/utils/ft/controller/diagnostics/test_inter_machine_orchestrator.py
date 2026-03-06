@@ -79,17 +79,25 @@ class TestCrossCompare:
         """Single node with no pair results."""
         assert cross_compare(node_ids=["A"], pair_results=[]) == []
 
-    def test_multiple_bad_nodes(self) -> None:
-        """Two nodes both have highest failure count."""
+    def test_multiple_bad_nodes_with_highest_count(self) -> None:
+        """Two nodes both have highest failure count and get flagged."""
         results = [
             PairResult(master_id="A", worker_id="B", passed=False),
             PairResult(master_id="B", worker_id="C", passed=False),
-            PairResult(master_id="C", worker_id="A", passed=False),
+            PairResult(master_id="C", worker_id="D", passed=True),
+            PairResult(master_id="D", worker_id="A", passed=False),
         ]
 
-        bad = cross_compare(node_ids=["A", "B", "C"], pair_results=results)
+        bad = cross_compare(node_ids=["A", "B", "C", "D"], pair_results=results)
 
-        assert bad == [] or len(bad) <= 3
+        assert bad == ["A", "B"]
+
+    def test_empty_pair_results(self) -> None:
+        result = cross_compare(
+            node_ids=["A", "B"],
+            pair_results=[],
+        )
+        assert result == []
 
 
 # ===================================================================

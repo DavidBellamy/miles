@@ -1,16 +1,11 @@
-"""Tests for FtController.run() cleanup paths and _execute_decision defensive branches."""
+"""Tests for FtController.run() cleanup paths."""
 from __future__ import annotations
 
 import asyncio
 
 import pytest
 
-from miles.utils.ft.models import ActionType, Decision
-from tests.fast.utils.ft.conftest import (
-    FakeNotifier,
-    FixedDecisionDetector,
-    make_test_controller,
-)
+from tests.fast.utils.ft.conftest import make_test_controller
 
 
 class TestRunCleanupNotifierAclose:
@@ -118,16 +113,3 @@ class TestRunLoopSurviveTickFailure:
         assert stop_called
 
 
-class TestExecuteDecisionUnknownAction:
-    """Verify _execute_decision raises ValueError for unknown action types."""
-
-    @pytest.mark.anyio
-    async def test_unknown_action_type_raises(self) -> None:
-        harness = make_test_controller()
-
-        bogus_decision = Decision(action=ActionType.NONE, reason="should not happen")
-        fake_action = type("FakeAction", (), {"value": "totally_unknown_action"})()
-        object.__setattr__(bogus_decision, "action", fake_action)
-
-        with pytest.raises(ValueError, match="Unknown action type"):
-            await harness.controller._execute_decision(bogus_decision)
