@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.controller.actions import (
     PlatformDeps,
-    handle_enter_recovery,
     handle_mark_bad_and_restart,
     handle_notify_human,
 )
@@ -16,15 +14,14 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.rank_registry import RankRegistry
-from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
+from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
+from miles.utils.ft.controller.recovery_lifecycle import RecoveryLifecycleManager
 from miles.utils.ft.models._fault import ActionType, Decision
 from miles.utils.ft.models._recovery import (
     ControllerMode,
     ControllerStatus,
-    RecoveryPhase,
     _BAD_NODES_CONFIRMED_PHASES,
 )
-from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
@@ -51,8 +48,7 @@ class FtController:
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
         diagnostic_scheduler: DiagnosticSchedulerProtocol | None = None,
-        recovery_cooldown_minutes: float = 30.0,
-        recovery_cooldown_max_count: int = 3,
+        recovery_cooldown: RecoveryCooldown | None = None,
         registration_grace_ticks: int = 5,
     ) -> None:
         self._node_manager = node_manager
@@ -64,6 +60,7 @@ class FtController:
         self._detectors: list[BaseFaultDetector] = detectors or []
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter
+        self._registration_grace_ticks = registration_grace_ticks
 
         self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
             diagnostic_scheduler
@@ -74,21 +71,30 @@ class FtController:
             )
         )
 
-        self._recovery_cooldown_minutes = recovery_cooldown_minutes
-        self._recovery_cooldown_max_count = recovery_cooldown_max_count
-        self._recovery_history: list[tuple[str, datetime]] = []
-        self._registration_grace_ticks = registration_grace_ticks
+        duration_cb = (
+            self._controller_exporter.observe_recovery_duration
+            if self._controller_exporter is not None
+            else None
+        )
+        self._recovery_manager = RecoveryLifecycleManager(
+            cooldown=recovery_cooldown or RecoveryCooldown(window_minutes=30.0, max_count=3),
+            on_recovery_duration=duration_cb,
+        )
 
         self._shutting_down: bool = False
         self._tick_count: int = 0
-        self._recovery_orchestrator: RecoveryOrchestrator | None = None
-        self._recovery_start_time: float | None = None
-        self._diagnosing_nodes: set[str] = set()
-        self._last_phase_history: list[RecoveryPhase] | None = None
 
     # -------------------------------------------------------------------
     # Public API
     # -------------------------------------------------------------------
+
+    @property
+    def rank_registry(self) -> RankRegistry:
+        return self._rank_registry
+
+    @property
+    def recovery_manager(self) -> RecoveryLifecycleManager:
+        return self._recovery_manager
 
     async def submit_initial_training(self) -> str:
         return await self._training_job.submit_training()
@@ -105,32 +111,22 @@ class FtController:
             await self._stop_services(scrape_task)
         logger.info("controller_stopped")
 
-    async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
-        await stop_metric_store_task(self._metric_store, scrape_task)
-        if self._controller_exporter is not None:
-            self._controller_exporter.stop()
-        if self._notifier is not None:
-            try:
-                await self._notifier.aclose()
-            except Exception:
-                logger.warning("notifier_aclose_failed", exc_info=True)
-
     async def shutdown(self) -> None:
         logger.info("controller_shutdown_requested")
         self._shutting_down = True
 
     def get_status(self) -> ControllerStatus:
-        recovery_in_progress = self._recovery_orchestrator is not None
+        rm = self._recovery_manager
 
-        if recovery_in_progress:
+        if rm.in_progress:
             mode = ControllerMode.RECOVERY
-            recovery_phase = self._recovery_orchestrator.phase
-            phase_history: list[RecoveryPhase] | None = list(self._recovery_orchestrator.phase_history)
+            recovery_phase = rm.phase
+            phase_history: list | None = list(rm.orchestrator.phase_history) if rm.orchestrator else None
             bad_nodes_confirmed = recovery_phase in _BAD_NODES_CONFIRMED_PHASES
         else:
             mode = ControllerMode.MONITORING
             recovery_phase = None
-            phase_history = self._last_phase_history
+            phase_history = rm.last_phase_history
             bad_nodes_confirmed = False
 
         return ControllerStatus(
@@ -139,44 +135,9 @@ class FtController:
             phase_history=phase_history,
             tick_count=self._tick_count,
             active_run_id=self._rank_registry.active_run_id,
-            bad_nodes=sorted(self._diagnosing_nodes),
-            recovery_in_progress=recovery_in_progress,
+            bad_nodes=sorted(rm.diagnosing_nodes),
+            recovery_in_progress=rm.in_progress,
             bad_nodes_confirmed=bad_nodes_confirmed,
-        )
-
-    # -------------------------------------------------------------------
-    # Agent management (delegated to RankRegistry)
-    # -------------------------------------------------------------------
-
-    def register_agent(self, node_id: str, agent: NodeAgentProtocol) -> None:
-        self._rank_registry.register_agent(node_id=node_id, agent=agent)
-
-    async def log_step(
-        self,
-        run_id: str,
-        step: int,
-        metrics: dict[str, float],
-    ) -> None:
-        self._rank_registry.log_step(
-            run_id=run_id, step=step, metrics=metrics,
-        )
-
-    async def register_rank(
-        self,
-        run_id: str,
-        rank: int,
-        world_size: int,
-        node_id: str,
-        exporter_address: str,
-        pid: int | None = None,
-    ) -> None:
-        self._rank_registry.register_rank(
-            run_id=run_id,
-            rank=rank,
-            world_size=world_size,
-            node_id=node_id,
-            exporter_address=exporter_address,
-            pid=pid,
         )
 
     # -------------------------------------------------------------------
@@ -197,6 +158,32 @@ class FtController:
                 self._controller_exporter.update_last_tick_timestamp(time.time())
 
     async def _tick_inner(self) -> None:
+        self._warn_incomplete_registration()
+        job_status = await self._training_job.get_training_status()
+
+        if self._recovery_manager.in_progress:
+            self._run_critical_detectors_during_recovery(job_status)
+            await self._recovery_manager.step()
+            self._update_exporter_metrics(job_status)
+            return
+
+        if not self._should_run_detectors():
+            self._update_exporter_metrics(job_status)
+            return
+
+        ctx = self._build_detector_context(job_status)
+        decision = self._evaluate_detectors(ctx)
+
+        logger.info(
+            "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
+            self._tick_count, self._rank_registry.active_run_id,
+            decision.action.value, decision.reason,
+        )
+
+        self._update_exporter_metrics(job_status)
+        await self._execute_decision(decision)
+
+    def _warn_incomplete_registration(self) -> None:
         if (
             self._rank_registry.expected_world_size is not None
             and len(self._rank_registry.rank_placement) < self._rank_registry.expected_world_size
@@ -208,63 +195,27 @@ class FtController:
                 self._rank_registry.active_run_id,
             )
 
-        job_status = await self._training_job.get_training_status()
-
-        if self._recovery_orchestrator is not None:
-            self._run_critical_detectors_during_recovery(job_status)
-            await self._recovery_orchestrator.step()
-            self._diagnosing_nodes = set(self._recovery_orchestrator.bad_node_ids)
-
-            if self._recovery_orchestrator.is_done():
-                recovery_elapsed = (
-                    time.monotonic() - self._recovery_start_time
-                    if self._recovery_start_time is not None
-                    else 0.0
-                )
-                logger.info(
-                    "recovery_complete trigger=%s duration_seconds=%.1f",
-                    self._recovery_orchestrator.trigger, recovery_elapsed,
-                )
-                if self._controller_exporter is not None:
-                    self._controller_exporter.observe_recovery_duration(recovery_elapsed)
-                self._last_phase_history = list(self._recovery_orchestrator.phase_history)
-                self._recovery_orchestrator = None
-                self._recovery_start_time = None
-                self._diagnosing_nodes.clear()
-
-            self._update_exporter_metrics(job_status)
-            return
-
+    def _should_run_detectors(self) -> bool:
         if len(self._rank_registry.rank_placement) == 0:
             logger.info("skip_detectors_no_ranks tick=%d", self._tick_count)
-            self._update_exporter_metrics(job_status)
-            return
+            return False
 
         if self._tick_count <= self._registration_grace_ticks:
             logger.info(
                 "skip_detectors_grace_period tick=%d grace_ticks=%d",
                 self._tick_count, self._registration_grace_ticks,
             )
-            self._update_exporter_metrics(job_status)
-            return
+            return False
 
-        ctx = DetectorContext(
+        return True
+
+    def _build_detector_context(self, job_status: JobStatus) -> DetectorContext:
+        return DetectorContext(
             metric_store=self._metric_store,
             mini_wandb=self._mini_wandb,
             rank_placement=dict(self._rank_registry.rank_placement),
             job_status=job_status,
         )
-        decision = self._evaluate_detectors(ctx)
-
-        logger.info(
-            "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
-            self._tick_count, self._rank_registry.active_run_id,
-            decision.action.value, decision.reason,
-        )
-
-        self._update_exporter_metrics(job_status)
-
-        await self._execute_decision(decision)
 
     # -------------------------------------------------------------------
     # Internal: critical detectors during recovery
@@ -276,12 +227,7 @@ class FtController:
         If a critical detector fires MARK_BAD_AND_RESTART with new bad nodes,
         merge them into the orchestrator's eviction list.
         """
-        ctx = DetectorContext(
-            metric_store=self._metric_store,
-            mini_wandb=self._mini_wandb,
-            rank_placement=dict(self._rank_registry.rank_placement),
-            job_status=job_status,
-        )
+        ctx = self._build_detector_context(job_status)
 
         for detector in self._detectors:
             if not detector.is_critical:
@@ -297,8 +243,7 @@ class FtController:
                 continue
 
             if decision.action == ActionType.MARK_BAD_AND_RESTART and decision.bad_node_ids:
-                assert self._recovery_orchestrator is not None
-                self._recovery_orchestrator.add_bad_nodes(decision.bad_node_ids)
+                self._recovery_manager.add_bad_nodes(decision.bad_node_ids)
 
     # -------------------------------------------------------------------
     # Internal: detector chain
@@ -328,11 +273,11 @@ class FtController:
         if self._controller_exporter is None:
             return
 
-        is_recovery = self._recovery_orchestrator is not None
+        is_recovery = self._recovery_manager.in_progress
         self._controller_exporter.update_from_state(
             job_status=job_status,
             mode=ControllerMode.RECOVERY if is_recovery else ControllerMode.MONITORING,
-            recovery_phase=self._recovery_orchestrator.phase if is_recovery else None,
+            recovery_phase=self._recovery_manager.phase if is_recovery else None,
             latest_loss=self._mini_wandb.latest(metric_name="loss"),
             latest_mfu=self._mini_wandb.latest(metric_name="mfu"),
         )
@@ -383,38 +328,35 @@ class FtController:
         )
 
     async def _handle_enter_recovery(self, decision: Decision) -> None:
-        now = datetime.now(timezone.utc)
-        self._recovery_history.append((decision.trigger, now))
-
-        cutoff = now - timedelta(minutes=self._recovery_cooldown_minutes)
-        recent_count = sum(
-            1 for trigger, ts in self._recovery_history
-            if trigger == decision.trigger and ts >= cutoff
+        started = await self._recovery_manager.start(
+            decision=decision, deps=self._build_platform_deps(),
         )
-
-        if recent_count >= self._recovery_cooldown_max_count:
-            logger.warning(
-                "recovery_cooldown_escalation trigger=%s count=%d max=%d window_minutes=%s",
-                decision.trigger, recent_count, self._recovery_cooldown_max_count,
-                self._recovery_cooldown_minutes,
-            )
+        if not started:
             await handle_notify_human(
                 decision=Decision(
                     action=ActionType.NOTIFY_HUMAN,
-                    reason=f"Recovery cooldown: {decision.trigger.value} triggered {recent_count} times in {self._recovery_cooldown_minutes}min",
+                    reason=f"Recovery cooldown: {decision.trigger.value} triggered too many times",
                     trigger=decision.trigger,
                 ),
                 notifier=self._notifier,
             )
-            return
-
-        self._recovery_start_time = time.monotonic()
-        self._recovery_orchestrator = await handle_enter_recovery(
-            decision=decision, deps=self._build_platform_deps(),
-        )
 
     async def _handle_notify(self, decision: Decision) -> None:
         await handle_notify_human(
             decision=decision,
             notifier=self._notifier,
         )
+
+    # -------------------------------------------------------------------
+    # Internal: service lifecycle
+    # -------------------------------------------------------------------
+
+    async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
+        await stop_metric_store_task(self._metric_store, scrape_task)
+        if self._controller_exporter is not None:
+            self._controller_exporter.stop()
+        if self._notifier is not None:
+            try:
+                await self._notifier.aclose()
+            except Exception:
+                logger.warning("notifier_aclose_failed", exc_info=True)
