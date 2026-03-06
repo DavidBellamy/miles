@@ -51,18 +51,16 @@ class FtController:
         recovery_cooldown: RecoveryCooldown | None = None,
         registration_grace_ticks: int = 5,
     ) -> None:
-        self._node_manager = node_manager
         self._training_job = training_job
         self._metric_store = metric_store
         self._rank_registry = rank_registry
         self._mini_wandb = rank_registry.mini_wandb
-        self._notifier = notifier
         self._detectors: list[BaseFaultDetector] = detectors or []
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter
         self._registration_grace_ticks = registration_grace_ticks
 
-        self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
+        resolved_scheduler: DiagnosticSchedulerProtocol = (
             diagnostic_scheduler
             or DiagnosticScheduler(
                 agents=self._rank_registry.agents,
@@ -70,10 +68,19 @@ class FtController:
                 rank_pids_provider=self._rank_registry.get_rank_pids_for_node,
             )
         )
+        self._platform_deps = PlatformDeps(
+            node_manager=node_manager,
+            training_job=training_job,
+            metric_store=metric_store,
+            mini_wandb=self._mini_wandb,
+            notifier=notifier,
+            diagnostic_scheduler=resolved_scheduler,
+            controller_exporter=controller_exporter,
+        )
 
         duration_cb = (
-            self._controller_exporter.observe_recovery_duration
-            if self._controller_exporter is not None
+            controller_exporter.observe_recovery_duration
+            if controller_exporter is not None
             else None
         )
         self._recovery_manager = RecoveryLifecycleManager(
@@ -84,9 +91,9 @@ class FtController:
         self._shutting_down: bool = False
         self._tick_count: int = 0
 
-    # -------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Public API
-    # -------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
     @property
     def rank_registry(self) -> RankRegistry:
@@ -144,9 +151,9 @@ class FtController:
             latest_iteration=latest_iteration,
         )
 
-    # -------------------------------------------------------------------
-    # Main loop tick
-    # -------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Tick loop
+    # ------------------------------------------------------------------
 
     async def _tick(self) -> None:
         self._tick_count += 1
@@ -213,6 +220,10 @@ class FtController:
 
         return True
 
+    # ------------------------------------------------------------------
+    # Detectors
+    # ------------------------------------------------------------------
+
     def _build_detector_context(self, job_status: JobStatus) -> DetectorContext:
         return DetectorContext(
             metric_store=self._metric_store,
@@ -221,9 +232,21 @@ class FtController:
             job_status=job_status,
         )
 
-    # -------------------------------------------------------------------
-    # Internal: critical detectors during recovery
-    # -------------------------------------------------------------------
+    def _evaluate_detectors(self, ctx: DetectorContext) -> Decision:
+        for detector in self._detectors:
+            try:
+                decision = detector.evaluate(ctx)
+            except Exception:
+                logger.error(
+                    "detector_evaluate_failed detector=%s",
+                    type(detector).__name__,
+                    exc_info=True,
+                )
+                continue
+            if decision.action != ActionType.NONE:
+                return decision
+
+        return _ALL_DETECTORS_PASSED
 
     def _run_critical_detectors_during_recovery(self, job_status: JobStatus) -> None:
         """Run is_critical detectors even while recovery is active.
@@ -249,57 +272,9 @@ class FtController:
             if decision.action == ActionType.MARK_BAD_AND_RESTART and decision.bad_node_ids:
                 self._recovery_manager.add_bad_nodes(decision.bad_node_ids)
 
-    # -------------------------------------------------------------------
-    # Internal: detector chain
-    # -------------------------------------------------------------------
-
-    def _evaluate_detectors(self, ctx: DetectorContext) -> Decision:
-        for detector in self._detectors:
-            try:
-                decision = detector.evaluate(ctx)
-            except Exception:
-                logger.error(
-                    "detector_evaluate_failed detector=%s",
-                    type(detector).__name__,
-                    exc_info=True,
-                )
-                continue
-            if decision.action != ActionType.NONE:
-                return decision
-
-        return _ALL_DETECTORS_PASSED
-
-    # -------------------------------------------------------------------
-    # Internal: exporter metric updates
-    # -------------------------------------------------------------------
-
-    def _update_exporter_metrics(self, job_status: JobStatus) -> None:
-        if self._controller_exporter is None:
-            return
-
-        is_recovery = self._recovery_manager.in_progress
-        self._controller_exporter.update_from_state(
-            job_status=job_status,
-            mode=ControllerMode.RECOVERY if is_recovery else ControllerMode.MONITORING,
-            recovery_phase=self._recovery_manager.phase if is_recovery else None,
-            latest_loss=self._mini_wandb.latest(metric_name="loss"),
-            latest_mfu=self._mini_wandb.latest(metric_name="mfu"),
-        )
-
-    # -------------------------------------------------------------------
-    # Internal: decision execution
-    # -------------------------------------------------------------------
-
-    def _build_platform_deps(self) -> PlatformDeps:
-        return PlatformDeps(
-            node_manager=self._node_manager,
-            training_job=self._training_job,
-            metric_store=self._metric_store,
-            mini_wandb=self._mini_wandb,
-            notifier=self._notifier,
-            diagnostic_scheduler=self._diagnostic_scheduler,
-            controller_exporter=self._controller_exporter,
-        )
+    # ------------------------------------------------------------------
+    # Decision execution
+    # ------------------------------------------------------------------
 
     async def _execute_decision(self, decision: Decision) -> None:
         if decision.action == ActionType.NONE:
@@ -316,51 +291,58 @@ class FtController:
                 action=decision.action.value, trigger=trigger_str,
             )
 
-        handlers = {
-            ActionType.MARK_BAD_AND_RESTART: self._handle_mark_bad,
-            ActionType.ENTER_RECOVERY: self._handle_enter_recovery,
-            ActionType.NOTIFY_HUMAN: self._handle_notify,
-        }
-        handler = handlers.get(decision.action)
-        if handler is None:
-            raise ValueError(f"Unknown action type: {decision.action}")
-        await handler(decision)
+        if decision.action == ActionType.MARK_BAD_AND_RESTART:
+            await handle_mark_bad_and_restart(decision=decision, deps=self._platform_deps)
 
-    async def _handle_mark_bad(self, decision: Decision) -> None:
-        await handle_mark_bad_and_restart(
-            decision=decision, deps=self._build_platform_deps(),
-        )
+        elif decision.action == ActionType.ENTER_RECOVERY:
+            started = await self._recovery_manager.start(
+                decision=decision, deps=self._platform_deps,
+            )
+            if not started:
+                await handle_notify_human(
+                    decision=Decision(
+                        action=ActionType.NOTIFY_HUMAN,
+                        reason=f"Recovery cooldown: {decision.trigger.value} triggered too many times",
+                        trigger=decision.trigger,
+                    ),
+                    notifier=self._platform_deps.notifier,
+                )
 
-    async def _handle_enter_recovery(self, decision: Decision) -> None:
-        started = await self._recovery_manager.start(
-            decision=decision, deps=self._build_platform_deps(),
-        )
-        if not started:
+        elif decision.action == ActionType.NOTIFY_HUMAN:
             await handle_notify_human(
-                decision=Decision(
-                    action=ActionType.NOTIFY_HUMAN,
-                    reason=f"Recovery cooldown: {decision.trigger.value} triggered too many times",
-                    trigger=decision.trigger,
-                ),
-                notifier=self._notifier,
+                decision=decision, notifier=self._platform_deps.notifier,
             )
 
-    async def _handle_notify(self, decision: Decision) -> None:
-        await handle_notify_human(
-            decision=decision,
-            notifier=self._notifier,
+        else:
+            raise ValueError(f"Unknown action type: {decision.action}")
+
+    # ------------------------------------------------------------------
+    # Exporter metrics
+    # ------------------------------------------------------------------
+
+    def _update_exporter_metrics(self, job_status: JobStatus) -> None:
+        if self._controller_exporter is None:
+            return
+
+        is_recovery = self._recovery_manager.in_progress
+        self._controller_exporter.update_from_state(
+            job_status=job_status,
+            mode=ControllerMode.RECOVERY if is_recovery else ControllerMode.MONITORING,
+            recovery_phase=self._recovery_manager.phase if is_recovery else None,
+            latest_loss=self._mini_wandb.latest(metric_name="loss"),
+            latest_mfu=self._mini_wandb.latest(metric_name="mfu"),
         )
 
-    # -------------------------------------------------------------------
-    # Internal: service lifecycle
-    # -------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Service lifecycle
+    # ------------------------------------------------------------------
 
     async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
         await stop_metric_store_task(self._metric_store, scrape_task)
         if self._controller_exporter is not None:
             self._controller_exporter.stop()
-        if self._notifier is not None:
+        if self._platform_deps.notifier is not None:
             try:
-                await self._notifier.aclose()
+                await self._platform_deps.notifier.aclose()
             except Exception:
                 logger.warning("notifier_aclose_failed", exc_info=True)

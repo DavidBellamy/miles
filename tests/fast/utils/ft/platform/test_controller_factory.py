@@ -89,7 +89,7 @@ class TestBuildFtControllerNotifier:
                 config=FtControllerConfig(platform="stub"),
                 start_exporter=False,
             )
-            assert isinstance(controller._notifier, StubNotifier)
+            assert isinstance(controller._platform_deps.notifier, StubNotifier)
 
     def test_lark_webhook_url_creates_lark_notifier(self) -> None:
         from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
@@ -102,7 +102,7 @@ class TestBuildFtControllerNotifier:
                 config=FtControllerConfig(platform="stub"),
                 start_exporter=False,
             )
-            assert isinstance(controller._notifier, LarkWebhookNotifier)
+            assert isinstance(controller._platform_deps.notifier, LarkWebhookNotifier)
 
 
 class TestBuildPlatformComponentsUnknown:

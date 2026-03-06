@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 class TestBuildFtController:
     def test_stub_platform_creates_correct_components(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
-        assert isinstance(ctrl._node_manager, StubNodeManager)
+        assert isinstance(ctrl._platform_deps.node_manager, StubNodeManager)
         assert isinstance(ctrl._training_job, StubTrainingJob)
 
     def test_stub_platform_has_full_detector_chain(self) -> None:
@@ -27,14 +27,14 @@ class TestBuildFtController:
 
     def test_stub_platform_has_stub_notifier(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
-        assert isinstance(ctrl._notifier, StubNotifier)
+        assert isinstance(ctrl._platform_deps.notifier, StubNotifier)
 
     def test_lark_webhook_notifier_when_env_set(self) -> None:
         from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 
         with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://hook.example.com"}):
             ctrl = build_ft_controller(platform="stub", start_exporter=False)
-        assert isinstance(ctrl._notifier, LarkWebhookNotifier)
+        assert isinstance(ctrl._platform_deps.notifier, LarkWebhookNotifier)
 
     def test_custom_tick_interval(self) -> None:
         ctrl = build_ft_controller(
