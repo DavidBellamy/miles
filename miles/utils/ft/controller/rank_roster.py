@@ -8,12 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class RankRoster:
-    """Tracks rank placement for a single training run.
-
-    Each run gets a fresh instance; the FtController creates a new
-    RankRoster via ``_activate_run`` whenever a training job is
-    (re)submitted.
-    """
+    """Tracks rank placement for a single training run."""
 
     def __init__(
         self,
