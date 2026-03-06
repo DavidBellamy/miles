@@ -150,7 +150,46 @@ class TestCheckMajorityNicDown:
         assert result == []
 
 
-class TestCheckDiskFaultBoundary:
+class TestCheckDiskFault:
+    def test_below_threshold_returns_fault(self) -> None:
+        store = make_fake_metric_store()
+        store.ingest_samples(target_id="node-0", samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=500e6),
+        ])
+
+        result = check_disk_fault(store)
+
+        assert len(result) == 1
+        assert result[0].node_id == "node-0"
+        assert "disk space low" in result[0].reason
+
+    def test_above_threshold_returns_empty(self) -> None:
+        store = make_fake_metric_store()
+        store.ingest_samples(target_id="node-0", samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=100e9),
+        ])
+
+        assert check_disk_fault(store) == []
+
+    def test_empty_store_returns_empty(self) -> None:
+        store = make_fake_metric_store()
+
+        assert check_disk_fault(store) == []
+
+    def test_multiple_nodes_only_low_ones_flagged(self) -> None:
+        store = make_fake_metric_store()
+        store.ingest_samples(target_id="node-0", samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=200e6),
+        ])
+        store.ingest_samples(target_id="node-1", samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=50e9),
+        ])
+
+        result = check_disk_fault(store)
+
+        assert len(result) == 1
+        assert result[0].node_id == "node-0"
+
     def test_custom_threshold(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[

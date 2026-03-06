@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 from unittest.mock import patch
+
+import pytest
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.disk import DiskCollector
@@ -14,7 +17,7 @@ class TestDiskCollector:
         collector = DiskCollector(disk_mounts=[tmp_path])
 
         result = await collector.collect()
-        disk = [m for m in result.metrics if m.name == "miles_ft_node_filesystem_avail_bytes"]
+        disk = [m for m in result.metrics if m.name == mn.NODE_FILESYSTEM_AVAIL_BYTES]
         assert len(disk) == 1
         assert disk[0].labels == {"mountpoint": str(tmp_path)}
         assert disk[0].value > 0
@@ -22,6 +25,29 @@ class TestDiskCollector:
     def test_default_collect_interval(self) -> None:
         collector = DiskCollector()
         assert collector.collect_interval == 60.0
+
+    def test_empty_mounts_returns_no_disk_avail_samples(self) -> None:
+        collector = DiskCollector(disk_mounts=[])
+
+        samples = collector._collect_disk_avail()
+
+        assert samples == []
+
+    def test_statvfs_failure_logs_warning_and_continues(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        good_mount = tmp_path / "good"
+        good_mount.mkdir()
+        bad_mount = tmp_path / "nonexistent_mount_xyz"
+
+        collector = DiskCollector(disk_mounts=[bad_mount, good_mount])
+
+        with caplog.at_level(logging.WARNING):
+            samples = collector._collect_disk_avail()
+
+        assert len(samples) == 1
+        assert samples[0].labels == {"mountpoint": str(good_mount)}
+        assert "Failed to statvfs" in caplog.text
 
 
 # -------------------------------------------------------------------
