@@ -77,6 +77,7 @@ def check_nic_down_in_window(
         NodeFault(
             node_id=node_id,
             reason=f"NIC down {count} times on {node_id} in {window}",
+            ephemeral=True,
         )
         for node_id, count in sorted(node_down_counts.items())
         if count >= threshold
