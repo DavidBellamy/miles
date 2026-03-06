@@ -16,6 +16,15 @@ _DEFAULT_MATRIX_SIZE = 4096
 app = typer.Typer()
 
 
+@app.command()
+def main(
+    duration: Annotated[float, typer.Option(help="Max duration in seconds")] = 3600.0,
+    matrix_size: Annotated[int, typer.Option(help="Square matrix dimension for matmul")] = _DEFAULT_MATRIX_SIZE,
+) -> None:
+    """GPU stress workload: saturates all visible GPUs with continuous matmul."""
+    _stress_loop(duration=duration, matrix_size=matrix_size)
+
+
 def _stress_loop(duration: float, matrix_size: int = _DEFAULT_MATRIX_SIZE) -> None:
     import torch
 
@@ -34,15 +43,6 @@ def _stress_loop(duration: float, matrix_size: int = _DEFAULT_MATRIX_SIZE) -> No
     while time.monotonic() - start < duration:
         for a, b, _ in tensors:
             torch.mm(a, b)
-
-
-@app.command()
-def main(
-    duration: Annotated[float, typer.Option(help="Max duration in seconds")] = 3600.0,
-    matrix_size: Annotated[int, typer.Option(help="Square matrix dimension for matmul")] = _DEFAULT_MATRIX_SIZE,
-) -> None:
-    """GPU stress workload: saturates all visible GPUs with continuous matmul."""
-    _stress_loop(duration=duration, matrix_size=matrix_size)
 
 
 if __name__ == "__main__":

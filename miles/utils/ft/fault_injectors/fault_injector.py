@@ -13,24 +13,6 @@ import ray
 
 logger = logging.getLogger(__name__)
 
-_TRAINING_CMDLINE_PATTERNS = ("megatron", "run_deepseek", "run_train", "torchrun")
-
-_GPU_STRESS_SCRIPT = Path(__file__).parent / "gpu_stress.py"
-
-
-def _kill_if_exists(pid: int) -> None:
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-
-
-def _remove_if_exists(path: str) -> None:
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
-
 
 @ray.remote(num_gpus=0)
 class FaultInjectorActor:
@@ -140,3 +122,22 @@ def deploy_fault_injector(
         name=f"{name_prefix}{node_id}",
     ).remote()
     return actor
+
+
+_TRAINING_CMDLINE_PATTERNS = ("megatron", "run_deepseek", "run_train", "torchrun")
+
+_GPU_STRESS_SCRIPT = Path(__file__).parent / "gpu_stress.py"
+
+
+def _kill_if_exists(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _remove_if_exists(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
