@@ -203,6 +203,38 @@ class TestRestartFailure:
         assert "Restart Failure" in titles
 
 
+class TestMarkBadSkipsAlreadyBadNodes:
+    @pytest.mark.anyio
+    async def test_already_bad_node_not_remarked(self) -> None:
+        node_manager = FakeNodeManager()
+        await node_manager.mark_node_bad("node-0", reason="previous")
+        training_job = FakeTrainingJob()
+        deps = _make_deps(node_manager=node_manager, training_job=training_job)
+
+        await handle_mark_bad_and_restart(
+            decision=_make_decision(bad_node_ids=["node-0", "node-1"]),
+            deps=deps,
+        )
+
+        assert node_manager.is_node_bad("node-0")
+        assert node_manager.is_node_bad("node-1")
+        assert training_job._submitted
+
+    @pytest.mark.anyio
+    async def test_all_already_bad_still_restarts(self) -> None:
+        node_manager = FakeNodeManager()
+        await node_manager.mark_node_bad("node-0", reason="previous")
+        training_job = FakeTrainingJob()
+        deps = _make_deps(node_manager=node_manager, training_job=training_job)
+
+        await handle_mark_bad_and_restart(
+            decision=_make_decision(bad_node_ids=["node-0"]),
+            deps=deps,
+        )
+
+        assert training_job._submitted
+
+
 class TestMarkBadWithoutNotifier:
     """handle_mark_bad_and_restart with notifier=None should not crash."""
 
