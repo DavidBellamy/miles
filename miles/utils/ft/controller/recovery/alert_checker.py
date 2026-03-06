@@ -7,8 +7,8 @@ from miles.utils.ft.controller.detectors.hardware_checks import (
     check_all_hardware_faults,
     check_nic_down_in_window,
 )
+from miles.utils.ft.models.fault import NodeFault
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
-from miles.utils.ft.models.fault import unique_node_ids
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +27,12 @@ class AlertChecker:
         self._network_alert_window = network_alert_window
         self._network_alert_threshold = network_alert_threshold
 
-    def check_alerts(self) -> tuple[list[str], list[str]]:
-        """Return (sorted bad_node_ids, reasons)."""
+    def check_alerts(self) -> list[NodeFault]:
+        """Return all detected faults (hardware + network)."""
         faults = check_all_hardware_faults(self._metric_store)
         faults.extend(check_nic_down_in_window(
             self._metric_store,
             window=self._network_alert_window,
             threshold=self._network_alert_threshold,
         ))
-        bad_node_ids = sorted(unique_node_ids(faults))
-        reasons = [f.reason for f in faults]
-        return bad_node_ids, reasons
+        return faults
