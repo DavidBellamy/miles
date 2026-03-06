@@ -248,7 +248,7 @@ class TestSlidingWindowThrottle:
 
         old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
         with patch(
-            "miles.utils.ft.controller.recovery_orchestrator.helpers.datetime",
+            "miles.utils.ft.controller.recovery.helpers.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = old_time
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
