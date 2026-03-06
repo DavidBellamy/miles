@@ -45,7 +45,8 @@ class TestControllerMemoryLeak:
         controller = harness.controller
 
         run_id = "leak-test-run"
-        _register_n_nodes(harness.rank_registry, run_id=run_id)
+        harness.controller._activate_run(run_id)
+        _register_n_nodes(harness.controller.rank_registry, run_id=run_id)
 
         for node_id in _NODE_IDS:
             inject_healthy_node(harness.metric_store, node_id=node_id)

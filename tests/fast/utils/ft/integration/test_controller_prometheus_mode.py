@@ -16,7 +16,6 @@ import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
@@ -49,7 +48,7 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(status_sequence=[JobStatus.RUNNING]),
             metric_store=prom_client,
-            rank_registry=RankRegistry(mini_wandb=MiniWandb()),
+            mini_wandb=MiniWandb(),
             controller_exporter=exporter,
         )
 
@@ -69,10 +68,11 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=prom_client,
-            rank_registry=RankRegistry(mini_wandb=MiniWandb()),
+            mini_wandb=MiniWandb(),
             controller_exporter=exporter,
         )
 
+        controller._activate_run("run-1")
         controller.rank_registry.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
@@ -89,15 +89,16 @@ class TestControllerPrometheusMode:
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=PrometheusClient(url="http://fake:9090"),
-            rank_registry=RankRegistry(mini_wandb=mini_wandb),
+            mini_wandb=mini_wandb,
             controller_exporter=exporter,
         )
 
+        controller._activate_run("run-1")
         controller.rank_registry.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        controller.rank_registry.log_step(
+        controller.mini_wandb.log_step(
             run_id="run-1", step=1,
             metrics={"loss": 2.5, "mfu": 0.42},
         )
