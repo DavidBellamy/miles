@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (

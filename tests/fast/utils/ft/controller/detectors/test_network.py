@@ -5,7 +5,7 @@ from tests.fast.utils.ft.helpers import make_detector_context, make_fake_metric_
 
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.metric_names import NODE_NETWORK_UP
+from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.models import ActionType, MetricSample
 
 

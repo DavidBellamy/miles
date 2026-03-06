@@ -4,7 +4,7 @@ import fnmatch
 import logging
 from pathlib import Path
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.metrics import MetricSample
 

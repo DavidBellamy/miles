@@ -16,7 +16,7 @@ from miles.utils.ft.controller.detectors import (
     NetworkAlertDetector,
     build_detector_chain,
 )
-from miles.utils.ft.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
+from miles.utils.ft.models.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
 from miles.utils.ft.models import ActionType, MetricSample
 from miles.utils.ft.protocols.platform import JobStatus
 

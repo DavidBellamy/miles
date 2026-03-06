@@ -2,7 +2,7 @@
 from datetime import timedelta
 
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
-from miles.utils.ft.metric_names import GPU_AVAILABLE, XID_CODE_RECENT
+from miles.utils.ft.models.metric_names import GPU_AVAILABLE, XID_CODE_RECENT
 from miles.utils.ft.models import MetricSample
 from tests.fast.utils.ft.conftest import (
     inject_critical_xid,

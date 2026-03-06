@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from miles.utils.ft.metric_names import (
+from miles.utils.ft.models.metric_names import (
     PHASE_CHECKPOINT_SAVING,
     TRAINING_ITERATION,
     TRAINING_PHASE,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from prometheus_client import CollectorRegistry
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus

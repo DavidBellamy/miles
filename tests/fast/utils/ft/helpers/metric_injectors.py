@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from prometheus_client import CollectorRegistry
 
-from miles.utils.ft.metric_names import (
+from miles.utils.ft.models.metric_names import (
     DCGM_FI_DEV_GPU_TEMP,
     GPU_AVAILABLE,
     NODE_FILESYSTEM_AVAIL_BYTES,

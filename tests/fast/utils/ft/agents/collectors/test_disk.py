@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 
 

@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 from types import ModuleType
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.metrics import MetricSample
 

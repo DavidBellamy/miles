@@ -11,7 +11,7 @@ from miles.utils.ft.controller.recovery_orchestrator import (
     RecoveryContext,
     RecoveryOrchestrator,
 )
-from miles.utils.ft.metric_names import CONTROLLER_RECOVERY_PHASE
+from miles.utils.ft.models.metric_names import CONTROLLER_RECOVERY_PHASE
 from miles.utils.ft.models import (
     ActionType,
     Decision,

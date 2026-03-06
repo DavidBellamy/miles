@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from tests.fast.utils.ft.conftest import get_sample_value, make_test_controller
 
 

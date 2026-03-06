@@ -12,7 +12,7 @@ import logging
 import polars as pl
 
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
-from miles.utils.ft.metric_names import GPU_AVAILABLE, NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP, XID_CODE_RECENT
+from miles.utils.ft.models.metric_names import GPU_AVAILABLE, NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP, XID_CODE_RECENT
 from miles.utils.ft.models.fault import NodeFault
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,15 @@ def check_critical_xid(
 
     faults: list[NodeFault] = []
     for row in df.iter_rows(named=True):
-        xid_code = int(row["xid"])
-        node_id = row["node_id"]
+        try:
+            xid_code = int(row.get("xid", -1))
+            node_id = row.get("node_id")
+        except (ValueError, TypeError):
+            logger.warning("check_critical_xid: unparseable row %s", row, exc_info=True)
+            continue
+
+        if node_id is None:
+            continue
 
         if xid_code in critical_xid_codes:
             faults.append(NodeFault(node_id=node_id, reason=f"critical XID {xid_code} on {node_id}"))

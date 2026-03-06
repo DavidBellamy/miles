@@ -6,7 +6,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-import miles.utils.ft.metric_names as mn
+import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.kernel_log_reader import (
     DmesgSubprocessReader,
     KernelLogReader,
