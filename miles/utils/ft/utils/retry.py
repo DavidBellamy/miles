@@ -31,11 +31,15 @@ async def retry_async(
     max_retries: int = DEFAULT_MAX_RETRIES,
     sleep_fn: Callable[[float], Coroutine[Any, Any, None]] = asyncio.sleep,
     per_call_timeout: float | None = None,
+    backoff_base: float = 1.0,
+    max_backoff: float = _MAX_BACKOFF_SECONDS,
 ) -> RetryResult[_T]:
     """Retry an async callable up to *max_retries* times with exponential backoff.
 
     Returns a :class:`RetryResult` with ``ok=True`` and the return value on
     success, or ``ok=False`` with an error description if all attempts fail.
+
+    Backoff formula: ``min(backoff_base * 2**attempt, max_backoff)``.
 
     When *per_call_timeout* is set, each individual call is wrapped with
     ``asyncio.wait_for`` to prevent a single hung invocation from blocking
@@ -59,7 +63,7 @@ async def retry_async(
                 exc_info=True,
             )
             if attempt < max_retries - 1:
-                delay = min(2 ** attempt, _MAX_BACKOFF_SECONDS)
+                delay = min(backoff_base * (2 ** attempt), max_backoff)
                 await sleep_fn(delay)
 
     logger.error("retry_exhausted description=%s", description)
