@@ -26,6 +26,10 @@ pytestmark = [
     pytest.mark.timeout(900),
 ]
 
+_HANG_TIMEOUT_MINUTES = 10
+_DETECTION_BUFFER_SECONDS = 60
+_MAX_DETECTION_SECONDS = _HANG_TIMEOUT_MINUTES * 60 + _DETECTION_BUFFER_SECONDS
+
 
 async def test_hang_detection_and_recovery(
     ft_controller_handle: ray.actor.ActorHandle,
@@ -59,6 +63,11 @@ async def test_hang_detection_and_recovery(
     logger.info("hang_detected_and_recovered t_detect=%.1fs", t_detect)
 
     assert status.mode == ControllerMode.MONITORING
+
+    assert t_detect < _MAX_DETECTION_SECONDS, (
+        f"Hang detection took {t_detect:.0f}s, expected < {_MAX_DETECTION_SECONDS}s "
+        f"(hang_timeout={_HANG_TIMEOUT_MINUTES}min + {_DETECTION_BUFFER_SECONDS}s buffer)"
+    )
 
     final_status = get_status(ft_controller_handle)
     assert_phase_path_contains(final_status, [
