@@ -47,8 +47,8 @@ class LocalRayFaultInjector:
     async def inject_hang(self) -> None:
         """Training reports RUNNING but iterations stop advancing.
 
-        Since the simulated env never advances iteration metrics anyway,
-        this is effectively a no-op — the training is already 'hung' from
-        the metric perspective. We just ensure status stays RUNNING.
+        Sets the hung flag on TrainingStateActor so that
+        TrainingWorkerActor (if present) stops advancing iterations.
         """
         await self._state.set_status.remote(JobStatus.RUNNING.value)
+        await self._state.set_hung.remote(True)

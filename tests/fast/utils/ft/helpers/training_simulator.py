@@ -1,17 +1,26 @@
-"""Remote-controlled training job for local_ray integration tests.
+"""Remote-controlled training job and training worker for local_ray integration tests.
 
 Provides a TrainingJobProtocol implementation whose state lives in a separate
 Ray actor, so the test driver can mutate it (crash, hang, recover) while the
 FtController actor reads it during its tick loop.
+
+TrainingWorkerActor simulates a training process hosting a real
+FtTrainingRankAgent — it self-registers with the controller, advances
+iteration metrics, and reacts to crash/recovery state transitions.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import ray
 
+from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
+from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -30,6 +39,7 @@ class TrainingStateActor:
         self._submit_count: int = 0
         self._stop_called: bool = False
         self._excluded_node_ids: list[str] = []
+        self._hung: bool = False
 
     def get_status(self) -> str:
         return self._status
@@ -45,6 +55,7 @@ class TrainingStateActor:
         self._run_id = uuid4().hex[:8]
         self._status = JobStatus.RUNNING.value
         self._stop_called = False
+        self._hung = False
         self._excluded_node_ids = excluded_node_ids or []
         return self._run_id
 
@@ -60,6 +71,12 @@ class TrainingStateActor:
 
     def get_excluded_node_ids(self) -> list[str]:
         return self._excluded_node_ids
+
+    def set_hung(self, hung: bool) -> None:
+        self._hung = hung
+
+    def get_hung(self) -> bool:
+        return self._hung
 
 
 class RemoteControlledTrainingJob:
@@ -85,3 +102,115 @@ class RemoteControlledTrainingJob:
     ) -> str:
         run_id: str = await self._state.submit.remote(excluded_node_ids)
         return run_id
+
+
+@ray.remote(num_cpus=0, num_gpus=0)
+class TrainingWorkerActor:
+    """Simulates a training process hosting a real FtTrainingRankAgent.
+
+    Watches TrainingStateActor for status changes:
+    - RUNNING: creates agent (if needed) and advances iterations
+    - FAILED/STOPPED: shuts down agent and pauses
+
+    After recovery (new submit), detects the new run_id and re-creates
+    the agent so it re-registers with the controller under the new run.
+    """
+
+    def __init__(
+        self,
+        state_actor: ray.actor.ActorHandle,
+        ft_id: str = "",
+        rank: int = 0,
+        world_size: int = 1,
+        node_id: str = "sim-node-0",
+        step_interval: float = 0.1,
+    ) -> None:
+        self._state_actor = state_actor
+        self._ft_id = ft_id
+        self._rank = rank
+        self._world_size = world_size
+        self._node_id = node_id
+        self._step_interval = step_interval
+
+        self._agent: FtTrainingRankAgent | None = None
+        self._controller_handle: Any | None = None
+        self._current_run_id: str = ""
+        self._iteration: int = 0
+        self._loop_task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        run_id: str = ray.get(self._state_actor.get_run_id.remote())
+        self._create_agent(run_id)
+        self._loop_task = asyncio.get_event_loop().create_task(self._run_loop())
+
+    async def stop(self) -> None:
+        if self._loop_task is not None:
+            self._loop_task.cancel()
+            try:
+                await self._loop_task
+            except asyncio.CancelledError:
+                pass
+            self._loop_task = None
+        self._shutdown_agent()
+
+    def get_iteration(self) -> int:
+        return self._iteration
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _create_agent(self, run_id: str) -> None:
+        self._shutdown_agent()
+        self._current_run_id = run_id
+
+        os.environ["MILES_FT_ID"] = self._ft_id
+        os.environ["MILES_FT_TRAINING_RUN_ID"] = run_id
+
+        with patch("socket.gethostname", return_value=self._node_id):
+            self._agent = FtTrainingRankAgent(
+                rank=self._rank,
+                world_size=self._world_size,
+            )
+
+        self._controller_handle = get_controller_handle(self._ft_id)
+        self._iteration = 0
+
+    def _shutdown_agent(self) -> None:
+        if self._agent is not None:
+            self._agent.shutdown()
+            self._agent = None
+
+    async def _run_loop(self) -> None:
+        while True:
+            status_str: str = await self._state_actor.get_status.remote()
+            status = JobStatus(status_str)
+
+            if status == JobStatus.RUNNING:
+                hung: bool = await self._state_actor.get_hung.remote()
+                if hung:
+                    await asyncio.sleep(self._step_interval)
+                    continue
+
+                run_id: str = await self._state_actor.get_run_id.remote()
+                if self._agent is None or run_id != self._current_run_id:
+                    self._create_agent(run_id)
+
+                self._iteration += 1
+                self._agent.step(self._iteration)
+
+                if self._controller_handle is not None:
+                    try:
+                        self._controller_handle.log_step.remote(
+                            run_id=self._current_run_id,
+                            step=self._iteration,
+                            metrics={"iteration": float(self._iteration)},
+                        )
+                    except Exception:
+                        logger.debug("log_step failed", exc_info=True)
+
+            elif status in (JobStatus.FAILED, JobStatus.STOPPED):
+                if self._agent is not None:
+                    self._shutdown_agent()
+
+            await asyncio.sleep(self._step_interval)
