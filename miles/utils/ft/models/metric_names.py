@@ -20,6 +20,7 @@ NODE_DISK_IO_TIME_SECONDS_TOTAL = "miles_ft_node_disk_io_time_seconds_total"
 # Host custom metrics
 XID_CODE_RECENT = "miles_ft_xid_code_recent"
 XID_COUNT_TOTAL = "miles_ft_xid_count_total"
+XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL = "miles_ft_xid_non_auto_recoverable_count_total"
 KERNEL_EVENT_COUNT = "miles_ft_kernel_event_count"
 
 # Training heartbeat (FtTrainingRankAgent)

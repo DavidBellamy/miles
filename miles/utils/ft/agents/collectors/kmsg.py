@@ -13,6 +13,7 @@ from miles.utils.ft.agents.collectors.kernel_log_reader import (
     KernelLogReader,
     KmsgFileReader,
 )
+from miles.utils.ft.controller.detectors.gpu.xid_catalog.info import NON_AUTO_RECOVERABLE_XIDS
 from miles.utils.ft.models.metrics import CounterSample, GaugeSample
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ def _build_xid_samples(
     current_codes: set[int],
     prev_codes: set[int],
     new_count: int,
+    non_auto_recoverable_count: int,
 ) -> list[GaugeSample | CounterSample]:
     samples: list[GaugeSample | CounterSample] = [
         GaugeSample(
@@ -65,6 +67,11 @@ def _build_xid_samples(
         name=mn.XID_COUNT_TOTAL,
         labels={},
         delta=float(new_count),
+    ))
+    samples.append(CounterSample(
+        name=mn.XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
+        labels={},
+        delta=float(non_auto_recoverable_count),
     ))
     return samples
 
@@ -128,8 +135,14 @@ class KmsgCollector(BaseCollector):
             now,
         )
 
+        non_auto_recoverable_count = sum(
+            1 for code in new_xids if code in NON_AUTO_RECOVERABLE_XIDS
+        )
+
         current_codes = {code for _, code in self._xid_events}
-        samples = _build_xid_samples(current_codes, self._prev_xid_codes, len(new_xids))
+        samples = _build_xid_samples(
+            current_codes, self._prev_xid_codes, len(new_xids), non_auto_recoverable_count,
+        )
         self._prev_xid_codes = current_codes
 
         samples.extend(_kernel_event_samples(_count_kernel_events(lines)))
