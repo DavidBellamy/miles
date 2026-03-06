@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 from enum import Enum
+
+from pydantic import ConfigDict
 
 from miles.utils.ft.models.base import FtBaseModel
 
@@ -19,8 +20,9 @@ class ControllerMode(str, Enum):
     RECOVERY = "recovery"
 
 
-@dataclass(frozen=True)
-class RecoverySnapshot:
+class RecoverySnapshot(FtBaseModel):
+    model_config = ConfigDict(frozen=True)
+
     in_progress: bool
     phase: RecoveryPhase | None
     phase_history: list[RecoveryPhase] | None
