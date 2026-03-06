@@ -168,31 +168,30 @@ class TestBuildDetectorChainConfig:
         assert hang._training_timeout_minutes == 10
 
     def test_hang_timeout_minutes(self) -> None:
-        chain = build_detector_chain(config={"hang_timeout_minutes": 20})
+        chain = build_detector_chain(config={"hang": {"training_timeout_minutes": 20}})
         hang = next(d for d in chain if isinstance(d, HangDetector))
         assert hang._training_timeout_minutes == 20
 
     def test_mfu_threshold_ratio(self) -> None:
-        chain = build_detector_chain(config={"mfu_threshold_ratio": 0.5})
+        chain = build_detector_chain(config={"mfu": {"mfu_threshold_ratio": 0.5}})
         mfu = next(d for d in chain if isinstance(d, MfuDeclineDetector))
         assert mfu._mfu_threshold_ratio == 0.5
 
     def test_network_alert_window_minutes(self) -> None:
-        chain = build_detector_chain(config={"network_alert_window_minutes": 10})
+        chain = build_detector_chain(config={"network": {"alert_window_minutes": 10}})
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
         assert net._alert_window == timedelta(minutes=10)
 
     def test_network_alert_threshold(self) -> None:
-        chain = build_detector_chain(config={"network_alert_threshold": 5})
+        chain = build_detector_chain(config={"network": {"alert_threshold": 5}})
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
         assert net._alert_threshold == 5
 
     def test_multiple_config_keys(self) -> None:
         chain = build_detector_chain(config={
-            "hang_timeout_minutes": 30,
-            "mfu_threshold_ratio": 0.6,
-            "network_alert_window_minutes": 15,
-            "network_alert_threshold": 3,
+            "hang": {"training_timeout_minutes": 30},
+            "mfu": {"mfu_threshold_ratio": 0.6},
+            "network": {"alert_window_minutes": 15, "alert_threshold": 3},
         })
 
         hang = next(d for d in chain if isinstance(d, HangDetector))
