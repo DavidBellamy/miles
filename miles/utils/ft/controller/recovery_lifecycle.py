@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from miles.utils.ft.controller.actions import PlatformDeps, handle_enter_recovery
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
-from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
+from miles.utils.ft.controller.recovery_orchestrator.orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.models.recovery import RecoveryPhase, RecoverySnapshot, _BAD_NODES_CONFIRMED_PHASES
 
