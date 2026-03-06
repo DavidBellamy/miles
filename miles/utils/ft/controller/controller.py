@@ -224,7 +224,9 @@ class FtController:
 
     async def _tick_inner(self, job_status: JobStatus) -> None:
         if self._recovery_manager.in_progress:
-            self._run_critical_detectors_during_recovery(job_status)
+            new_bad_nodes = self._collect_critical_bad_nodes(job_status)
+            if new_bad_nodes:
+                self._recovery_manager.add_bad_nodes(new_bad_nodes)
             await self._recovery_manager.step()
             return
 
@@ -275,17 +277,16 @@ class FtController:
 
         return _ALL_DETECTORS_PASSED
 
-    def _run_critical_detectors_during_recovery(self, job_status: JobStatus) -> None:
-        """Run is_critical detectors even while recovery is active.
-
-        If a critical detector fires MARK_BAD_AND_RESTART with new bad nodes,
-        merge them into the orchestrator's eviction list.
-        """
+    def _collect_critical_bad_nodes(self, job_status: JobStatus) -> set[str]:
+        """Run is_critical detectors and return any newly discovered bad node ids."""
         ctx = self._build_detector_context(job_status)
+        bad_nodes: set[str] = set()
 
         for decision in self._run_detectors_raw(ctx, critical_only=True):
             if decision.action == ActionType.MARK_BAD_AND_RESTART and decision.bad_node_ids:
-                self._recovery_manager.add_bad_nodes(decision.bad_node_ids)
+                bad_nodes.update(decision.bad_node_ids)
+
+        return bad_nodes
 
     def _run_detectors_raw(
         self,

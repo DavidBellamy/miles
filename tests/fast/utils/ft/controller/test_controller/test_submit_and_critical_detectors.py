@@ -35,7 +35,7 @@ class TestSubmitInitialTraining:
 
 
 # ===================================================================
-# _run_critical_detectors_during_recovery — exception isolation
+# _collect_critical_bad_nodes — exception isolation
 # ===================================================================
 
 
