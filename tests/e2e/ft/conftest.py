@@ -147,10 +147,22 @@ async def _cleanup_node_manager(ray_cluster: None) -> AsyncGenerator[K8sNodeMana
 
 @pytest.fixture(autouse=True)
 async def _restore_cluster_state(
+    ft_controller_handle: ray.actor.ActorHandle,
     _cleanup_node_manager: K8sNodeManager,
 ) -> AsyncGenerator[None, None]:
-    """Uncordon any nodes marked bad during the test, even on failure."""
+    """Reset controller test state before, and uncordon nodes after each test.
+
+    Pre-test: clears RecoveryCooldown history and last_phase_history so that
+    tests do not interfere with each other via the session-scoped controller.
+    Post-test: uncordons any K8s nodes marked bad during the test.
+    """
+    try:
+        ray.get(ft_controller_handle.reset_test_state.remote(), timeout=10)
+    except Exception:
+        logger.warning("reset_test_state_failed", exc_info=True)
+
     yield
+
     try:
         bad_nodes = await _cleanup_node_manager.get_bad_nodes()
         for node_id in bad_nodes:

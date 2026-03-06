@@ -27,3 +27,6 @@ class RecoveryCooldown:
             if t == trigger and ts >= cutoff
         )
         return recent_count >= self._max_count
+
+    def reset(self) -> None:
+        self._history.clear()
