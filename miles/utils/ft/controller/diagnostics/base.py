@@ -24,6 +24,16 @@ class BaseDiagnostic(DiagnosticProtocol, ABC):
                 f"{cls.__name__} must define a 'diagnostic_type' class attribute"
             )
 
+    def _fail(self, node_id: str, details: str) -> DiagnosticResult:
+        return DiagnosticResult.fail_result(
+            diagnostic_type=self.diagnostic_type, node_id=node_id, details=details,
+        )
+
+    def _pass(self, node_id: str, details: str) -> DiagnosticResult:
+        return DiagnosticResult.pass_result(
+            diagnostic_type=self.diagnostic_type, node_id=node_id, details=details,
+        )
+
     @abstractmethod
     async def run(
         self, node_id: str, timeout_seconds: int = 120,
