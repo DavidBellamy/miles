@@ -5,7 +5,6 @@ import os
 from typing import Any
 
 from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
-from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +22,21 @@ class FtTrackingAgent:
         self._run_id = run_id or os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
         self._controller_handle: Any | None = None
 
-    @graceful_degrade()
     def log(self, *, metrics: dict[str, float], step: int) -> None:
         if not self._run_id:
             return
 
-        controller = self._get_controller()
-        if controller is not None:
-            controller.log_step.remote(
-                run_id=self._run_id,
-                step=step,
-                metrics=metrics,
+        try:
+            controller = self._get_controller()
+            if controller is not None:
+                controller.log_step.remote(
+                    run_id=self._run_id,
+                    step=step,
+                    metrics=metrics,
+                )
+        except Exception:
+            logger.warning(
+                "FtTrackingAgent.log() failed at step=%d", step, exc_info=True
             )
 
     def _get_controller(self) -> Any | None:
