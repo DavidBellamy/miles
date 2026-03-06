@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from functools import partial
+from typing import Callable
 
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 
@@ -74,6 +76,10 @@ async def run_nccl_test(
     Shared subprocess lifecycle used by both IntraMachineCommDiagnostic
     and InterMachineCommDiagnostic.
     """
+    fail: Callable[[str], DiagnosticResult] = partial(
+        DiagnosticResult.fail_result, diagnostic_type=diagnostic_type, node_id=node_id,
+    )
+
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -89,11 +95,7 @@ async def run_nccl_test(
             cmd[0],
             exc_info=True,
         )
-        return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type,
-            node_id=node_id,
-            details=f"failed to execute {cmd[0]}",
-        )
+        return fail(details=f"failed to execute {cmd[0]}")
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -110,11 +112,7 @@ async def run_nccl_test(
             timeout_seconds,
             exc_info=True,
         )
-        return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type,
-            node_id=node_id,
-            details=f"timed out after {timeout_seconds}s",
-        )
+        return fail(details=f"timed out after {timeout_seconds}s")
 
     stdout = stdout_bytes.decode(errors="replace")
     stderr = stderr_bytes.decode(errors="replace")
@@ -140,6 +138,10 @@ def _interpret_nccl_output(
     expected_bandwidth_gbps: float,
     log_prefix: str,
 ) -> DiagnosticResult:
+    fail: Callable[[str], DiagnosticResult] = partial(
+        DiagnosticResult.fail_result, diagnostic_type=diagnostic_type, node_id=node_id,
+    )
+
     if returncode != 0:
         logger.warning(
             "%s_nonzero_exit node=%s rc=%s stderr=%s",
@@ -148,11 +150,7 @@ def _interpret_nccl_output(
             returncode,
             stderr[:500],
         )
-        return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type,
-            node_id=node_id,
-            details=f"exit code {returncode}: {stderr[:500]}",
-        )
+        return fail(details=f"exit code {returncode}: {stderr[:500]}")
 
     bandwidth = parse_avg_bus_bandwidth(stdout)
     if bandwidth is None:
@@ -162,11 +160,7 @@ def _interpret_nccl_output(
             node_id,
             len(stdout),
         )
-        return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type,
-            node_id=node_id,
-            details="failed to parse bandwidth from output",
-        )
+        return fail(details="failed to parse bandwidth from output")
 
     passed = bandwidth >= expected_bandwidth_gbps
     if passed:
