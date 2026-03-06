@@ -5,7 +5,7 @@ from typing import TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, start_http_server
 
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import CounterSample, GaugeSample, _MetricSampleBase
 
 logger = logging.getLogger(__name__)
 
@@ -40,31 +40,28 @@ class PrometheusExporter:
         self._httpd.shutdown()
         self._httpd.server_close()
 
-    def update_metrics(self, metrics: list[MetricSample]) -> None:
+    def update_metrics(self, metrics: list[GaugeSample | CounterSample]) -> None:
         for sample in metrics:
-            if sample.metric_type == "counter":
-                self._update_counter(sample)
-            else:
-                self._update_gauge(sample)
+            match sample:
+                case GaugeSample():
+                    self._resolve_child(self._gauges, Gauge, sample).set(sample.value)
+                case CounterSample() if sample.delta > 0:
+                    self._resolve_child(self._counters, Counter, sample).inc(sample.delta)
 
-    def _update_gauge(self, sample: MetricSample) -> None:
-        gauge = self._get_or_create(self._gauges, Gauge, sample)
-
-        child = gauge.labels(**sample.labels) if sample.labels else gauge
-        child.set(sample.value)
-
-    def _update_counter(self, sample: MetricSample) -> None:
-        counter = self._get_or_create(self._counters, Counter, sample)
-
-        if sample.value > 0:
-            child = counter.labels(**sample.labels) if sample.labels else counter
-            child.inc(sample.value)
+    def _resolve_child(
+        self,
+        cache: dict[_MetricKey, _M],
+        metric_cls: type[_M],
+        sample: _MetricSampleBase,
+    ) -> Gauge | Counter:
+        metric = self._get_or_create(cache, metric_cls, sample)
+        return metric.labels(**sample.labels) if sample.labels else metric
 
     def _get_or_create(
         self,
         cache: dict[_MetricKey, _M],
         metric_cls: type[_M],
-        sample: MetricSample,
+        sample: _MetricSampleBase,
     ) -> _M:
         label_keys = frozenset(sample.labels.keys())
         key: _MetricKey = (sample.name, label_keys)

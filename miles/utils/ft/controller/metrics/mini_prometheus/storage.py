@@ -13,7 +13,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
 from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import CounterSample, GaugeSample, MetricSample
 
 
 @dataclass
@@ -79,7 +79,8 @@ class MiniPrometheus(MetricStoreProtocol, ScrapeTargetManagerProtocol, RangeAggr
                 self._label_maps[key] = labels
                 self._name_index.setdefault(sample.name, set()).add(key)
 
-            self._series[key].append(TimeSeriesSample(timestamp=ts, value=sample.value))
+            raw_value = sample.value if isinstance(sample, GaugeSample) else sample.delta
+            self._series[key].append(TimeSeriesSample(timestamp=ts, value=raw_value))
 
         self._maybe_evict()
 
