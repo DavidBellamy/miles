@@ -73,7 +73,7 @@ async def step_reattempting(
     mini_wandb: MiniWandb,
     on_new_run: Callable[[str], None] | None = None,
 ) -> RecoveryPhase | None:
-    if not ctx.reattempt_submitted:
+    if not ctx.reattempt.submitted:
         return await _reattempt_submit(ctx, training_job, mini_wandb, on_new_run=on_new_run)
     return await _reattempt_poll(ctx, training_job, mini_wandb)
 
@@ -105,8 +105,8 @@ async def step_monitoring(
         )
         return RecoveryPhase.DONE
 
-    if ctx.reattempt_start_time is not None:
-        elapsed = (datetime.now(timezone.utc) - ctx.reattempt_start_time).total_seconds()
+    if ctx.reattempt.start_time is not None:
+        elapsed = (datetime.now(timezone.utc) - ctx.reattempt.start_time).total_seconds()
         if elapsed > ctx.monitoring_timeout_seconds:
             logger.warning("monitoring_timeout elapsed=%.0f trigger=%s", elapsed, ctx.trigger)
             return RecoveryPhase.DIAGNOSING
@@ -205,8 +205,8 @@ async def _reattempt_submit(
     if not success:
         return RecoveryPhase.NOTIFY
 
-    ctx.reattempt_submitted = True
-    ctx.reattempt_submit_time = datetime.now(timezone.utc)
+    ctx.reattempt.submitted = True
+    ctx.reattempt.submit_time = datetime.now(timezone.utc)
     logger.info("reattempt_submitted trigger=%s", ctx.trigger)
     return None
 
@@ -220,19 +220,19 @@ async def _reattempt_poll(
 
     if status == JobStatus.RUNNING:
         iteration = mini_wandb.latest(metric_name=_WANDB_ITERATION_METRIC)
-        ctx.reattempt_start_time = datetime.now(timezone.utc)
-        ctx.reattempt_base_iteration = (
+        ctx.reattempt.start_time = datetime.now(timezone.utc)
+        ctx.reattempt.base_iteration = (
             int(iteration) if iteration is not None and math.isfinite(iteration) else 0
         )
-        logger.info("reattempt_running base_iteration=%s", ctx.reattempt_base_iteration)
+        logger.info("reattempt_running base_iteration=%s", ctx.reattempt.base_iteration)
         return RecoveryPhase.MONITORING
 
     if status == JobStatus.FAILED:
         logger.warning("reattempt_immediately_failed trigger=%s", ctx.trigger)
         return RecoveryPhase.DIAGNOSING
 
-    if ctx.reattempt_submit_time is not None:
-        elapsed = (datetime.now(timezone.utc) - ctx.reattempt_submit_time).total_seconds()
+    if ctx.reattempt.submit_time is not None:
+        elapsed = (datetime.now(timezone.utc) - ctx.reattempt.submit_time).total_seconds()
         if elapsed > PENDING_TIMEOUT_SECONDS:
             logger.warning("reattempt_pending_timeout elapsed=%.0f", elapsed)
             return RecoveryPhase.NOTIFY
@@ -244,7 +244,7 @@ def _iteration_progress(ctx: RecoveryContext, mini_wandb: MiniWandb) -> int:
     current_iteration = mini_wandb.latest(metric_name=_WANDB_ITERATION_METRIC)
     if current_iteration is None or not math.isfinite(current_iteration):
         return 0
-    base = ctx.reattempt_base_iteration or 0
+    base = ctx.reattempt.base_iteration or 0
     raw = int(current_iteration) - base
     if raw < 0:
         logger.warning(

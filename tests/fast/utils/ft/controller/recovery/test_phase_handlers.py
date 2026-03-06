@@ -8,6 +8,7 @@ import pytest
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.context import (
     PENDING_TIMEOUT_SECONDS,
+    ReattemptState,
     RecoveryContext,
 )
 from miles.utils.ft.controller.recovery.phase_handlers import (
@@ -97,15 +98,15 @@ class TestStepReattempting:
 
         result = await step_reattempting(ctx, training_job, mini_wandb)
 
-        assert ctx.reattempt_submitted is True
+        assert ctx.reattempt.submitted is True
         assert result is None
 
     @pytest.mark.anyio
     async def test_already_submitted_delegates_to_poll(self) -> None:
         """When reattempt_submitted=True, step_reattempting calls _reattempt_poll."""
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
-        ctx.reattempt_submit_time = datetime.now(timezone.utc)
+        ctx.reattempt.submitted = True
+        ctx.reattempt.submit_time = datetime.now(timezone.utc)
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = MiniWandb()
 
@@ -122,27 +123,27 @@ class TestStepReattempting:
         result = await step_reattempting(ctx, training_job, mini_wandb)
 
         assert result == RecoveryPhase.NOTIFY
-        assert ctx.reattempt_submitted is False
+        assert ctx.reattempt.submitted is False
 
 
 class TestReattemptPollBranches:
     @pytest.mark.anyio
     async def test_running_transitions_to_monitoring(self) -> None:
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
+        ctx.reattempt.submitted = True
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(42.0)
 
         result = await _reattempt_poll(ctx, training_job, mini_wandb)
 
         assert result == RecoveryPhase.MONITORING
-        assert ctx.reattempt_base_iteration == 42
-        assert ctx.reattempt_start_time is not None
+        assert ctx.reattempt.base_iteration == 42
+        assert ctx.reattempt.start_time is not None
 
     @pytest.mark.anyio
     async def test_failed_transitions_to_diagnosing(self) -> None:
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
+        ctx.reattempt.submitted = True
         training_job = FakeTrainingJob(status_sequence=[JobStatus.FAILED])
         mini_wandb = MiniWandb()
 
@@ -153,8 +154,8 @@ class TestReattemptPollBranches:
     @pytest.mark.anyio
     async def test_pending_timeout_transitions_to_notify(self) -> None:
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
-        ctx.reattempt_submit_time = datetime.now(timezone.utc) - timedelta(
+        ctx.reattempt.submitted = True
+        ctx.reattempt.submit_time = datetime.now(timezone.utc) - timedelta(
             seconds=PENDING_TIMEOUT_SECONDS + 10,
         )
         training_job = FakeTrainingJob(status_sequence=[JobStatus.PENDING])
@@ -167,8 +168,8 @@ class TestReattemptPollBranches:
     @pytest.mark.anyio
     async def test_still_pending_returns_none(self) -> None:
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
-        ctx.reattempt_submit_time = datetime.now(timezone.utc)
+        ctx.reattempt.submitted = True
+        ctx.reattempt.submit_time = datetime.now(timezone.utc)
         training_job = FakeTrainingJob(status_sequence=[JobStatus.PENDING])
         mini_wandb = MiniWandb()
 
@@ -183,14 +184,14 @@ class TestReattemptPollBranches:
         self, bad_iteration_value: float | None,
     ) -> None:
         ctx = _make_ctx()
-        ctx.reattempt_submitted = True
+        ctx.reattempt.submitted = True
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(bad_iteration_value)
 
         result = await _reattempt_poll(ctx, training_job, mini_wandb)
 
         assert result is not None
-        assert ctx.reattempt_base_iteration == 0
+        assert ctx.reattempt.base_iteration == 0
 
 
 # ===================================================================
@@ -202,8 +203,8 @@ class TestStepMonitoring:
     @pytest.mark.anyio
     async def test_failed_transitions_to_diagnosing(self) -> None:
         ctx = _make_ctx(monitoring_success_iterations=5, monitoring_timeout_seconds=600)
-        ctx.reattempt_start_time = datetime.now(timezone.utc)
-        ctx.reattempt_base_iteration = 0
+        ctx.reattempt.start_time = datetime.now(timezone.utc)
+        ctx.reattempt.base_iteration = 0
         training_job = FakeTrainingJob(status_sequence=[JobStatus.FAILED])
         mini_wandb = _make_mini_wandb_with_iteration(3.0)
 
@@ -214,8 +215,8 @@ class TestStepMonitoring:
     @pytest.mark.anyio
     async def test_monitoring_timeout_transitions_to_diagnosing(self) -> None:
         ctx = _make_ctx(monitoring_success_iterations=100, monitoring_timeout_seconds=60)
-        ctx.reattempt_start_time = datetime.now(timezone.utc) - timedelta(seconds=120)
-        ctx.reattempt_base_iteration = 0
+        ctx.reattempt.start_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+        ctx.reattempt.base_iteration = 0
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(5.0)
 
@@ -226,8 +227,8 @@ class TestStepMonitoring:
     @pytest.mark.anyio
     async def test_exact_threshold_triggers_done(self) -> None:
         ctx = _make_ctx(monitoring_success_iterations=5, monitoring_timeout_seconds=600)
-        ctx.reattempt_start_time = datetime.now(timezone.utc)
-        ctx.reattempt_base_iteration = 0
+        ctx.reattempt.start_time = datetime.now(timezone.utc)
+        ctx.reattempt.base_iteration = 0
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(5.0)
 
@@ -238,8 +239,8 @@ class TestStepMonitoring:
     @pytest.mark.anyio
     async def test_one_below_threshold_waits(self) -> None:
         ctx = _make_ctx(monitoring_success_iterations=5, monitoring_timeout_seconds=600)
-        ctx.reattempt_start_time = datetime.now(timezone.utc)
-        ctx.reattempt_base_iteration = 0
+        ctx.reattempt.start_time = datetime.now(timezone.utc)
+        ctx.reattempt.base_iteration = 0
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(4.0)
 
@@ -251,8 +252,8 @@ class TestStepMonitoring:
     async def test_no_reattempt_start_time_skips_timeout_check(self) -> None:
         """When reattempt_start_time is None, timeout check is skipped."""
         ctx = _make_ctx(monitoring_success_iterations=100, monitoring_timeout_seconds=1)
-        ctx.reattempt_start_time = None
-        ctx.reattempt_base_iteration = 0
+        ctx.reattempt.start_time = None
+        ctx.reattempt.base_iteration = 0
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = _make_mini_wandb_with_iteration(5.0)
 
@@ -513,28 +514,28 @@ class TestIterationProgress:
     @pytest.mark.parametrize("iteration_value", [None, float("nan"), float("inf"), float("-inf")],
                              ids=["none", "nan", "pos_inf", "neg_inf"])
     def test_non_finite_or_none_iteration_returns_zero(self, iteration_value: float | None) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=5)
+        ctx = _make_ctx(reattempt=ReattemptState(base_iteration=5))
         mini_wandb = _make_mini_wandb_with_iteration(iteration_value)
         assert _iteration_progress(ctx, mini_wandb) == 0
 
     def test_negative_progress_returns_zero(self) -> None:
         """Simulates a run reset where current_iteration < base_iteration."""
-        ctx = _make_ctx(reattempt_base_iteration=100)
+        ctx = _make_ctx(reattempt=ReattemptState(base_iteration=100))
         mini_wandb = _make_mini_wandb_with_iteration(10.0)
         assert _iteration_progress(ctx, mini_wandb) == 0
 
     def test_none_base_iteration_treated_as_zero(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=None)
+        ctx = _make_ctx(reattempt=ReattemptState(base_iteration=None))
         mini_wandb = _make_mini_wandb_with_iteration(7.0)
         assert _iteration_progress(ctx, mini_wandb) == 7
 
     def test_normal_progress(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=10)
+        ctx = _make_ctx(reattempt=ReattemptState(base_iteration=10))
         mini_wandb = _make_mini_wandb_with_iteration(15.0)
         assert _iteration_progress(ctx, mini_wandb) == 5
 
     def test_zero_progress(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=10)
+        ctx = _make_ctx(reattempt=ReattemptState(base_iteration=10))
         mini_wandb = _make_mini_wandb_with_iteration(10.0)
         assert _iteration_progress(ctx, mini_wandb) == 0
 

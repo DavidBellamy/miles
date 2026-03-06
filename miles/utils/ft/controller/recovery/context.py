@@ -11,6 +11,13 @@ from miles.utils.ft.models.recovery import RecoveryPhase
 PENDING_TIMEOUT_SECONDS: int = 300
 
 
+class ReattemptState(FtBaseModel):
+    submitted: bool = False
+    submit_time: datetime | None = None
+    start_time: datetime | None = None
+    base_iteration: int | None = None
+
+
 class RecoveryContext(FtBaseModel):
     trigger: TriggerType
     phase: RecoveryPhase = RecoveryPhase.CHECK_ALERTS
@@ -21,11 +28,7 @@ class RecoveryContext(FtBaseModel):
     bad_node_ids: list[str] = Field(default_factory=list)
     phase_history: list[RecoveryPhase] = Field(default_factory=lambda: [RecoveryPhase.CHECK_ALERTS])
 
-    # Reattempt state
-    reattempt_submitted: bool = False
-    reattempt_submit_time: datetime | None = None
-    reattempt_start_time: datetime | None = None
-    reattempt_base_iteration: int | None = None
+    reattempt: ReattemptState = Field(default_factory=ReattemptState)
 
     # Configuration
     global_timeout_seconds: int = 1800

@@ -126,8 +126,8 @@ class TestRecoveryContext:
         ctx = RecoveryContext(trigger="crash")
         assert ctx.trigger == "crash"
         assert ctx.phase == RecoveryPhase.CHECK_ALERTS
-        assert ctx.reattempt_start_time is None
-        assert ctx.reattempt_base_iteration is None
+        assert ctx.reattempt.start_time is None
+        assert ctx.reattempt.base_iteration is None
         assert ctx.global_timeout_seconds == 1800
         assert ctx.monitoring_success_iterations == 10
         assert ctx.monitoring_timeout_seconds == 600
@@ -201,7 +201,7 @@ class TestReattempting:
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
         asyncio.run(orch.step())
-        assert orch._context.reattempt_submitted
+        assert orch._context.reattempt.submitted
         assert training_job._stopped
         assert training_job._submitted
 
@@ -225,7 +225,7 @@ class TestReattempting:
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
         asyncio.run(orch.step())  # submit
-        orch._context.reattempt_submit_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        orch._context.reattempt.submit_time = datetime.now(timezone.utc) - timedelta(seconds=301)
         asyncio.run(orch.step())  # poll -> PENDING timeout
         assert orch.phase == RecoveryPhase.NOTIFY
 
@@ -238,7 +238,7 @@ class TestReattempting:
         training_job.stop_training = failing_stop_training
 
         asyncio.run(orch.step())
-        assert orch._context.reattempt_submitted
+        assert orch._context.reattempt.submitted
         assert training_job._submitted
 
 
@@ -254,8 +254,8 @@ class TestMonitoring:
             monitoring_success_iterations=3,
         )
         orch._context.phase = RecoveryPhase.MONITORING
-        orch._context.reattempt_start_time = datetime.now(timezone.utc)
-        orch._context.reattempt_base_iteration = 0
+        orch._context.reattempt.start_time = datetime.now(timezone.utc)
+        orch._context.reattempt.base_iteration = 0
 
         for i in range(1, 4):
             mini_wandb.log_step(
@@ -271,8 +271,8 @@ class TestMonitoring:
             status_sequence=[JobStatus.FAILED],
         )
         orch._context.phase = RecoveryPhase.MONITORING
-        orch._context.reattempt_start_time = datetime.now(timezone.utc)
-        orch._context.reattempt_base_iteration = 0
+        orch._context.reattempt.start_time = datetime.now(timezone.utc)
+        orch._context.reattempt.base_iteration = 0
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.DIAGNOSING
@@ -283,8 +283,8 @@ class TestMonitoring:
             monitoring_success_iterations=10,
         )
         orch._context.phase = RecoveryPhase.MONITORING
-        orch._context.reattempt_start_time = datetime.now(timezone.utc)
-        orch._context.reattempt_base_iteration = 0
+        orch._context.reattempt.start_time = datetime.now(timezone.utc)
+        orch._context.reattempt.base_iteration = 0
 
         for i in range(1, 6):
             mini_wandb.log_step(
@@ -301,8 +301,8 @@ class TestMonitoring:
             monitoring_timeout_seconds=60,
         )
         orch._context.phase = RecoveryPhase.MONITORING
-        orch._context.reattempt_start_time = datetime.now(timezone.utc) - timedelta(seconds=61)
-        orch._context.reattempt_base_iteration = 0
+        orch._context.reattempt.start_time = datetime.now(timezone.utc) - timedelta(seconds=61)
+        orch._context.reattempt.base_iteration = 0
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.DIAGNOSING
@@ -313,8 +313,8 @@ class TestMonitoring:
             monitoring_timeout_seconds=600,
         )
         orch._context.phase = RecoveryPhase.MONITORING
-        orch._context.reattempt_start_time = datetime.now(timezone.utc)
-        orch._context.reattempt_base_iteration = 0
+        orch._context.reattempt.start_time = datetime.now(timezone.utc)
+        orch._context.reattempt.base_iteration = 0
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.MONITORING
