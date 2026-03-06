@@ -2,12 +2,11 @@
 
 import logging
 import socket
-from datetime import timedelta
 from threading import Thread
 
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from tests.fast.utils.ft.helpers.metric_injectors import make_fake_metric_store
 
 
 def _find_free_port() -> int:
@@ -57,11 +56,7 @@ class TestMiniPrometheusScrapeReal:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -95,11 +90,7 @@ class TestMiniPrometheusScrapeReal:
         ).start()
         time.sleep(0.5)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(target_id="node-0", address=f"http://localhost:{port}")
 
         await store.scrape_once()
@@ -112,11 +103,7 @@ class TestMiniPrometheusScrapeReal:
         assert df2["value"][0] == 90.0
 
     async def test_scrape_unreachable_target_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(
             target_id="bad-node",
             address="http://localhost:19999",
@@ -152,11 +139,7 @@ class TestMiniPrometheusScrapeReal:
 
         time.sleep(0.5)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(target_id="node-0", address=f"http://localhost:{port1}")
         store.add_scrape_target(target_id="node-1", address=f"http://localhost:{port2}")
 
@@ -173,11 +156,7 @@ class TestMiniPrometheusScrapeReal:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -196,11 +175,7 @@ class TestMiniPrometheusScrapeReal:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -228,11 +203,7 @@ class TestMiniPrometheusScrapeReal:
         ).start()
         time.sleep(0.5)
 
-        store = MiniPrometheus(
-            config=MiniPrometheusConfig(
-                retention=timedelta(minutes=60),
-            )
-        )
+        store = make_fake_metric_store()
         store.add_scrape_target(target_id="bad-node", address="http://localhost:19999")
         store.add_scrape_target(target_id="good-node", address=f"http://localhost:{port}")
 
