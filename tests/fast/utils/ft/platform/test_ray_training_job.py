@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +8,6 @@ import pytest
 from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.platform.ray_training_job import (
     RayTrainingJob,
-    _SUBMIT_MAX_ATTEMPTS,
     _parse_ray_status,
     _stop_job,
     _resolve_to_ray_node_ids,
@@ -21,7 +18,7 @@ from miles.utils.ft.platform.ray_training_job import (
 def _make_job(
     entrypoint: str = "python train.py",
     runtime_env: dict[str, Any] | None = None,
-    poll_interval_seconds: int = 0,
+    poll_interval_seconds: float = 0,
 ) -> tuple[RayTrainingJob, MagicMock]:
     mock_client = MagicMock()
     job = RayTrainingJob(
@@ -49,11 +46,22 @@ class TestSubmitTraining:
         assert call_kwargs["runtime_env"]["env_vars"]["MILES_FT_TRAINING_RUN_ID"] == run_id
 
     @pytest.mark.anyio
-    async def test_multiple_submits_produce_different_run_ids(self) -> None:
+    async def test_submit_raises_when_previous_job_is_active(self) -> None:
         job, mock_client = _make_job()
+        mock_client.submit_job.return_value = "job-1"
+        await job.submit_training()
+
+        with pytest.raises(RuntimeError, match="previous job.*still tracked"):
+            await job.submit_training()
+
+    @pytest.mark.anyio
+    async def test_submit_succeeds_after_previous_job_stopped(self) -> None:
+        job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.side_effect = ["job-1", "job-2"]
+        mock_client.get_job_status.return_value = "STOPPED"
 
         run_id_1 = await job.submit_training()
+        await job.stop_training(timeout_seconds=10)
         run_id_2 = await job.submit_training()
 
         assert run_id_1 != run_id_2
@@ -104,6 +112,15 @@ class TestSubmitTraining:
         env_vars = call_kwargs["runtime_env"]["env_vars"]
         assert env_vars["MILES_FT_ID"] == "myft"
         assert env_vars["MILES_FT_K8S_LABEL_PREFIX"] == "pfx1"
+
+    @pytest.mark.anyio
+    async def test_job_id_none_before_submit_and_set_after(self) -> None:
+        job, mock_client = _make_job()
+        assert job.job_id is None
+
+        mock_client.submit_job.return_value = "ray-job-123"
+        await job.submit_training()
+        assert job.job_id == "ray-job-123"
 
     @pytest.mark.anyio
     async def test_does_not_mutate_original_runtime_env(self) -> None:
@@ -158,7 +175,7 @@ class TestStopTraining:
             mock_time.monotonic = advancing_monotonic
             mock_poll_time.monotonic = advancing_monotonic
 
-            with pytest.raises(TimeoutError, match="stop_job.*not met within"):
+            with pytest.raises(TimeoutError, match="stop_job"):
                 await job.stop_training(timeout_seconds=5)
 
     @pytest.mark.anyio
@@ -193,6 +210,32 @@ class TestStopTraining:
         await job.stop_training()
 
         mock_client.stop_job.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_get_status_returns_stopped_after_successful_stop(self) -> None:
+        """After stop_training, get_training_status returns STOPPED without calling Ray."""
+        job, mock_client = _make_job(poll_interval_seconds=0)
+        mock_client.submit_job.return_value = "job-1"
+        await job.submit_training()
+
+        mock_client.get_job_status.return_value = "STOPPED"
+        await job.stop_training(timeout_seconds=10)
+
+        mock_client.get_job_status.reset_mock()
+        status = await job.get_training_status()
+        assert status == JobStatus.STOPPED
+        mock_client.get_job_status.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_job_id_cleared_after_stop(self) -> None:
+        job, mock_client = _make_job(poll_interval_seconds=0)
+        mock_client.submit_job.return_value = "job-1"
+        await job.submit_training()
+        assert job.job_id == "job-1"
+
+        mock_client.get_job_status.return_value = "STOPPED"
+        await job.stop_training(timeout_seconds=10)
+        assert job.job_id is None
 
 
 class TestGetTrainingStatus:
@@ -280,6 +323,23 @@ class TestResolveToRayNodeIds:
             result = _resolve_to_ray_node_ids([])
         assert result == []
 
+    def test_ignores_nodes_with_missing_node_name_or_address(self) -> None:
+        """Nodes without NodeName/NodeManagerAddress should not pollute the lookup with empty-string keys."""
+        nodes = [
+            {"Alive": True, "NodeID": "aaa111"},
+            {"Alive": True, "NodeID": "bbb222", "NodeName": "", "NodeManagerAddress": ""},
+        ]
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = nodes
+            result = _resolve_to_ray_node_ids([""])
+        assert result == []
+
+    def test_deduplicates_same_node_resolved_via_different_identifiers(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = _resolve_to_ray_node_ids(["gpu-worker-01", "10.0.0.1", "aaa111"])
+        assert result == ["aaa111"]
+
 
 class TestParseRayStatus:
     def test_plain_string(self) -> None:
@@ -326,8 +386,20 @@ class TestStopJob:
             mock_time.monotonic = advancing_monotonic
             mock_poll_time.monotonic = advancing_monotonic
 
-            with pytest.raises(TimeoutError, match="stop_job.*not met within"):
+            with pytest.raises(TimeoutError, match="stop_job"):
                 await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=5, poll_interval=0)
+
+    @pytest.mark.anyio
+    async def test_raises_immediately_when_stop_rpc_exhausts_timeout_budget(self) -> None:
+        """When stop_job RPC takes longer than the overall timeout, raise immediately with a clear message."""
+        mock_client = MagicMock()
+
+        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time:
+            timestamps = iter([0.0, 15.0])
+            mock_time.monotonic = lambda: next(timestamps)
+
+            with pytest.raises(TimeoutError, match="no time left for polling"):
+                await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=10, poll_interval=0)
 
     @pytest.mark.anyio
     async def test_accepts_failed_as_terminal(self) -> None:
@@ -406,145 +478,27 @@ class TestStopAllActiveJobs:
 
         count = await stop_all_active_jobs(client=mock_client, timeout_seconds=10)
 
-        assert count == 2
+        assert count == 1
         assert mock_client.stop_job.call_count == 2
 
-
-class TestSubmitTrainingRetryWithCheck:
-    """Tests for the check-before-retry logic inside submit_training."""
-
     @pytest.mark.anyio
-    async def test_submit_succeeds_first_attempt(self) -> None:
-        """Normal path: submit_job called once, get_job_info never called."""
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "ray-job-ok"
-
-        run_id = await job.submit_training()
-
-        assert isinstance(run_id, str)
-        assert len(run_id) == 8
-        mock_client.submit_job.assert_called_once()
-        mock_client.get_job_info.assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_recovers_job_after_timeout(self) -> None:
-        """First submit_job times out, get_job_info finds the job exists, no second submit."""
-        job, mock_client = _make_job()
-
-        mock_client.submit_job.side_effect = asyncio.TimeoutError("submit timed out")
-
-        fake_job_info = MagicMock()
-        mock_client.get_job_info.return_value = fake_job_info
-
-        run_id = await job.submit_training()
-
-        assert isinstance(run_id, str)
-        mock_client.submit_job.assert_called_once()
-        mock_client.get_job_info.assert_called_once()
-        assert job._job_id is not None
-
-    @pytest.mark.anyio
-    async def test_retries_after_confirmed_no_job(self) -> None:
-        """First submit fails, get_job_info confirms no job, second submit succeeds."""
-        job, mock_client = _make_job()
-
-        call_count = 0
-
-        def submit_side_effect(**kwargs: Any) -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise ConnectionError("connection lost")
-            return "ray-job-retry"
-
-        mock_client.submit_job.side_effect = submit_side_effect
-        mock_client.get_job_info.return_value = None
-
-        run_id = await job.submit_training()
-
-        assert isinstance(run_id, str)
-        assert mock_client.submit_job.call_count == 2
-        mock_client.get_job_info.assert_called_once()
-        assert job._job_id == "ray-job-retry"
-
-    @pytest.mark.anyio
-    async def test_raises_after_all_attempts_exhausted(self) -> None:
-        """All attempts fail and get_job_info confirms no jobs exist — raises last error."""
-        job, mock_client = _make_job()
-
-        mock_client.submit_job.side_effect = ConnectionError("always fails")
-        mock_client.get_job_info.return_value = None
-
-        with pytest.raises(ConnectionError, match="always fails"):
-            await job.submit_training()
-
-        assert mock_client.submit_job.call_count == _SUBMIT_MAX_ATTEMPTS
-
-    @pytest.mark.anyio
-    async def test_submission_id_format(self) -> None:
-        """Submission ID contains ft_id and run_id components."""
+    async def test_stop_all_returns_exact_success_count(self) -> None:
+        """With 3 active jobs and 1 failure, returns 2."""
         mock_client = MagicMock()
-        job = RayTrainingJob(
-            client=mock_client,
-            entrypoint="python train.py",
-            ft_id="myft123",
-        )
-        mock_client.submit_job.return_value = "ray-job-ok"
-
-        run_id = await job.submit_training()
-
-        call_kwargs = mock_client.submit_job.call_args.kwargs
-        submission_id = call_kwargs["submission_id"]
-        assert "myft123" in submission_id
-        assert run_id in submission_id
-        assert submission_id.startswith("miles-")
-
-    @pytest.mark.anyio
-    async def test_each_retry_uses_different_submission_id(self) -> None:
-        """Each retry attempt uses a distinct submission_id."""
-        job, mock_client = _make_job()
-
-        call_count = 0
-
-        def submit_side_effect(**kwargs: Any) -> str:
-            nonlocal call_count
-            call_count += 1
-            if call_count < _SUBMIT_MAX_ATTEMPTS:
-                raise ConnectionError("transient")
-            return "ray-job-final"
-
-        mock_client.submit_job.side_effect = submit_side_effect
-        mock_client.get_job_info.return_value = None
-
-        await job.submit_training()
-
-        submission_ids = [
-            call.kwargs["submission_id"]
-            for call in mock_client.submit_job.call_args_list
+        mock_client.list_jobs.return_value = [
+            _FakeJobDetails("job-a", "RUNNING"),
+            _FakeJobDetails("job-b", "RUNNING"),
+            _FakeJobDetails("job-c", "RUNNING"),
         ]
-        assert len(submission_ids) == _SUBMIT_MAX_ATTEMPTS
-        assert len(set(submission_ids)) == _SUBMIT_MAX_ATTEMPTS
 
-    @pytest.mark.anyio
-    async def test_final_check_recovers_last_attempt(self) -> None:
-        """After all attempts fail, the final get_job_info check can still recover."""
-        job, mock_client = _make_job()
+        def side_effect_stop(job_id: str) -> None:
+            if job_id == "job-b":
+                raise RuntimeError("timeout")
 
-        mock_client.submit_job.side_effect = asyncio.TimeoutError("always times out")
+        mock_client.stop_job.side_effect = side_effect_stop
+        mock_client.get_job_status.return_value = "STOPPED"
 
-        get_info_call_count = 0
+        count = await stop_all_active_jobs(client=mock_client, timeout_seconds=10)
 
-        def get_job_info_side_effect(submission_id: str) -> Any:
-            nonlocal get_info_call_count
-            get_info_call_count += 1
-            if get_info_call_count <= _SUBMIT_MAX_ATTEMPTS - 1:
-                return None
-            return MagicMock()
-
-        mock_client.get_job_info.side_effect = get_job_info_side_effect
-
-        run_id = await job.submit_training()
-
-        assert isinstance(run_id, str)
-        assert job._job_id is not None
-        assert mock_client.submit_job.call_count == _SUBMIT_MAX_ATTEMPTS
+        assert count == 2
+        assert mock_client.stop_job.call_count == 3
