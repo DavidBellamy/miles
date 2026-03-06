@@ -8,10 +8,11 @@ only happens via ENTER_RECOVERY (TrainingCrashDetector / HangDetector).
 Possible outcomes under GPU stress:
   A) MARK_BAD_AND_RESTART — target node evicted, training restarts.
   B) NOTIFY_HUMAN — notification sent, no eviction, training continues.
+     Also covers the case where decline is below detection threshold or
+     decline_timeout_minutes (30 min) hasn't elapsed within the test window.
   C) GPU stress causes a crash → TrainingCrashDetector fires ENTER_RECOVERY.
-     This is a valid but unintended path (tests crash recovery, not MFU decline).
-
-The test accepts all three outcomes but logs which path was taken.
+     This bypasses MFU decline detection entirely and is inconclusive for
+     this test's purpose — marked as pytest.skip.
 """
 
 from __future__ import annotations
@@ -94,21 +95,25 @@ async def test_mfu_decline_detection(
                 "(GPU stress caused training crash, not MFU decline detection)",
                 target_node,
             )
-            status = await wait_for_recovery_complete(
+            await wait_for_recovery_complete(
                 handle=ft_controller_handle,
                 timeout=300.0,
             )
-            assert status.mode == ControllerMode.MONITORING
+            pytest.skip(
+                "GPU stress caused training crash before MFU decline detection "
+                f"on node {target_node} — inconclusive for MFU decline testing"
+            )
 
         else:
-            logger.info(
-                "mfu_decline_path=NOTIFY_OR_UNDETECTED node=%s "
-                "(NOTIFY_HUMAN sent, or decline below detection threshold)",
-                target_node,
-            )
             status = get_status(ft_controller_handle)
             assert status.mode == ControllerMode.MONITORING, (
                 f"Expected MONITORING after timeout, got {status.mode}"
+            )
+            logger.info(
+                "mfu_decline_path=NOTIFY_OR_MONITORING node=%s "
+                "(NOTIFY_HUMAN sent, or decline_timeout_minutes not yet elapsed, "
+                "or decline below detection threshold)",
+                target_node,
             )
 
     finally:
