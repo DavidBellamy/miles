@@ -13,7 +13,7 @@ from miles.utils.ft.agents.collectors.kernel_log_reader import (
     KernelLogReader,
     KmsgFileReader,
 )
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import CounterSample, GaugeSample
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,9 @@ def _build_xid_samples(
     current_codes: set[int],
     prev_codes: set[int],
     new_count: int,
-) -> list[MetricSample]:
-    samples = [
-        MetricSample(
+) -> list[GaugeSample | CounterSample]:
+    samples: list[GaugeSample | CounterSample] = [
+        GaugeSample(
             name=mn.XID_CODE_RECENT,
             labels={"xid": str(code)},
             value=1.0,
@@ -55,17 +55,16 @@ def _build_xid_samples(
     ]
 
     for gone_code in prev_codes - current_codes:
-        samples.append(MetricSample(
+        samples.append(GaugeSample(
             name=mn.XID_CODE_RECENT,
             labels={"xid": str(gone_code)},
             value=0.0,
         ))
 
-    samples.append(MetricSample(
+    samples.append(CounterSample(
         name=mn.XID_COUNT_TOTAL,
         labels={},
-        value=float(new_count),
-        metric_type="counter",
+        delta=float(new_count),
     ))
     return samples
 
@@ -79,12 +78,11 @@ def _count_kernel_events(lines: list[str]) -> int:
     return count
 
 
-def _kernel_event_samples(count: int) -> list[MetricSample]:
-    return [MetricSample(
+def _kernel_event_samples(count: int) -> list[CounterSample]:
+    return [CounterSample(
         name=mn.KERNEL_EVENT_COUNT,
         labels={},
-        value=float(count),
-        metric_type="counter",
+        delta=float(count),
     )]
 
 
@@ -117,7 +115,7 @@ class KmsgCollector(BaseCollector):
             self._reader.close()
         await super().close()
 
-    def _collect_sync(self) -> list[MetricSample]:
+    def _collect_sync(self) -> list[GaugeSample | CounterSample]:
         lines = self._read_lines()
         now = datetime.now(timezone.utc)
 

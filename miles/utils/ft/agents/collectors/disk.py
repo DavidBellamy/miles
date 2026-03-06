@@ -6,7 +6,7 @@ from pathlib import Path
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import GaugeSample
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +22,19 @@ class DiskCollector(BaseCollector):
                 "filesystem metrics will not be collected"
             )
 
-    def _collect_sync(self) -> list[MetricSample]:
-        samples: list[MetricSample] = []
+    def _collect_sync(self) -> list[GaugeSample]:
+        samples: list[GaugeSample] = []
         samples.extend(self._collect_disk_avail())
         samples.extend(self._collect_disk_io_time())
         return samples
 
-    def _collect_disk_avail(self) -> list[MetricSample]:
-        samples: list[MetricSample] = []
+    def _collect_disk_avail(self) -> list[GaugeSample]:
+        samples: list[GaugeSample] = []
         for mount in self._disk_mounts:
             try:
                 stat = os.statvfs(mount)
                 available_bytes = stat.f_bavail * stat.f_frsize
-                samples.append(MetricSample(
+                samples.append(GaugeSample(
                     name=mn.NODE_FILESYSTEM_AVAIL_BYTES,
                     labels={"mountpoint": str(mount)},
                     value=float(available_bytes),
@@ -43,25 +43,25 @@ class DiskCollector(BaseCollector):
                 logger.warning("Failed to statvfs %s", mount, exc_info=True)
         return samples
 
-    def _collect_disk_io_time(self) -> list[MetricSample]:
+    def _collect_disk_io_time(self) -> list[GaugeSample]:
         sys_block = Path("/sys/block")
         if not sys_block.exists():
             return []
 
-        samples: list[MetricSample] = []
+        samples: list[GaugeSample] = []
         for device_dir in sorted(sys_block.iterdir()):
             samples.extend(self._collect_single_device_io(device_dir))
         return samples
 
     @staticmethod
-    def _collect_single_device_io(device_dir: Path) -> list[MetricSample]:
+    def _collect_single_device_io(device_dir: Path) -> list[GaugeSample]:
         stat_file = device_dir / "stat"
         try:
             text = stat_file.read_text().strip()
             fields = text.split()
             if len(fields) >= 10:
                 io_time_ms = int(fields[9])
-                return [MetricSample(
+                return [GaugeSample(
                     name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
                     labels={"device": device_dir.name},
                     value=io_time_ms / 1000.0,

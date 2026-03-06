@@ -6,7 +6,7 @@ from types import ModuleType
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import GaugeSample
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class GpuCollector(BaseCollector):
                 logger.warning("nvmlShutdown failed", exc_info=True)
             self._pynvml = None
 
-    def _collect_sync(self) -> list[MetricSample]:
+    def _collect_sync(self) -> list[GaugeSample]:
         pynvml = self._pynvml
         if pynvml is None:
             return []
@@ -41,7 +41,7 @@ class GpuCollector(BaseCollector):
             logger.warning("nvmlDeviceGetCount failed", exc_info=True)
             return []
 
-        samples: list[MetricSample] = []
+        samples: list[GaugeSample] = []
         for index in range(device_count):
             gpu_label = {"gpu": str(index)}
 
@@ -49,10 +49,10 @@ class GpuCollector(BaseCollector):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(index)
             except Exception:
                 logger.warning("Cannot get handle for GPU %d", index, exc_info=True)
-                samples.append(MetricSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=0.0))
+                samples.append(GaugeSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=0.0))
                 continue
 
-            samples.append(MetricSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=1.0))
+            samples.append(GaugeSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=1.0))
             samples.extend(self._collect_temperature(pynvml, handle, gpu_label))
             samples.extend(self._collect_row_remap(pynvml, handle, gpu_label))
             samples.extend(self._collect_pcie_bandwidth(pynvml, handle, gpu_label))
@@ -65,10 +65,10 @@ class GpuCollector(BaseCollector):
         pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
-    ) -> list[MetricSample]:
-        def _query() -> list[MetricSample]:
+    ) -> list[GaugeSample]:
+        def _query() -> list[GaugeSample]:
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-            return [MetricSample(name=mn.DCGM_FI_DEV_GPU_TEMP, labels=gpu_label, value=float(temp))]
+            return [GaugeSample(name=mn.DCGM_FI_DEV_GPU_TEMP, labels=gpu_label, value=float(temp))]
 
         return _safe_nvml_collect(_query, metric_desc="temperature", gpu=gpu_label["gpu"])
 
@@ -77,12 +77,12 @@ class GpuCollector(BaseCollector):
         pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
-    ) -> list[MetricSample]:
-        def _query() -> list[MetricSample]:
+    ) -> list[GaugeSample]:
+        def _query() -> list[GaugeSample]:
             _correctable, _uncorrectable, pending, failure = pynvml.nvmlDeviceGetRemappedRows(handle)
             return [
-                MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_PENDING, labels=gpu_label, value=float(pending)),
-                MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_FAILURE, labels=gpu_label, value=float(failure)),
+                GaugeSample(name=mn.DCGM_FI_DEV_ROW_REMAP_PENDING, labels=gpu_label, value=float(pending)),
+                GaugeSample(name=mn.DCGM_FI_DEV_ROW_REMAP_FAILURE, labels=gpu_label, value=float(failure)),
             ]
 
         return _safe_nvml_collect(_query, metric_desc="row remap", gpu=gpu_label["gpu"])
@@ -92,11 +92,11 @@ class GpuCollector(BaseCollector):
         pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
-    ) -> list[MetricSample]:
-        def _query() -> list[MetricSample]:
+    ) -> list[GaugeSample]:
+        def _query() -> list[GaugeSample]:
             throughput_kb_per_s = pynvml.nvmlDeviceGetPcieThroughput(handle, pynvml.NVML_PCIE_UTIL_TX_BYTES)
             bytes_per_s = throughput_kb_per_s * 1024
-            return [MetricSample(name=mn.DCGM_FI_DEV_PCIE_TX_THROUGHPUT, labels=gpu_label, value=float(bytes_per_s))]
+            return [GaugeSample(name=mn.DCGM_FI_DEV_PCIE_TX_THROUGHPUT, labels=gpu_label, value=float(bytes_per_s))]
 
         return _safe_nvml_collect(_query, metric_desc="PCIe bandwidth", gpu=gpu_label["gpu"])
 
@@ -105,20 +105,20 @@ class GpuCollector(BaseCollector):
         pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
-    ) -> list[MetricSample]:
-        def _query() -> list[MetricSample]:
+    ) -> list[GaugeSample]:
+        def _query() -> list[GaugeSample]:
             rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
-            return [MetricSample(name=mn.DCGM_FI_DEV_GPU_UTIL, labels=gpu_label, value=float(rates.gpu))]
+            return [GaugeSample(name=mn.DCGM_FI_DEV_GPU_UTIL, labels=gpu_label, value=float(rates.gpu))]
 
         return _safe_nvml_collect(_query, metric_desc="utilization", gpu=gpu_label["gpu"])
 
 
 def _safe_nvml_collect(
-    query_fn: Callable[[], list[MetricSample]],
+    query_fn: Callable[[], list[GaugeSample]],
     *,
     metric_desc: str,
     gpu: str,
-) -> list[MetricSample]:
+) -> list[GaugeSample]:
     try:
         return query_fn()
     except Exception:
