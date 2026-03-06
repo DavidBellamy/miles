@@ -199,7 +199,7 @@ def make_test_controller(
         max_count=recovery_cooldown_max_count,
     )
 
-    controller = FtController(
+    controller = FtController.create(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,

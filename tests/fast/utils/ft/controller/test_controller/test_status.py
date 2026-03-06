@@ -261,7 +261,7 @@ class TestDefaultDiagnosticSchedulerWiring:
         rank_registry = RankRegistry(
             mini_wandb=MiniWandb(),
         )
-        controller = FtController(
+        controller = FtController.create(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=make_fake_metric_store(),

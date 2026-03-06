@@ -39,6 +39,33 @@ _ALL_DETECTORS_PASSED = Decision(action=ActionType.NONE, reason="all detectors p
 class FtController:
     def __init__(
         self,
+        *,
+        platform_deps: PlatformDeps,
+        recovery_manager: RecoveryLifecycleManager,
+        rank_registry: RankRegistry,
+        metric_store: MetricStoreProtocol,
+        detectors: list[BaseFaultDetector],
+        tick_interval: float,
+        controller_exporter: ControllerExporter | None,
+        registration_grace_ticks: int,
+    ) -> None:
+        self._training_job = platform_deps.training_job
+        self._metric_store = metric_store
+        self._rank_registry = rank_registry
+        self._mini_wandb = rank_registry.mini_wandb
+        self._detectors = detectors
+        self._tick_interval = tick_interval
+        self._controller_exporter = controller_exporter
+        self._registration_grace_ticks = registration_grace_ticks
+        self._platform_deps = platform_deps
+        self._recovery_manager = recovery_manager
+
+        self._shutting_down: bool = False
+        self._tick_count: int = 0
+
+    @classmethod
+    def create(
+        cls,
         node_manager: NodeManagerProtocol,
         training_job: TrainingJobProtocol,
         metric_store: MetricStoreProtocol,
@@ -50,29 +77,21 @@ class FtController:
         diagnostic_scheduler: DiagnosticSchedulerProtocol | None = None,
         recovery_cooldown: RecoveryCooldown | None = None,
         registration_grace_ticks: int = 5,
-    ) -> None:
-        self._training_job = training_job
-        self._metric_store = metric_store
-        self._rank_registry = rank_registry
-        self._mini_wandb = rank_registry.mini_wandb
-        self._detectors: list[BaseFaultDetector] = detectors or []
-        self._tick_interval = tick_interval
-        self._controller_exporter = controller_exporter
-        self._registration_grace_ticks = registration_grace_ticks
-
+    ) -> FtController:
         resolved_scheduler: DiagnosticSchedulerProtocol = (
             diagnostic_scheduler
             or DiagnosticScheduler(
-                agents=self._rank_registry.agents,
+                agents=rank_registry.agents,
                 pipeline=["gpu"],
-                rank_pids_provider=self._rank_registry.get_rank_pids_for_node,
+                rank_pids_provider=rank_registry.get_rank_pids_for_node,
             )
         )
-        self._platform_deps = PlatformDeps(
+
+        platform_deps = PlatformDeps(
             node_manager=node_manager,
             training_job=training_job,
             metric_store=metric_store,
-            mini_wandb=self._mini_wandb,
+            mini_wandb=rank_registry.mini_wandb,
             notifier=notifier,
             diagnostic_scheduler=resolved_scheduler,
             controller_exporter=controller_exporter,
@@ -83,13 +102,21 @@ class FtController:
             if controller_exporter is not None
             else None
         )
-        self._recovery_manager = RecoveryLifecycleManager(
+        recovery_manager = RecoveryLifecycleManager(
             cooldown=recovery_cooldown or RecoveryCooldown(window_minutes=30.0, max_count=3),
             on_recovery_duration=duration_cb,
         )
 
-        self._shutting_down: bool = False
-        self._tick_count: int = 0
+        return cls(
+            platform_deps=platform_deps,
+            recovery_manager=recovery_manager,
+            rank_registry=rank_registry,
+            metric_store=metric_store,
+            detectors=detectors or [],
+            tick_interval=tick_interval,
+            controller_exporter=controller_exporter,
+            registration_grace_ticks=registration_grace_ticks,
+        )
 
     # ------------------------------------------------------------------
     # Public API

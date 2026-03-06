@@ -45,7 +45,7 @@ class TestControllerPrometheusMode:
         registry, exporter = make_test_exporter()
         prom_client = PrometheusClient(url="http://fake:9090")
 
-        controller = FtController(
+        controller = FtController.create(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(status_sequence=[JobStatus.RUNNING]),
             metric_store=prom_client,
@@ -65,7 +65,7 @@ class TestControllerPrometheusMode:
         _, exporter = make_test_exporter()
         prom_client = PrometheusClient(url="http://fake:9090")
 
-        controller = FtController(
+        controller = FtController.create(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=prom_client,
@@ -85,7 +85,7 @@ class TestControllerPrometheusMode:
         registry, exporter = make_test_exporter()
         mini_wandb = MiniWandb()
 
-        controller = FtController(
+        controller = FtController.create(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=PrometheusClient(url="http://fake:9090"),

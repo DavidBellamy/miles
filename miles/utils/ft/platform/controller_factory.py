@@ -207,7 +207,7 @@ def build_ft_controller(
         config.controller_exporter_port, config.k8s_label_suffix or "(none)",
     )
 
-    return FtController(
+    return FtController.create(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
