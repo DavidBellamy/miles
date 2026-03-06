@@ -228,6 +228,5 @@ class TestExporterModeGauge:
         while harness.controller.recovery_manager.in_progress:
             await harness.controller._tick()
 
-        await harness.controller._tick()
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) == 0.0
