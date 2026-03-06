@@ -68,14 +68,12 @@ async def handle_mark_bad_and_restart(
     if failed_nodes:
         msg = f"mark_node_bad failed for nodes: {failed_nodes}"
         logger.error("mark_bad_partial_failure %s", msg)
-        await safe_notify(
-            deps.notifier, title="Mark-Bad Failure", content=msg,
-        )
 
     restart_ok = await stop_and_submit(deps.training_job, on_new_run=deps.on_new_run)
     if not restart_ok:
         msg = "stop_and_submit failed after mark_bad_and_restart"
         logger.error(msg)
+        # We cannot restart the training job, thus cannot do anything and have to notify human
         await safe_notify(
             deps.notifier, title="Restart Failure", content=msg,
         )
