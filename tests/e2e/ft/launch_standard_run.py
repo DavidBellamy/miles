@@ -1,10 +1,5 @@
 """Launch a standard FT training run for E2E fault-tolerance tests.
-
-Structurally mirrors tests/e2e/short/test_qwen2.5_0.5B_gsm8k_short.py
-but uses ExecuteTrainConfig(full_fault_tolerance=True) so the launcher
-creates an FtController alongside the training job.
-
-Requires MILES_SCRIPT_EXTERNAL_RAY=1 (uses an existing Ray cluster).
+Structurally mirrors tests/e2e/short/test_qwen2.5_0.5B_gsm8k_short.py.
 """
 
 import os
@@ -133,7 +128,7 @@ def execute() -> None:
 
 
 if __name__ == "__main__":
-    assert U.get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), "MILES_SCRIPT_EXTERNAL_RAY must be set"
+    assert U.get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), "must use external Ray"
     prepare()
     for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
         os.environ.pop(proxy_var, None)
