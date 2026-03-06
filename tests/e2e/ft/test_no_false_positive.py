@@ -2,55 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
-
 import ray
-from miles.utils.ft.models import ControllerMode
-from tests.e2e.ft.conftest import get_iteration_count, get_status
 
-logger = logging.getLogger(__name__)
-
-# 10 iterations is a smoke-test level check: sufficient to catch high false-positive
-# rates (>= 20%) with ~90% probability, but not subtle ones.  Increase to ~50 for
-# 95% confidence at the 6% level, or ~300 for the 1% level.
-_TARGET_ITERATIONS = 10
-_POLL_INTERVAL = 5.0
+from tests.fast.utils.ft.helpers.scenarios import scenario_no_false_positive
 
 
 async def test_no_false_positive_during_normal_training(
     ft_controller_handle: ray.actor.ActorHandle,
 ) -> None:
     """Controller should not trigger recovery when training runs normally."""
-    # Step 1: Run iterations with no fault injection
-    baseline = get_iteration_count(ft_controller_handle)
-    recovery_triggered = False
-
-    while True:
-        # Step 2: Check controller never enters RECOVERY
-        status = get_status(ft_controller_handle)
-
-        if status.mode == ControllerMode.RECOVERY:
-            recovery_triggered = True
-            logger.error(
-                "false_positive_detected status=%s iteration=%d",
-                status,
-                get_iteration_count(ft_controller_handle),
-            )
-            break
-
-        current = get_iteration_count(ft_controller_handle)
-        progress = current - baseline
-        if progress >= _TARGET_ITERATIONS:
-            logger.info(
-                "no_false_positive iterations=%d/%d",
-                progress, _TARGET_ITERATIONS,
-            )
-            break
-
-        await asyncio.sleep(_POLL_INTERVAL)
-
-    assert not recovery_triggered, (
-        f"Controller entered recovery during normal training at iteration "
-        f"{get_iteration_count(ft_controller_handle)}: {get_status(ft_controller_handle)}"
+    await scenario_no_false_positive(
+        handle=ft_controller_handle,
+        observation_iterations=10,
+        timeout=120.0,
+        poll_interval=5.0,
     )
