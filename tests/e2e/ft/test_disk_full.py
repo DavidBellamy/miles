@@ -16,17 +16,18 @@ import time
 import pytest
 import ray
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
-    FtSystem,
     assert_phase_path_contains,
+    get_status,
     wait_for_recovery_complete,
     wait_for_training_stable,
 )
 
 logger = logging.getLogger(__name__)
 
-_FILL_SIZE_BYTES = 200 * 1024 * 1024 * 1024  # 200 GB — enough to trigger low disk threshold
+_FILL_SIZE_BYTES = 200 * 1024 * 1024 * 1024  # 200 GB
 _FILL_PATH = "/data/ft_e2e_disk_fill_test"
 
 pytestmark = [
@@ -36,15 +37,13 @@ pytestmark = [
 
 
 async def test_disk_full_eviction(
-    ft_system: FtSystem,
+    ft_controller_handle: ray.actor.ActorHandle,
     fault_injector: FaultInjectorFactory,
     target_node: str,
+    _cleanup_node_manager: K8sNodeManager,
 ) -> None:
-    controller = ft_system.controller
-
     await wait_for_training_stable(
-        controller=controller,
-        mini_wandb=ft_system.mini_wandb,
+        handle=ft_controller_handle,
         n_iterations=5,
         timeout=300.0,
     )
@@ -61,9 +60,8 @@ async def test_disk_full_eviction(
         )
         logger.info("disk_filled path=%s size=%d node=%s", _FILL_PATH, _FILL_SIZE_BYTES, target_node)
 
-        # Wait for HighConfidenceHardwareDetector to trigger MARK_BAD_AND_RESTART
         status = await wait_for_recovery_complete(
-            controller=controller,
+            handle=ft_controller_handle,
             timeout=300.0,
         )
 
@@ -72,27 +70,20 @@ async def test_disk_full_eviction(
 
         assert status.mode == ControllerMode.MONITORING
 
-        # bad_nodes in get_status() reflects _diagnosing_nodes which is
-        # cleared after recovery completes. Check node_manager directly.
-        node_bad = await ft_system.node_manager.get_bad_nodes()
+        node_bad = await _cleanup_node_manager.get_bad_nodes()
         assert target_node in node_bad or any(
             target_node in str(n) for n in node_bad
         ), f"Expected {target_node} in bad nodes, got: {node_bad}"
 
-        # If recovery went through RecoveryOrchestrator (crash detected first),
-        # verify it took the eviction path. If hardware detector fired directly
-        # (MARK_BAD_AND_RESTART without orchestrator), phase_history is None.
-        final_status = controller.get_status()
+        final_status = get_status(ft_controller_handle)
         if final_status.phase_history is not None:
             assert_phase_path_contains(final_status, [
                 RecoveryPhase.EVICT_AND_RESTART,
                 RecoveryPhase.DONE,
             ])
 
-        # Training should recover on remaining healthy nodes
         await wait_for_training_stable(
-            controller=controller,
-            mini_wandb=ft_system.mini_wandb,
+            handle=ft_controller_handle,
             n_iterations=10,
             timeout=300.0,
         )

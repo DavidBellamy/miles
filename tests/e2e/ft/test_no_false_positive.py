@@ -11,8 +11,9 @@ import asyncio
 import logging
 
 import pytest
+import ray
 from miles.utils.ft.models import ControllerMode
-from tests.e2e.ft.conftest import FtSystem, get_iteration_count
+from tests.e2e.ft.conftest import get_iteration_count, get_status
 
 logger = logging.getLogger(__name__)
 
@@ -26,28 +27,25 @@ _POLL_INTERVAL = 5.0
 
 
 async def test_no_false_positive_during_normal_training(
-    ft_system: FtSystem,
+    ft_controller_handle: ray.actor.ActorHandle,
 ) -> None:
     """Controller should not trigger recovery when training runs normally."""
-    controller = ft_system.controller
-    mini_wandb = ft_system.mini_wandb
-
-    baseline = get_iteration_count(mini_wandb=mini_wandb)
+    baseline = get_iteration_count(ft_controller_handle)
     recovery_triggered = False
 
     while True:
-        status = controller.get_status()
+        status = get_status(ft_controller_handle)
 
         if status.mode == ControllerMode.RECOVERY:
             recovery_triggered = True
             logger.error(
                 "false_positive_detected status=%s iteration=%d",
                 status,
-                get_iteration_count(mini_wandb=mini_wandb),
+                get_iteration_count(ft_controller_handle),
             )
             break
 
-        current = get_iteration_count(mini_wandb=mini_wandb)
+        current = get_iteration_count(ft_controller_handle)
         progress = current - baseline
         if progress >= _TARGET_ITERATIONS:
             logger.info(
@@ -60,5 +58,5 @@ async def test_no_false_positive_during_normal_training(
 
     assert not recovery_triggered, (
         f"Controller entered recovery during normal training at iteration "
-        f"{get_iteration_count(mini_wandb=mini_wandb)}: {controller.get_status()}"
+        f"{get_iteration_count(ft_controller_handle)}: {get_status(ft_controller_handle)}"
     )

@@ -19,8 +19,8 @@ import ray
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
-    FtSystem,
     assert_phase_path_contains,
+    get_status,
     wait_for_recovery_complete,
     wait_for_training_stable,
 )
@@ -34,22 +34,18 @@ pytestmark = [
 
 
 async def test_hang_detection_and_recovery(
-    ft_system: FtSystem,
+    ft_controller_handle: ray.actor.ActorHandle,
     fault_injector: FaultInjectorFactory,
     target_node: str,
 ) -> None:
-    controller = ft_system.controller
-
     await wait_for_training_stable(
-        controller=controller,
-        mini_wandb=ft_system.mini_wandb,
+        handle=ft_controller_handle,
         n_iterations=5,
         timeout=300.0,
     )
 
     injector = fault_injector.deploy_to(node_id=target_node)
 
-    # Find and freeze a training process
     procs = ray.get(injector.find_training_processes.remote())
     assert len(procs) > 0, f"No training processes found on {target_node}"
 
@@ -58,10 +54,8 @@ async def test_hang_detection_and_recovery(
     ray.get(injector.stop_process.remote(pid=target_pid))
     logger.info("SIGSTOP sent to pid=%d on node=%s", target_pid, target_node)
 
-    # Wait for HangDetector to trigger ENTER_RECOVERY
-    # HangDetector default threshold is ~5 min, add buffer
     status = await wait_for_recovery_complete(
-        controller=controller,
+        handle=ft_controller_handle,
         timeout=720.0,
         poll_interval=10.0,
     )
@@ -71,7 +65,7 @@ async def test_hang_detection_and_recovery(
 
     assert status.mode == ControllerMode.MONITORING
 
-    final_status = controller.get_status()
+    final_status = get_status(ft_controller_handle)
     assert_phase_path_contains(final_status, [
         RecoveryPhase.CHECK_ALERTS,
         RecoveryPhase.REATTEMPTING,
@@ -79,10 +73,8 @@ async def test_hang_detection_and_recovery(
         RecoveryPhase.DONE,
     ])
 
-    # Wait for training to stabilize post-recovery
     await wait_for_training_stable(
-        controller=controller,
-        mini_wandb=ft_system.mini_wandb,
+        handle=ft_controller_handle,
         n_iterations=10,
         timeout=300.0,
     )

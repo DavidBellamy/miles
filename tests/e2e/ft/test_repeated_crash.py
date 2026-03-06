@@ -18,8 +18,8 @@ import ray
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
-    FtSystem,
     assert_phase_path_contains,
+    get_status,
     wait_for_mode_transition,
     wait_for_recovery_complete,
     wait_for_recovery_phase,
@@ -33,15 +33,12 @@ pytestmark = [
 
 
 async def test_repeated_crash_enters_diagnosing(
-    ft_system: FtSystem,
+    ft_controller_handle: ray.actor.ActorHandle,
     fault_injector: FaultInjectorFactory,
     target_node: str,
 ) -> None:
-    controller = ft_system.controller
-
     await wait_for_training_stable(
-        controller=controller,
-        mini_wandb=ft_system.mini_wandb,
+        handle=ft_controller_handle,
         n_iterations=5,
         timeout=300.0,
     )
@@ -53,10 +50,8 @@ async def test_repeated_crash_enters_diagnosing(
     assert len(procs) > 0
     ray.get(injector.kill_process.remote(pid=procs[0]["pid"], sig=9))
 
-    # Wait for Controller to leave monitoring (recovery) then return to monitoring.
-    # Using wait_for_mode_transition avoids matching the pre-injection state.
     await wait_for_mode_transition(
-        controller=controller,
+        handle=ft_controller_handle,
         target_mode=ControllerMode.MONITORING,
         timeout=180.0,
     )
@@ -71,17 +66,15 @@ async def test_repeated_crash_enters_diagnosing(
     assert len(procs) > 0, "No training processes found for second kill"
     ray.get(injector.kill_process.remote(pid=procs[0]["pid"], sig=9))
 
-    # Wait for Controller to enter DIAGNOSING
     status = await wait_for_recovery_phase(
-        controller=controller,
+        handle=ft_controller_handle,
         phase=RecoveryPhase.DIAGNOSING,
         timeout=180.0,
     )
     assert status.recovery_phase == RecoveryPhase.DIAGNOSING
 
-    # Wait for recovery to complete (with stub scheduler → NOTIFY → DONE)
     final_status = await wait_for_recovery_complete(
-        controller=controller,
+        handle=ft_controller_handle,
         timeout=300.0,
     )
     assert final_status.mode == ControllerMode.MONITORING

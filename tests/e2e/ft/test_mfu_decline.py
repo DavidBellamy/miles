@@ -22,10 +22,11 @@ import time
 import pytest
 import ray
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
-    FtSystem,
     assert_phase_path_contains,
+    get_status,
     wait_for_recovery_complete,
     wait_for_training_stable,
 )
@@ -39,21 +40,17 @@ pytestmark = [
 
 
 async def test_mfu_decline_detection(
-    ft_system: FtSystem,
+    ft_controller_handle: ray.actor.ActorHandle,
     fault_injector: FaultInjectorFactory,
     target_node: str,
+    _cleanup_node_manager: K8sNodeManager,
 ) -> None:
-    controller = ft_system.controller
-
-    # Wait for MFU baseline to stabilize
     await wait_for_training_stable(
-        controller=controller,
-        mini_wandb=ft_system.mini_wandb,
+        handle=ft_controller_handle,
         n_iterations=20,
         timeout=600.0,
     )
 
-    # Deploy fault injector and start GPU stress
     injector = fault_injector.deploy_to(node_id=target_node)
     stress_pid = ray.get(injector.start_gpu_stress.remote())
     logger.info("gpu_stress_started pid=%d node=%s", stress_pid, target_node)
@@ -65,7 +62,7 @@ async def test_mfu_decline_detection(
         detected = False
 
         while time.monotonic() < deadline:
-            status = controller.get_status()
+            status = get_status(ft_controller_handle)
             if status.mode == ControllerMode.RECOVERY:
                 detected = True
                 logger.info("mfu_decline_detected status=%s", status)
@@ -75,13 +72,13 @@ async def test_mfu_decline_detection(
         assert detected, f"MfuDeclineDetector did not trigger within {timeout}s"
 
         final_status = await wait_for_recovery_complete(
-            controller=controller,
+            handle=ft_controller_handle,
             timeout=300.0,
         )
         assert final_status.mode == ControllerMode.MONITORING
         assert final_status.phase_history is not None
 
-        bad_nodes = await ft_system.node_manager.get_bad_nodes()
+        bad_nodes = await _cleanup_node_manager.get_bad_nodes()
         evicted = target_node in bad_nodes or any(target_node in str(n) for n in bad_nodes)
 
     finally:
@@ -95,8 +92,7 @@ async def test_mfu_decline_detection(
         ])
 
         await wait_for_training_stable(
-            controller=controller,
-            mini_wandb=ft_system.mini_wandb,
+            handle=ft_controller_handle,
             n_iterations=10,
             timeout=300.0,
         )
@@ -107,7 +103,7 @@ async def test_mfu_decline_detection(
             RecoveryPhase.DONE,
         ])
 
-        post_bad = await ft_system.node_manager.get_bad_nodes()
+        post_bad = await _cleanup_node_manager.get_bad_nodes()
         assert target_node not in post_bad, (
             f"Notify path should not mark nodes bad, but {target_node} found in {post_bad}"
         )
