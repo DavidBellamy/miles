@@ -220,7 +220,6 @@ class TestMfuDeclineBaselineLocking:
 
         detector.evaluate(make_detector_context(mini_wandb=wandb))
 
-        assert detector._baseline_locked is True
         assert detector._locked_baseline is not None
         assert abs(detector._locked_baseline - 0.5) < 1e-6
 
@@ -255,7 +254,6 @@ class TestMfuDeclineBaselineLocking:
         wandb = _make_wandb_with_mfu([0.45] * 10)
         detector.evaluate(make_detector_context(mini_wandb=wandb))
 
-        assert detector._baseline_locked is False
         assert detector._locked_baseline is None
 
 

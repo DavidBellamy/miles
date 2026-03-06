@@ -27,7 +27,7 @@ class RecoveryLifecycleManager:
         self._on_recovery_duration = on_recovery_duration
 
         self._orchestrator: RecoveryOrchestrator | None = None
-        self._start_time: float | None = None
+        self._start_time: float = 0.0
         self._diagnosing_nodes: set[str] = set()
         self._last_phase_history: list[RecoveryPhase] | None = None
 
@@ -136,11 +136,7 @@ class RecoveryLifecycleManager:
 
     def _complete_recovery(self) -> None:
         assert self._orchestrator is not None
-        recovery_elapsed = (
-            time.monotonic() - self._start_time
-            if self._start_time is not None
-            else 0.0
-        )
+        recovery_elapsed = time.monotonic() - self._start_time
         logger.info(
             "recovery_complete trigger=%s duration_seconds=%.1f",
             self._orchestrator.trigger, recovery_elapsed,
@@ -151,5 +147,5 @@ class RecoveryLifecycleManager:
 
         self._last_phase_history = list(self._orchestrator.phase_history)
         self._orchestrator = None
-        self._start_time = None
+        self._start_time = 0.0
         self._diagnosing_nodes.clear()

@@ -247,19 +247,6 @@ class TestStepMonitoring:
 
         assert result is None
 
-    @pytest.mark.anyio
-    async def test_no_reattempt_start_time_skips_timeout_check(self) -> None:
-        """When reattempt_start_time is None, timeout check is skipped."""
-        ctx = _make_ctx(monitoring_success_iterations=100, monitoring_timeout_seconds=1)
-        ctx.reattempt_start_time = None
-        ctx.reattempt_base_iteration = 0
-        training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
-        mini_wandb = _make_mini_wandb_with_iteration(5.0)
-
-        result = await step_monitoring(ctx, training_job, mini_wandb)
-
-        assert result is None
-
 
 # ===================================================================
 # step_diagnosing

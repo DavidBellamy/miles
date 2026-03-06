@@ -320,7 +320,7 @@ class FtController:
         if decision.action == ActionType.NONE:
             return
 
-        trigger_str = decision.trigger.value if decision.trigger else "unknown"
+        trigger_str = decision.trigger.value
         logger.info(
             "decision_event decision_action=%s trigger=%s bad_node_ids=%s run_id=%s tick=%d",
             decision.action.value, trigger_str, decision.bad_node_ids,
@@ -377,7 +377,7 @@ class FtController:
     # Service lifecycle
     # ------------------------------------------------------------------
 
-    async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
+    async def _stop_services(self, scrape_task: asyncio.Task[None]) -> None:
         await stop_metric_store_task(self._metric_store, scrape_task)
         if self._controller_exporter is not None:
             self._controller_exporter.stop()

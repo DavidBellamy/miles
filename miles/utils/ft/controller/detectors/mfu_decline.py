@@ -47,7 +47,6 @@ class MfuDeclineDetector(BaseFaultDetector):
         self._baseline_steps = baseline_steps
         self._mfu_absolute_minimum = mfu_absolute_minimum
 
-        self._baseline_locked: bool = False
         self._locked_baseline: float | None = None
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
@@ -126,7 +125,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         if self._mfu_baseline > 0:
             return self._mfu_baseline
 
-        if self._baseline_locked and self._locked_baseline is not None:
+        if self._locked_baseline is not None:
             return self._locked_baseline
 
         total_needed = self._baseline_steps + self._consecutive_steps
@@ -139,7 +138,6 @@ class MfuDeclineDetector(BaseFaultDetector):
         baseline = sum(v for _, v in baseline_data) / len(baseline_data)
 
         self._locked_baseline = baseline
-        self._baseline_locked = True
         logger.info("MFU baseline locked at %.4f from %d steps", baseline, len(baseline_data))
 
         return baseline

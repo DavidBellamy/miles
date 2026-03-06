@@ -33,7 +33,7 @@ class RankRegistry:
         world_size: int,
         node_id: str,
         exporter_address: str,
-        pid: int | None = None,
+        pid: int,
     ) -> None:
         if run_id != self.run_id:
             logger.warning(
@@ -44,8 +44,7 @@ class RankRegistry:
         _validate_rank(rank=rank, world_size=world_size, node_id=node_id)
         self.expected_world_size = world_size
         self.rank_placement[rank] = node_id
-        if pid is not None:
-            self.rank_pids[rank] = pid
+        self.rank_pids[rank] = pid
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
             run_id, rank, world_size, node_id,
@@ -60,7 +59,7 @@ class RankRegistry:
         return {
             rank: self.rank_pids[rank]
             for rank, nid in self.rank_placement.items()
-            if nid == node_id and rank in self.rank_pids
+            if nid == node_id
         }
 
     def warn_if_incomplete(self) -> None:

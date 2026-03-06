@@ -36,6 +36,7 @@ _VALID_KWARGS: dict = dict(
     world_size=2,
     node_id="node-0",
     exporter_address="http://node-0:9090",
+    pid=1,
 )
 
 
@@ -102,24 +103,6 @@ class TestRunIdMatching:
         assert registry.rank_placement == {}
 
 
-class TestRegisterTrainingRankStalePid:
-    """Verify that re-registering a rank without pid does not retain the old pid."""
-
-    @pytest.mark.xfail(
-        reason="Known issue: rank_pids not cleared when re-registering without pid on new node",
-        strict=True,
-    )
-    def test_reregister_same_run_without_pid_clears_old_pid(self) -> None:
-        registry = _make_registry()
-        registry.register_training_rank(**_VALID_KWARGS, pid=1234)
-        assert registry.rank_pids == {0: 1234}
-
-        registry.register_training_rank(**{**_VALID_KWARGS, "node_id": "node-0-new"})
-        assert 0 not in registry.rank_pids, (
-            "Old pid should be cleared when rank re-registers without pid"
-        )
-
-
 # ===================================================================
 # register_training_rank happy path
 # ===================================================================
@@ -151,12 +134,6 @@ class TestRegisterTrainingRankHappyPath:
         assert registry.rank_pids == {0: 10, 1: 20}
         assert registry.expected_world_size == 2
 
-    def test_pid_none_not_recorded(self) -> None:
-        registry = _make_registry()
-        registry.register_training_rank(**_VALID_KWARGS)
-
-        assert 0 not in registry.rank_pids
-        assert registry.rank_placement == {0: "node-0"}
 
 
 # ===================================================================
@@ -183,11 +160,11 @@ class TestScrapeTargetManager:
 
         registry.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            node_id="node-0", exporter_address="http://node-0:9090", pid=10,
         )
         registry.register_training_rank(
             run_id="run-1", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            node_id="node-1", exporter_address="http://node-1:9090", pid=20,
         )
         assert len(stm.targets) == 2
 
@@ -231,17 +208,3 @@ class TestGetRankPidsForNode:
 
         assert registry.get_rank_pids_for_node("node-X") == {}
 
-    def test_ranks_without_pids_excluded(self) -> None:
-        registry = _make_registry()
-        registry.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-A", exporter_address="addr",
-        )
-        registry.register_training_rank(
-            run_id="run-1", rank=1, world_size=2,
-            node_id="node-A", exporter_address="addr", pid=42,
-        )
-
-        result = registry.get_rank_pids_for_node("node-A")
-
-        assert result == {1: 42}

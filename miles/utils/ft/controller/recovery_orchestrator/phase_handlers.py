@@ -104,11 +104,10 @@ async def _reattempt_poll(
         logger.warning("reattempt_immediately_failed trigger=%s", ctx.trigger)
         return RecoveryPhase.DIAGNOSING
 
-    if ctx.reattempt_submit_time is not None:
-        elapsed = (datetime.now(timezone.utc) - ctx.reattempt_submit_time).total_seconds()
-        if elapsed > PENDING_TIMEOUT_SECONDS:
-            logger.warning("reattempt_pending_timeout elapsed=%.0f", elapsed)
-            return RecoveryPhase.NOTIFY
+    elapsed = (datetime.now(timezone.utc) - ctx.reattempt_submit_time).total_seconds()
+    if elapsed > PENDING_TIMEOUT_SECONDS:
+        logger.warning("reattempt_pending_timeout elapsed=%.0f", elapsed)
+        return RecoveryPhase.NOTIFY
 
     return None
 
@@ -140,11 +139,10 @@ async def step_monitoring(
         )
         return RecoveryPhase.DONE
 
-    if ctx.reattempt_start_time is not None:
-        elapsed = (datetime.now(timezone.utc) - ctx.reattempt_start_time).total_seconds()
-        if elapsed > ctx.monitoring_timeout_seconds:
-            logger.warning("monitoring_timeout elapsed=%.0f trigger=%s", elapsed, ctx.trigger)
-            return RecoveryPhase.DIAGNOSING
+    elapsed = (datetime.now(timezone.utc) - ctx.reattempt_start_time).total_seconds()
+    if elapsed > ctx.monitoring_timeout_seconds:
+        logger.warning("monitoring_timeout elapsed=%.0f trigger=%s", elapsed, ctx.trigger)
+        return RecoveryPhase.DIAGNOSING
 
     return None
 
@@ -245,7 +243,7 @@ async def step_notify(
     message = (
         f"Recovery requires human intervention. "
         f"trigger={ctx.trigger} "
-        f"phase_before_notify={prev.value if prev else 'unknown'}"
+        f"phase_before_notify={prev.value}"
     )
     logger.warning("recovery_notify reason=%s", message)
 
