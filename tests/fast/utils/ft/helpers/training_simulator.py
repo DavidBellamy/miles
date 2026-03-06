@@ -19,8 +19,10 @@ from uuid import uuid4
 
 import ray
 
+from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
+from miles.utils.ft.models.metrics import MetricSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,7 @@ class TrainingStateActor:
         self._stop_called: bool = False
         self._excluded_node_ids: list[str] = []
         self._hung: bool = False
+        self._custom_log_metrics: dict[str, float] = {}
 
     def get_status(self) -> str:
         return self._status
@@ -56,6 +59,7 @@ class TrainingStateActor:
         self._status = JobStatus.RUNNING.value
         self._stop_called = False
         self._hung = False
+        self._custom_log_metrics = {}
         self._excluded_node_ids = excluded_node_ids or []
         return self._run_id
 
@@ -77,6 +81,12 @@ class TrainingStateActor:
 
     def get_hung(self) -> bool:
         return self._hung
+
+    def set_custom_log_metrics(self, metrics: dict[str, float]) -> None:
+        self._custom_log_metrics = metrics
+
+    def get_custom_log_metrics(self) -> dict[str, float]:
+        return self._custom_log_metrics
 
 
 class RemoteControlledTrainingJob:
@@ -201,10 +211,13 @@ class TrainingWorkerActor:
 
                 if self._controller_handle is not None:
                     try:
+                        custom: dict[str, float] = await self._state_actor.get_custom_log_metrics.remote()
+                        metrics: dict[str, float] = {"iteration": float(self._iteration)}
+                        metrics.update(custom)
                         self._controller_handle.log_step.remote(
                             run_id=self._current_run_id,
                             step=self._iteration,
-                            metrics={"iteration": float(self._iteration)},
+                            metrics=metrics,
                         )
                     except Exception:
                         logger.debug("log_step failed", exc_info=True)
@@ -214,3 +227,40 @@ class TrainingWorkerActor:
                     self._shutdown_agent()
 
             await asyncio.sleep(self._step_interval)
+
+
+@ray.remote(num_cpus=0, num_gpus=0)
+class CollectorStateActor:
+    """Shared metric state for RemoteControlledCollector.
+
+    Tests call set_metrics() to inject hardware metrics (GPU unavailable,
+    XID errors, NIC down, etc.) that node agents will scrape.
+    """
+
+    def __init__(self) -> None:
+        self._metrics: list[MetricSample] = []
+
+    def set_metrics(self, metrics: list[MetricSample]) -> None:
+        self._metrics = metrics
+
+    def get_metrics(self) -> list[MetricSample]:
+        return self._metrics
+
+
+class RemoteControlledCollector(BaseCollector):
+    """Collector that reads metrics from a CollectorStateActor.
+
+    Allows tests to dynamically inject/update node-level hardware
+    metrics at runtime without real hardware.
+    """
+
+    def __init__(
+        self,
+        state_actor: ray.actor.ActorHandle,
+        collect_interval: float = 1.0,
+    ) -> None:
+        self.collect_interval = collect_interval
+        self._state = state_actor
+
+    def _collect_sync(self) -> list[MetricSample]:
+        return ray.get(self._state.get_metrics.remote())

@@ -27,6 +27,14 @@ class FaultInjectionProtocol(Protocol):
         """Simulate a training hang (job reports RUNNING but iteration stalls)."""
         ...
 
+    async def inject_nan_loss(self) -> None:
+        """Inject loss=NaN into training worker's log_step metrics."""
+        ...
+
+    async def clear_nan_loss(self) -> None:
+        """Remove injected NaN loss, returning to normal metrics."""
+        ...
+
 
 class LocalRayFaultInjector:
     """Fault injector for local_ray tests.
@@ -52,3 +60,9 @@ class LocalRayFaultInjector:
         """
         await self._state.set_status.remote(JobStatus.RUNNING.value)
         await self._state.set_hung.remote(True)
+
+    async def inject_nan_loss(self) -> None:
+        await self._state.set_custom_log_metrics.remote({"loss": float("nan")})
+
+    async def clear_nan_loss(self) -> None:
+        await self._state.set_custom_log_metrics.remote({})
