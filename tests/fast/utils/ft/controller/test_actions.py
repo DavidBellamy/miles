@@ -1,11 +1,17 @@
-"""Tests for controller/actions.py — handle_mark_bad_and_restart failure paths."""
+"""Tests for controller/actions.py."""
 from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.controller.actions import PlatformDeps, handle_mark_bad_and_restart
+from miles.utils.ft.controller.actions import (
+    PlatformDeps,
+    handle_enter_recovery,
+    handle_mark_bad_and_restart,
+    handle_notify_human,
+)
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models._fault import TriggerType
 from tests.fast.utils.ft.conftest import (
     FakeDiagnosticScheduler,
     FakeNodeManager,
@@ -14,11 +20,16 @@ from tests.fast.utils.ft.conftest import (
 )
 
 
-def _make_decision(bad_node_ids: list[str]) -> Decision:
+def _make_decision(
+    bad_node_ids: list[str],
+    action: ActionType = ActionType.MARK_BAD_AND_RESTART,
+    trigger: TriggerType | None = None,
+) -> Decision:
     return Decision(
-        action=ActionType.MARK_BAD_AND_RESTART,
+        action=action,
         bad_node_ids=bad_node_ids,
         reason="test fault",
+        trigger=trigger,
     )
 
 
@@ -38,6 +49,48 @@ def _make_deps(
         diagnostic_scheduler=FakeDiagnosticScheduler(),
         controller_exporter=None,
     )
+
+
+# ===================================================================
+# handle_mark_bad_and_restart
+# ===================================================================
+
+
+class TestMarkBadHappyPath:
+    """All mark_node_bad calls succeed and restart succeeds."""
+
+    @pytest.mark.anyio
+    async def test_marks_all_nodes_and_restarts(self) -> None:
+        node_manager = FakeNodeManager()
+        training_job = FakeTrainingJob()
+        notifier = FakeNotifier()
+        deps = _make_deps(
+            node_manager=node_manager, training_job=training_job, notifier=notifier,
+        )
+
+        await handle_mark_bad_and_restart(
+            decision=_make_decision(bad_node_ids=["node-0", "node-1"]),
+            deps=deps,
+        )
+
+        assert node_manager.is_node_bad("node-0")
+        assert node_manager.is_node_bad("node-1")
+        assert training_job._submitted
+        assert len(notifier.calls) == 0
+
+    @pytest.mark.anyio
+    async def test_empty_bad_nodes_still_restarts(self) -> None:
+        training_job = FakeTrainingJob()
+        notifier = FakeNotifier()
+        deps = _make_deps(training_job=training_job, notifier=notifier)
+
+        await handle_mark_bad_and_restart(
+            decision=_make_decision(bad_node_ids=[]),
+            deps=deps,
+        )
+
+        assert training_job._submitted
+        assert len(notifier.calls) == 0
 
 
 class TestMarkBadPartialFailure:
@@ -186,3 +239,69 @@ class TestMarkBadWithoutNotifier:
         )
 
         assert training_job._submitted
+
+
+# ===================================================================
+# handle_enter_recovery
+# ===================================================================
+
+
+class TestHandleEnterRecovery:
+    @pytest.mark.anyio
+    async def test_returns_orchestrator_with_correct_trigger(self) -> None:
+        deps = _make_deps()
+        decision = _make_decision(
+            bad_node_ids=[],
+            action=ActionType.ENTER_RECOVERY,
+            trigger=TriggerType.HANG,
+        )
+
+        orchestrator = await handle_enter_recovery(decision=decision, deps=deps)
+
+        assert orchestrator.trigger == TriggerType.HANG
+
+    @pytest.mark.anyio
+    async def test_passes_deps_through(self) -> None:
+        node_manager = FakeNodeManager()
+        notifier = FakeNotifier()
+        deps = _make_deps(node_manager=node_manager, notifier=notifier)
+        decision = _make_decision(
+            bad_node_ids=[],
+            action=ActionType.ENTER_RECOVERY,
+            trigger=TriggerType.CRASH,
+        )
+
+        orchestrator = await handle_enter_recovery(decision=decision, deps=deps)
+
+        assert orchestrator is not None
+
+
+# ===================================================================
+# handle_notify_human
+# ===================================================================
+
+
+class TestHandleNotifyHuman:
+    @pytest.mark.anyio
+    async def test_sends_notification(self) -> None:
+        notifier = FakeNotifier()
+        decision = Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="something bad happened",
+        )
+
+        await handle_notify_human(decision=decision, notifier=notifier)
+
+        assert len(notifier.calls) == 1
+        title, content, _ = notifier.calls[0]
+        assert title == "Fault Alert"
+        assert "something bad happened" in content
+
+    @pytest.mark.anyio
+    async def test_none_notifier_does_not_crash(self) -> None:
+        decision = Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="should not crash",
+        )
+
+        await handle_notify_human(decision=decision, notifier=None)
