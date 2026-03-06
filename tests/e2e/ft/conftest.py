@@ -13,8 +13,9 @@ import logging
 import os
 import threading
 import time
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 import pytest
 import ray
@@ -26,6 +27,8 @@ from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 _EXPECTED_CLUSTER_NODES = 3
 _ACTOR_POLL_INTERVAL: float = 5.0
@@ -257,29 +260,47 @@ def get_iteration_count(handle: ray.actor.ActorHandle) -> int:
 # ---------------------------------------------------------------------------
 
 
+async def _poll_until(
+    poll_fn: Callable[[], _T],
+    done: Callable[[_T], bool],
+    timeout: float,
+    poll_interval: float,
+    description: str,
+    *,
+    deadline: float | None = None,
+) -> _T:
+    """Generic deadline-based polling loop with periodic logging."""
+    if deadline is None:
+        deadline = time.monotonic() + timeout
+
+    poll_count = 0
+    while time.monotonic() < deadline:
+        value = poll_fn()
+        poll_count += 1
+        if done(value):
+            return value
+        if poll_count % 6 == 0:
+            elapsed = timeout - (deadline - time.monotonic())
+            logger.info("%s elapsed=%.0fs value=%s", description, elapsed, value)
+        await asyncio.sleep(poll_interval)
+
+    raise TimeoutError(
+        f"{description} did not complete within {timeout}s, last value: {poll_fn()}"
+    )
+
+
 async def wait_for_recovery_complete(
     handle: ray.actor.ActorHandle,
     timeout: float = 300.0,
     poll_interval: float = 5.0,
 ) -> ControllerStatus:
     """Poll get_status() until mode returns to MONITORING."""
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        poll_count += 1
-        if status.mode == ControllerMode.MONITORING:
-            return status
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_recovery_complete elapsed=%.0fs status=%s",
-                elapsed, status,
-            )
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(
-        f"Recovery did not complete within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await _poll_until(
+        poll_fn=lambda: get_status(handle),
+        done=lambda s: s.mode == ControllerMode.MONITORING,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description="wait_for_recovery_complete",
     )
 
 
@@ -291,24 +312,12 @@ async def wait_for_training_stable(
 ) -> None:
     """Poll controller for N consecutive successful iterations."""
     baseline = get_iteration_count(handle)
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        current = get_iteration_count(handle)
-        poll_count += 1
-        if current - baseline >= n_iterations:
-            return
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_training_stable elapsed=%.0fs progress=%d/%d",
-                elapsed, current - baseline, n_iterations,
-            )
-        await asyncio.sleep(poll_interval)
-    current = get_iteration_count(handle)
-    raise TimeoutError(
-        f"Training did not stabilize: need {n_iterations} iterations, "
-        f"got {current - baseline} in {timeout}s"
+    await _poll_until(
+        poll_fn=lambda: get_iteration_count(handle),
+        done=lambda current: current - baseline >= n_iterations,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"wait_for_training_stable(n={n_iterations})",
     )
 
 
@@ -319,23 +328,12 @@ async def wait_for_recovery_phase(
     poll_interval: float = 5.0,
 ) -> ControllerStatus:
     """Poll get_status() until recovery_phase matches."""
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        poll_count += 1
-        if status.recovery_phase == phase:
-            return status
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_recovery_phase target='%s' elapsed=%.0fs status=%s",
-                phase, elapsed, status,
-            )
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(
-        f"Did not reach recovery phase '{phase}' within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await _poll_until(
+        poll_fn=lambda: get_status(handle),
+        done=lambda s: s.recovery_phase == phase,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"wait_for_recovery_phase(target={phase})",
     )
 
 
@@ -352,30 +350,22 @@ async def wait_for_mode_transition(
     """
     deadline = time.monotonic() + timeout
 
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        if status.mode != target_mode:
-            logger.info(
-                "wait_for_mode_transition mode left '%s' → '%s'",
-                target_mode, status.mode,
-            )
-            break
-        await asyncio.sleep(poll_interval)
-    else:
-        raise TimeoutError(
-            f"Mode never left '{target_mode}' within {timeout}s, "
-            f"last status: {get_status(handle)}"
-        )
+    await _poll_until(
+        poll_fn=lambda: get_status(handle),
+        done=lambda s: s.mode != target_mode,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"wait_for_mode_transition(leave {target_mode})",
+        deadline=deadline,
+    )
 
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        if status.mode == target_mode:
-            return status
-        await asyncio.sleep(poll_interval)
-
-    raise TimeoutError(
-        f"Mode did not return to '{target_mode}' within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await _poll_until(
+        poll_fn=lambda: get_status(handle),
+        done=lambda s: s.mode == target_mode,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"wait_for_mode_transition(return to {target_mode})",
+        deadline=deadline,
     )
 
 
