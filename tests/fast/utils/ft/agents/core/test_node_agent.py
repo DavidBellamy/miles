@@ -195,9 +195,9 @@ class TestFtNodeAgentCollectionLoop:
         )
         await agent.start()
 
-        assert len(agent._metric_collection_loop.tasks) == 1
+        assert len(agent._collection_loop.tasks) == 1
         await agent.stop()
-        assert len(agent._metric_collection_loop.tasks) == 0
+        assert len(agent._collection_loop.tasks) == 0
 
     @pytest.mark.anyio
     async def test_failing_collector_does_not_crash_loop(self, make_node_agent: MakeNodeAgent) -> None:
@@ -231,8 +231,8 @@ class TestFtNodeAgentCollectionLoop:
         await agent.start()
         await asyncio.sleep(0.3)
 
-        assert len(agent._metric_collection_loop.tasks) == 2
-        assert all(not t.done() for t in agent._metric_collection_loop.tasks)
+        assert len(agent._collection_loop.tasks) == 2
+        assert all(not t.done() for t in agent._collection_loop.tasks)
 
         address = agent.get_exporter_address()
         async with httpx.AsyncClient() as client:
@@ -311,10 +311,10 @@ class TestFtNodeAgentLifecycle:
             collectors=[test_collector],
         )
         await agent.start()
-        first_tasks = list(agent._metric_collection_loop.tasks)
+        first_tasks = list(agent._collection_loop.tasks)
         await agent.start()
 
-        assert agent._metric_collection_loop.tasks == first_tasks
+        assert agent._collection_loop.tasks == first_tasks
 
     @pytest.mark.anyio
     async def test_stop_without_start(self) -> None:
@@ -335,7 +335,7 @@ class TestFtNodeAgentLifecycle:
     async def test_start_with_empty_collectors(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-empty-collectors", collectors=[])
         await agent.start()
-        assert len(agent._metric_collection_loop.tasks) == 0
+        assert len(agent._collection_loop.tasks) == 0
 
     @pytest.mark.anyio
     async def test_stop_calls_close_on_all_collectors(self) -> None:
@@ -427,42 +427,30 @@ class TestFtNodeAgentDiagnostics:
         assert r2.passed is False
 
 
-class TestFtNodeAgentSetRemoveDiagnostic:
+class TestFtNodeAgentKwargsPassthrough:
     @pytest.mark.anyio
-    async def test_set_diagnostic_makes_type_available(self, make_node_agent: MakeNodeAgent) -> None:
-        agent = make_node_agent(node_id="test-set-diag")
-        new_diag = StubDiagnostic(passed=True, details="dynamically added", diagnostic_type="dynamic")
-        agent.set_diagnostic(new_diag)
+    async def test_kwargs_forwarded_to_diagnostic_run(self, make_node_agent: MakeNodeAgent) -> None:
+        """run_diagnostic passes **kwargs through to diagnostic.run()."""
+        received_kwargs: dict[str, object] = {}
 
-        result = await agent.run_diagnostic("dynamic")
-        assert result.passed is True
-        assert result.details == "dynamically added"
+        class _CapturingDiagnostic(StubDiagnostic):
+            async def run(
+                self, node_id: str, timeout_seconds: int = 120, **kwargs: object,
+            ) -> DiagnosticResult:
+                received_kwargs.update(kwargs)
+                return await super().run(node_id=node_id, timeout_seconds=timeout_seconds)
 
-    @pytest.mark.anyio
-    async def test_set_diagnostic_replaces_existing(self, make_node_agent: MakeNodeAgent) -> None:
-        original = StubDiagnostic(passed=True, details="original")
-        agent = make_node_agent(node_id="test-replace-diag", diagnostics=[original])
-        replacement = StubDiagnostic(passed=False, details="replaced")
-        agent.set_diagnostic(replacement)
+        agent = make_node_agent(
+            node_id="test-kwargs",
+            diagnostics=[_CapturingDiagnostic(passed=True)],
+        )
+        await agent.run_diagnostic("stub", master_addr="10.0.0.1", master_port=29500)
 
-        result = await agent.run_diagnostic("stub")
-        assert result.passed is False
-        assert result.details == "replaced"
+        assert received_kwargs["master_addr"] == "10.0.0.1"
+        assert received_kwargs["master_port"] == 29500
 
-    @pytest.mark.anyio
-    async def test_remove_diagnostic_makes_type_unavailable(self, make_node_agent: MakeNodeAgent) -> None:
-        diag = StubDiagnostic(passed=True)
-        agent = make_node_agent(node_id="test-remove-diag", diagnostics=[diag])
-        agent.remove_diagnostic("stub")
 
-        with pytest.raises(UnknownDiagnosticError):
-            await agent.run_diagnostic("stub")
-
-    @pytest.mark.anyio
-    async def test_remove_nonexistent_is_noop(self, make_node_agent: MakeNodeAgent) -> None:
-        agent = make_node_agent(node_id="test-remove-noop")
-        agent.remove_diagnostic("nonexistent")
-
+class TestFtNodeAgentDiagnosticException:
     @pytest.mark.anyio
     async def test_diagnostic_exception_returns_failed(self, make_node_agent: MakeNodeAgent) -> None:
         """Diagnostic that raises (not timeout) should return passed=False."""
