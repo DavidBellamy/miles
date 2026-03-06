@@ -24,7 +24,7 @@ from ray.job_submission import JobSubmissionClient
 
 from miles.utils.external_utils.command_utils import get_bool_env_var
 from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
-from miles.utils.ft.models import ControllerMode, ControllerStatus, RecoveryPhase
+from miles.utils.ft.models import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
 from miles.utils.ft.utils.polling import poll_until
@@ -323,19 +323,7 @@ async def wait_for_training_pid(
 # ---------------------------------------------------------------------------
 
 
-async def wait_for_recovery_complete(
-    handle: ray.actor.ActorHandle,
-    timeout: float = 300.0,
-    poll_interval: float = 5.0,
-) -> ControllerStatus:
-    """Poll get_status() until mode returns to MONITORING."""
-    return await poll_until(
-        probe=lambda: get_status(handle),
-        predicate=lambda s: s.mode == ControllerMode.MONITORING,
-        timeout=timeout,
-        poll_interval=poll_interval,
-        description="recovery_complete",
-    )
+wait_for_recovery_complete = _scenarios.wait_for_recovery_complete
 
 
 async def wait_for_training_stable(
@@ -355,20 +343,7 @@ async def wait_for_training_stable(
     )
 
 
-async def wait_for_recovery_phase(
-    handle: ray.actor.ActorHandle,
-    phase: RecoveryPhase,
-    timeout: float = 300.0,
-    poll_interval: float = 5.0,
-) -> ControllerStatus:
-    """Poll get_status() until recovery_phase matches."""
-    return await poll_until(
-        probe=lambda: get_status(handle),
-        predicate=lambda s: s.recovery_phase == phase,
-        timeout=timeout,
-        poll_interval=poll_interval,
-        description=f"recovery_phase({phase})",
-    )
+wait_for_recovery_phase = _scenarios.wait_for_recovery_phase
 
 
 async def wait_for_mode_transition(
@@ -419,7 +394,9 @@ class E2eFaultInjector:
         self._target_node = target_node
 
     async def crash_training(self) -> None:
-        pid = find_training_pid(self._injector, node_id=self._target_node)
+        pid = await wait_for_training_pid(
+            self._injector, timeout=60.0, poll_interval=3.0,
+        )
         ray.get(self._injector.kill_process.remote(pid=pid, sig=9))
 
     async def recover_training(self) -> None:
