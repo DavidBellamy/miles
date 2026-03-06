@@ -39,15 +39,6 @@ class TestMiniWandbLogAndQuery:
         wandb = MiniWandb(active_run_id="run-1")
         assert wandb.latest(metric_name="loss") is None
 
-    def test_clear_empties_all_data(self) -> None:
-        wandb = MiniWandb(active_run_id="run-1")
-        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 1.0})
-
-        wandb.clear()
-
-        assert wandb.query_last_n_steps(metric_name="loss", last_n=10) == []
-        assert wandb.latest(metric_name="loss") is None
-
 
 class TestMiniWandbTimeWindow:
     def test_query_time_window_returns_recent(self) -> None:
@@ -136,26 +127,38 @@ class TestMiniWandbMaxAgeEviction:
         assert result[0] == (2, 2.0)
 
 
-class TestMiniWandbNoActiveRunId:
-    def test_no_active_run_id_accepts_all(self) -> None:
-        wandb = MiniWandb(active_run_id=None)
-        wandb.log_step(run_id="any-run", step=1, metrics={"loss": 1.0})
+class TestMiniWandbPerRunIsolation:
+    def test_switching_run_queries_new_run_only(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 3.0})
+
+        wandb.set_active_run_id("run-2")
+        wandb.log_step(run_id="run-2", step=1, metrics={"loss": 1.0})
 
         assert wandb.latest(metric_name="loss") == 1.0
 
-    def test_set_active_run_id(self) -> None:
+    def test_old_run_data_preserved_after_switch(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 3.0})
+
+        wandb.set_active_run_id("run-2")
+        assert wandb.latest(metric_name="loss") is None
+
+        wandb.set_active_run_id("run-1")
+        assert wandb.latest(metric_name="loss") == 3.0
+
+    def test_no_active_run_id_queries_return_empty(self) -> None:
+        wandb = MiniWandb(active_run_id=None)
+        wandb.log_step(run_id="any-run", step=1, metrics={"loss": 1.0})
+
+        assert wandb.latest(metric_name="loss") is None
+
+    def test_no_active_run_id_accepts_then_query_after_set(self) -> None:
         wandb = MiniWandb(active_run_id=None)
         wandb.log_step(run_id="run-1", step=1, metrics={"loss": 1.0})
 
-        wandb.set_active_run_id("run-2")
-        wandb.log_step(run_id="run-1", step=2, metrics={"loss": 2.0})
-        wandb.log_step(run_id="run-2", step=3, metrics={"loss": 3.0})
-
-        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
-        # step 1 was accepted (no active_run_id), step 2 discarded (wrong run_id), step 3 accepted
-        assert len(result) == 2
-        assert result[0] == (1, 1.0)
-        assert result[1] == (3, 3.0)
+        wandb.set_active_run_id("run-1")
+        assert wandb.latest(metric_name="loss") == 1.0
 
 
 class TestMiniWandbStepMonotonicity:
@@ -179,17 +182,7 @@ class TestMiniWandbStepMonotonicity:
         assert len(result) == 1
         assert result[0] == (1, 2.0)
 
-    def test_clear_resets_last_step(self) -> None:
-        wandb = MiniWandb(active_run_id="run-1")
-        wandb.log_step(run_id="run-1", step=10, metrics={"loss": 1.0})
-        wandb.clear()
-        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 2.0})
-
-        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
-        assert len(result) == 1
-        assert result[0] == (1, 2.0)
-
-    def test_set_active_run_id_resets_last_step(self) -> None:
+    def test_new_run_has_independent_step_tracking(self) -> None:
         wandb = MiniWandb(active_run_id="run-1")
         wandb.log_step(run_id="run-1", step=10, metrics={"loss": 1.0})
 
@@ -197,8 +190,8 @@ class TestMiniWandbStepMonotonicity:
         wandb.log_step(run_id="run-2", step=1, metrics={"loss": 2.0})
 
         result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
-        assert len(result) == 2
-        assert result[1] == (1, 2.0)
+        assert len(result) == 1
+        assert result[0] == (1, 2.0)
 
     def test_set_same_run_id_does_not_reset(self) -> None:
         wandb = MiniWandb(active_run_id="run-1")

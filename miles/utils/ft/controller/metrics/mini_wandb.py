@@ -25,12 +25,10 @@ class MiniWandb:
         self._active_run_id = active_run_id
         self._max_steps = max_steps
         self._max_age = max_age
-        self._data: deque[_StepRecord] = deque()
-        self._last_step: int = -1
+        self._runs: dict[str, deque[_StepRecord]] = {}
+        self._last_step: dict[str, int] = {}
 
     def set_active_run_id(self, run_id: str) -> None:
-        if run_id != self._active_run_id:
-            self._last_step = -1
         self._active_run_id = run_id
 
     def log_step(
@@ -48,15 +46,16 @@ class MiniWandb:
             )
             return
 
-        if step <= self._last_step:
+        last = self._last_step.get(run_id, -1)
+        if step <= last:
             logger.debug(
                 "Discarding log_step: step=%d <= last_step=%d",
                 step,
-                self._last_step,
+                last,
             )
             return
 
-        self._last_step = step
+        self._last_step[run_id] = step
 
         record = _StepRecord(
             step=step,
@@ -64,15 +63,21 @@ class MiniWandb:
             metrics=metrics,
         )
 
-        self._data.append(record)
-        self._evict()
+        data = self._runs.setdefault(run_id, deque())
+        data.append(record)
+        self._evict(run_id)
+
+    def _active_data(self) -> deque[_StepRecord]:
+        if self._active_run_id is None:
+            return deque()
+        return self._runs.get(self._active_run_id, deque())
 
     def query_last_n_steps(
         self,
         metric_name: str,
         last_n: int,
     ) -> list[StepValue]:
-        snapshot = list(self._data)
+        snapshot = list(self._active_data())
         result: list[StepValue] = []
         for record in reversed(snapshot):
             if metric_name in record.metrics:
@@ -89,7 +94,7 @@ class MiniWandb:
         window: timedelta,
     ) -> list[TimedStepValue]:
         cutoff = datetime.now(timezone.utc) - window
-        snapshot = list(self._data)
+        snapshot = list(self._active_data())
         result: list[TimedStepValue] = []
         for record in snapshot:
             if record.receive_time >= cutoff and metric_name in record.metrics:
@@ -102,21 +107,25 @@ class MiniWandb:
         return result
 
     def latest(self, metric_name: str) -> float | None:
-        snapshot = list(self._data)
+        snapshot = list(self._active_data())
         for record in reversed(snapshot):
             if metric_name in record.metrics:
                 return record.metrics[metric_name]
 
         return None
 
-    def clear(self) -> None:
-        self._data.clear()
-        self._last_step = -1
+    def _evict(self, run_id: str) -> None:
+        data = self._runs.get(run_id)
+        if data is None:
+            return
 
-    def _evict(self) -> None:
-        while len(self._data) > self._max_steps:
-            self._data.popleft()
+        while len(data) > self._max_steps:
+            data.popleft()
 
         cutoff = datetime.now(timezone.utc) - self._max_age
-        while self._data and self._data[0].receive_time < cutoff:
-            self._data.popleft()
+        while data and data[0].receive_time < cutoff:
+            data.popleft()
+
+        if not data:
+            del self._runs[run_id]
+            self._last_step.pop(run_id, None)
