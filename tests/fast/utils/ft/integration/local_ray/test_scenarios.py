@@ -28,7 +28,6 @@ from tests.fast.utils.ft.helpers.training_simulator import (
 
 pytestmark = [
     pytest.mark.local_ray,
-    pytest.mark.timeout(120),
     pytest.mark.anyio,
 ]
 

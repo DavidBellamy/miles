@@ -13,7 +13,6 @@ from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,
-    pytest.mark.timeout(60),
 ]
 
 

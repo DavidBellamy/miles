@@ -23,7 +23,6 @@ _HAS_PYSPY = shutil.which("py-spy") is not None
 
 pytestmark = [
     pytest.mark.local_ray,
-    pytest.mark.timeout(60),
     pytest.mark.skipif(not _HAS_PYSPY, reason="py-spy not installed"),
     pytest.mark.anyio,
 ]

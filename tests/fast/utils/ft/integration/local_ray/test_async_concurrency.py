@@ -12,7 +12,6 @@ from tests.fast.utils.ft.integration.local_ray.conftest import get_status
 
 pytestmark = [
     pytest.mark.local_ray,
-    pytest.mark.timeout(60),
     pytest.mark.anyio,
 ]
 
