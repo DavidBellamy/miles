@@ -28,7 +28,7 @@ CRITICAL_XID_CODES: frozenset[int] = frozenset({
     # GPU has fallen off the bus — PCIe link lost, reboot/replace required
     79,
 })
-DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
+DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e8  # 100MB
 
 
 def check_all_hardware_faults(
