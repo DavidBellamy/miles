@@ -30,16 +30,16 @@ class TestKmsgFileReader:
         reader = KmsgFileReader(kmsg_path=kmsg_file)
         reader.close()
         reader.close()
-        assert reader._file_handle is None
+        assert reader._fd is None
 
     def test_close_handles_os_error(self, tmp_path: Path) -> None:
         kmsg_file = tmp_path / "kmsg"
         kmsg_file.write_bytes(b"")
 
         reader = KmsgFileReader(kmsg_path=kmsg_file)
-        os.close(reader._file_handle)
+        os.close(reader._fd)
         reader.close()
-        assert reader._file_handle is None
+        assert reader._fd is None
 
     def test_blocking_io_error_breaks_loop(self, tmp_path: Path) -> None:
         kmsg_file = tmp_path / "kmsg"
