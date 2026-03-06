@@ -143,7 +143,8 @@ class TestStopTraining:
 
         mock_client.get_job_status.return_value = "RUNNING"
 
-        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time:
+        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time, \
+             patch("miles.utils.ft.polling.time") as mock_poll_time:
             call_count = 0
 
             def advancing_monotonic() -> float:
@@ -152,8 +153,9 @@ class TestStopTraining:
                 return float(call_count * 100)
 
             mock_time.monotonic = advancing_monotonic
+            mock_poll_time.monotonic = advancing_monotonic
 
-            with pytest.raises(TimeoutError, match="did not stop within"):
+            with pytest.raises(TimeoutError, match="stop_job.*not met within"):
                 await job.stop_training(timeout_seconds=5)
 
     @pytest.mark.anyio
@@ -309,7 +311,8 @@ class TestStopJob:
         mock_client = MagicMock()
         mock_client.get_job_status.return_value = "RUNNING"
 
-        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time:
+        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time, \
+             patch("miles.utils.ft.polling.time") as mock_poll_time:
             call_count = 0
 
             def advancing_monotonic() -> float:
@@ -318,8 +321,9 @@ class TestStopJob:
                 return float(call_count * 100)
 
             mock_time.monotonic = advancing_monotonic
+            mock_poll_time.monotonic = advancing_monotonic
 
-            with pytest.raises(TimeoutError, match="did not stop within"):
+            with pytest.raises(TimeoutError, match="stop_job.*not met within"):
                 await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=5, poll_interval=0)
 
     @pytest.mark.anyio
