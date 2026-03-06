@@ -15,6 +15,7 @@ from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_instant_response,
     parse_range_response,
 )
+from miles.utils.ft.retry import retry_sync
 
 logger = logging.getLogger(__name__)
 
@@ -134,21 +135,19 @@ class PrometheusClient(RangeAggregationMixin):
         return parse_range_response(data)
 
     def _fetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any] | None:
-        for attempt in range(_FETCH_MAX_RETRIES):
-            try:
-                response = self._client.get(f"{self._url}{path}", params=params)
-                response.raise_for_status()
-                return response.json()
-            except Exception:
-                logger.warning(
-                    "prometheus_query_failed path=%s attempt=%d/%d",
-                    path, attempt + 1, _FETCH_MAX_RETRIES,
-                    exc_info=True,
-                )
-                if attempt < _FETCH_MAX_RETRIES - 1:
-                    time.sleep(_FETCH_RETRY_DELAY_SECONDS)
+        def _do_fetch() -> dict[str, Any]:
+            response = self._client.get(f"{self._url}{path}", params=params)
+            response.raise_for_status()
+            return response.json()
 
-        return None
+        result = retry_sync(
+            func=_do_fetch,
+            description=f"prometheus_fetch({path})",
+            max_retries=_FETCH_MAX_RETRIES,
+            backoff_base=_FETCH_RETRY_DELAY_SECONDS,
+            max_backoff=_FETCH_RETRY_DELAY_SECONDS,
+        )
+        return result.value
 
     async def _afetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any] | None:
         return await asyncio.to_thread(self._fetch_json, path, params)

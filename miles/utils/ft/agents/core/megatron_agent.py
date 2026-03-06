@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import socket
-import time
 from typing import Literal
 
 from prometheus_client import Gauge
@@ -11,6 +10,7 @@ from prometheus_client import Gauge
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.utils.controller_handle import ControllerHandleMixin
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.retry import retry_sync
 
 logger = logging.getLogger(__name__)
 
@@ -139,28 +139,25 @@ class FtMegatronAgent(ControllerHandleMixin):
 
         import ray
 
-        for attempt in range(self._REGISTER_MAX_ATTEMPTS):
-            try:
-                ray.get(
-                    controller.register_rank.remote(
-                        run_id=self._run_id,
-                        rank=self._rank,
-                        world_size=self._world_size,
-                        node_id=self._node_id,
-                        exporter_address=self.get_exporter_address(),
-                        pid=os.getpid(),
-                    ),
-                    timeout=10,
-                )
-                logger.info("Rank %d registered successfully", self._rank)
-                return
-            except Exception:
-                if attempt < self._REGISTER_MAX_ATTEMPTS - 1:
-                    time.sleep(self._REGISTER_RETRY_DELAY)
-                else:
-                    logger.warning(
-                        "Failed to register rank %d after %d attempts",
-                        self._rank,
-                        self._REGISTER_MAX_ATTEMPTS,
-                        exc_info=True,
-                    )
+        def _do_register() -> None:
+            ray.get(
+                controller.register_rank.remote(
+                    run_id=self._run_id,
+                    rank=self._rank,
+                    world_size=self._world_size,
+                    node_id=self._node_id,
+                    exporter_address=self.get_exporter_address(),
+                    pid=os.getpid(),
+                ),
+                timeout=10,
+            )
+
+        result = retry_sync(
+            func=_do_register,
+            description=f"register_rank({self._rank})",
+            max_retries=self._REGISTER_MAX_ATTEMPTS,
+            backoff_base=self._REGISTER_RETRY_DELAY,
+            max_backoff=self._REGISTER_RETRY_DELAY,
+        )
+        if result.ok:
+            logger.info("Rank %d registered successfully", self._rank)
