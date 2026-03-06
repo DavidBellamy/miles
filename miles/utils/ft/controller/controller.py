@@ -17,7 +17,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullC
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.controller.lifecycle_manager import RecoveryLifecycleManager
+from miles.utils.ft.controller.recovery.lifecycle_manager import RecoveryLifecycleManager
 from miles.utils.ft.models.fault import ActionType, Decision
 from miles.utils.ft.models.recovery import (
     ControllerMode,
