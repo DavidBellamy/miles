@@ -200,6 +200,20 @@ class TestDmesgTimeWindowBug:
         assert reader._last_dmesg_time == time_after_first
 
 
+class TestKmsgCollectorReadLinesNoFallback:
+    @pytest.mark.anyio
+    async def test_reader_oserror_propagates(self) -> None:
+        """After removing the dead OSError fallback, reader errors must
+        propagate so the upper-level collection loop can log and retry."""
+        collector = KmsgCollector(kmsg_path=Path("/dev/null"))
+        reader = FakeKmsgReader([])
+        reader.read_new_lines = lambda: (_ for _ in ()).throw(OSError("fd gone"))  # type: ignore[assignment]
+        collector._reader = reader
+
+        with pytest.raises(OSError, match="fd gone"):
+            collector._collect_sync()
+
+
 class TestKmsgCollectorInterval:
     def test_default_collect_interval(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
