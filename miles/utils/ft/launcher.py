@@ -12,6 +12,7 @@ import typer
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from miles.utils.logging_utils import configure_logger
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,8 @@ def main(
 
     Usage: python -m miles.utils.ft.launcher [OPTIONS] -- COMMAND...
     """
+    configure_logger()
+
     entrypoint = shlex.join(ctx.args)
     runtime_env = json.loads(runtime_env_json) if runtime_env_json else {}
 
