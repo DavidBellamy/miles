@@ -133,9 +133,9 @@ async def ft_controller_handle(
     """Launch independent training + FT Controller for a single test."""
     await _cleanup_environment()
 
-    from tests.e2e.ft.launch_standard_run import main
+    from tests.e2e.ft import launch_standard_run
 
-    thread = threading.Thread(target=main, daemon=True)
+    thread = threading.Thread(target=launch_standard_run.main, daemon=True)
     thread.start()
 
     handle = await _wait_for_named_actor(
