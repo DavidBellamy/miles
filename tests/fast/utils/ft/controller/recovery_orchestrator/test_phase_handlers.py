@@ -20,8 +20,8 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
     step_notify,
     step_reattempting,
 )
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import RecoveryPhase
+from miles.utils.ft.models._fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models._recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeDiagnosticScheduler,
@@ -35,7 +35,7 @@ from tests.fast.utils.ft.conftest import (
 
 
 def _make_mini_wandb_with_iteration(value: float | None) -> MiniWandb:
-    mini_wandb = MiniWandb()
+    mini_wandb = MiniWandb(active_run_id="test")
     if value is not None:
         mini_wandb.log_step(run_id="test", step=1, metrics={"iteration": value})
     return mini_wandb
