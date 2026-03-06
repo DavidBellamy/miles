@@ -247,6 +247,19 @@ class TestStepMonitoring:
 
         assert result is None
 
+    @pytest.mark.anyio
+    async def test_no_reattempt_start_time_skips_timeout_check(self) -> None:
+        """When reattempt_start_time is None, timeout check is skipped."""
+        ctx = _make_ctx(monitoring_success_iterations=100, monitoring_timeout_seconds=1)
+        ctx.reattempt_start_time = None
+        ctx.reattempt_base_iteration = 0
+        training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
+        mini_wandb = _make_mini_wandb_with_iteration(5.0)
+
+        result = await step_monitoring(ctx, training_job, mini_wandb)
+
+        assert result is None
+
 
 # ===================================================================
 # step_diagnosing
@@ -290,7 +303,7 @@ class TestStepDiagnosing:
 
         agents: dict = {"node-0": HangingNodeAgent(node_id="node-0")}
         scheduler = DiagnosticScheduler(
-            node_agents=agents,
+            agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=9999,
             pipeline_timeout_seconds=0,
@@ -470,3 +483,48 @@ class TestIterationProgress:
         ctx = _make_ctx(reattempt_base_iteration=10)
         mini_wandb = _make_mini_wandb_with_iteration(10.0)
         assert _iteration_progress(ctx, mini_wandb) == 0
+
+
+# ===================================================================
+# step_evict_and_restart — get_bad_nodes filtering
+# ===================================================================
+
+
+class TestStepEvictAndRestartBadNodeFilter:
+    @pytest.mark.anyio
+    async def test_already_bad_nodes_not_remarked(self) -> None:
+        """Nodes already marked bad in K8s should not be re-marked."""
+        ctx = _make_ctx()
+        ctx.bad_node_ids = ["node-a", "node-b"]
+        node_manager = FakeNodeManager()
+        await node_manager.mark_node_bad("node-a", reason="previous")
+
+        result = await step_evict_and_restart(
+            ctx,
+            node_manager=node_manager,
+            training_job=FakeTrainingJob(),
+            mini_wandb=MiniWandb(),
+        )
+
+        assert result == RecoveryPhase.DONE
+        assert node_manager.is_node_bad("node-a")
+        assert node_manager.is_node_bad("node-b")
+
+    @pytest.mark.anyio
+    async def test_all_already_bad_still_submits(self) -> None:
+        """If all nodes are already bad, eviction is skipped but restart still happens."""
+        ctx = _make_ctx()
+        ctx.bad_node_ids = ["node-a"]
+        node_manager = FakeNodeManager()
+        await node_manager.mark_node_bad("node-a", reason="previous")
+        training_job = FakeTrainingJob()
+
+        result = await step_evict_and_restart(
+            ctx,
+            node_manager=node_manager,
+            training_job=training_job,
+            mini_wandb=MiniWandb(),
+        )
+
+        assert result == RecoveryPhase.DONE
+        assert training_job._submitted
