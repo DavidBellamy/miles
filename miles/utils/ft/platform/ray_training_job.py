@@ -15,7 +15,7 @@ from miles.utils.ft.protocols.platform import JobStatus, TrainingJobProtocol
 logger = logging.getLogger(__name__)
 
 
-def resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
+def _resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
     """Map node identifiers (K8s names, IPs, or Ray hex IDs) to Ray node IDs.
 
     Looks up each identifier against NodeName, NodeManagerAddress, and NodeID
@@ -37,7 +37,7 @@ def resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
         if ray_id is not None:
             resolved.append(ray_id)
         else:
-            logger.warning("resolve_to_ray_node_ids: %s not found in Ray cluster, skipping", ident)
+            logger.warning("_resolve_to_ray_node_ids: %s not found in Ray cluster, skipping", ident)
     return resolved
 
 
@@ -117,7 +117,7 @@ class RayTrainingJob(TrainingJobProtocol):
 
         entrypoint = self._entrypoint
         if excluded_node_ids:
-            ray_node_ids = resolve_to_ray_node_ids(excluded_node_ids)
+            ray_node_ids = _resolve_to_ray_node_ids(excluded_node_ids)
             if ray_node_ids:
                 entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 

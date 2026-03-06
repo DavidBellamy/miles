@@ -21,7 +21,7 @@ from typing import Any
 
 
 @dataclass
-class NvmlCheckResult:
+class _NvmlCheckResult:
     ecc_errors_uncorrectable: int
     retired_pages_count: int
     power_state_abnormal: bool
@@ -48,7 +48,76 @@ _MATMUL_ATOL = 1e-2
 _MATMUL_RTOL = 1e-3
 
 
-def _check_nvml(handle: object) -> NvmlCheckResult:
+def main() -> None:
+    import pynvml
+
+    pynvml.nvmlInit()
+    try:
+        device_count = pynvml.nvmlDeviceGetCount()
+        matmul_ref = _generate_matmul_reference()
+
+        results: list[GpuCheckResult] = []
+        for i in range(device_count):
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                result = _check_single_gpu(i, handle, matmul_ref=matmul_ref)
+            except Exception as exc:
+                result = GpuCheckResult(
+                    gpu_index=i,
+                    passed=False,
+                    ecc_errors_uncorrectable=0,
+                    retired_pages_count=0,
+                    power_state_abnormal=False,
+                    row_remap_failure=False,
+                    matmul_passed=False,
+                    details=f"check failed: {exc}",
+                )
+            results.append(result)
+    finally:
+        pynvml.nvmlShutdown()
+
+    json.dump([asdict(r) for r in results], sys.stdout)
+
+
+def _check_single_gpu(
+    gpu_index: int,
+    handle: object,
+    matmul_ref: tuple[Any, Any, Any],
+) -> GpuCheckResult:
+    """Run all checks on one GPU and produce a GpuCheckResult."""
+    failures: list[str] = []
+
+    nvml = _check_nvml(handle)
+
+    if nvml.ecc_errors_uncorrectable > 0:
+        failures.append(f"uncorrectable ECC errors: {nvml.ecc_errors_uncorrectable}")
+    if nvml.retired_pages_count > 0:
+        failures.append(f"retired pages: {nvml.retired_pages_count}")
+    if nvml.power_state_abnormal:
+        failures.append("abnormal power state")
+    if nvml.row_remap_failure:
+        failures.append("row remap failure")
+
+    matmul_passed = _check_matmul(gpu_index, *matmul_ref)
+    if not matmul_passed:
+        failures.append("matmul mismatch")
+
+    passed = len(failures) == 0
+    details = "; ".join(failures) if failures else "all checks passed"
+
+    return GpuCheckResult(
+        gpu_index=gpu_index,
+        passed=passed,
+        ecc_errors_uncorrectable=nvml.ecc_errors_uncorrectable,
+        retired_pages_count=nvml.retired_pages_count,
+        power_state_abnormal=nvml.power_state_abnormal,
+        row_remap_failure=nvml.row_remap_failure,
+        matmul_passed=matmul_passed,
+        details=details,
+    )
+
+
+def _check_nvml(handle: object) -> _NvmlCheckResult:
     """Run pynvml extended checks on a single GPU handle."""
     import pynvml
 
@@ -67,7 +136,7 @@ def _check_nvml(handle: object) -> NvmlCheckResult:
 
     remap_info = pynvml.nvmlDeviceGetRemappedRows(handle)
 
-    return NvmlCheckResult(
+    return _NvmlCheckResult(
         ecc_errors_uncorrectable=ecc_uncorrectable,
         retired_pages_count=len(retired_double_bit),
         power_state_abnormal=power_state in _ABNORMAL_POWER_STATES,
@@ -111,75 +180,6 @@ def _check_matmul(
     actual = (a_fp16.to(device) @ b_fp16.to(device)).float().cpu()
 
     return bool(torch.allclose(actual, expected, atol=_MATMUL_ATOL, rtol=_MATMUL_RTOL))
-
-
-def _check_single_gpu(
-    gpu_index: int,
-    handle: object,
-    matmul_ref: tuple[Any, Any, Any],
-) -> GpuCheckResult:
-    """Run all checks on one GPU and produce a GpuCheckResult."""
-    failures: list[str] = []
-
-    nvml = _check_nvml(handle)
-
-    if nvml.ecc_errors_uncorrectable > 0:
-        failures.append(f"uncorrectable ECC errors: {nvml.ecc_errors_uncorrectable}")
-    if nvml.retired_pages_count > 0:
-        failures.append(f"retired pages: {nvml.retired_pages_count}")
-    if nvml.power_state_abnormal:
-        failures.append("abnormal power state")
-    if nvml.row_remap_failure:
-        failures.append("row remap failure")
-
-    matmul_passed = _check_matmul(gpu_index, *matmul_ref)
-    if not matmul_passed:
-        failures.append("matmul mismatch")
-
-    passed = len(failures) == 0
-    details = "; ".join(failures) if failures else "all checks passed"
-
-    return GpuCheckResult(
-        gpu_index=gpu_index,
-        passed=passed,
-        ecc_errors_uncorrectable=nvml.ecc_errors_uncorrectable,
-        retired_pages_count=nvml.retired_pages_count,
-        power_state_abnormal=nvml.power_state_abnormal,
-        row_remap_failure=nvml.row_remap_failure,
-        matmul_passed=matmul_passed,
-        details=details,
-    )
-
-
-def main() -> None:
-    import pynvml
-
-    pynvml.nvmlInit()
-    try:
-        device_count = pynvml.nvmlDeviceGetCount()
-        matmul_ref = _generate_matmul_reference()
-
-        results: list[GpuCheckResult] = []
-        for i in range(device_count):
-            try:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                result = _check_single_gpu(i, handle, matmul_ref=matmul_ref)
-            except Exception as exc:
-                result = GpuCheckResult(
-                    gpu_index=i,
-                    passed=False,
-                    ecc_errors_uncorrectable=0,
-                    retired_pages_count=0,
-                    power_state_abnormal=False,
-                    row_remap_failure=False,
-                    matmul_passed=False,
-                    details=f"check failed: {exc}",
-                )
-            results.append(result)
-    finally:
-        pynvml.nvmlShutdown()
-
-    json.dump([asdict(r) for r in results], sys.stdout)
 
 
 if __name__ == "__main__":

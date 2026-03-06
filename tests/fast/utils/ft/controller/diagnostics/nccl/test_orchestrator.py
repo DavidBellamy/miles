@@ -1,12 +1,12 @@
-"""Tests for InterMachineOrchestrator and cross_compare."""
+"""Tests for InterMachineOrchestrator and _cross_compare."""
 from __future__ import annotations
 
 import pytest
 
 from miles.utils.ft.controller.diagnostics.nccl.orchestrator import (
     InterMachineOrchestrator,
-    PairResult,
-    cross_compare,
+    _PairResult,
+    _cross_compare,
 )
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
@@ -27,59 +27,59 @@ def _make_inter_machine_agent(node_id: str, *, passed: bool = True) -> FakeNodeA
 
 
 # ===================================================================
-# cross_compare
+# _cross_compare
 # ===================================================================
 
 
 class TestCrossCompare:
     def test_all_pass_returns_empty(self) -> None:
         results = [
-            PairResult(master_id="A", worker_id="B", passed=True),
-            PairResult(master_id="B", worker_id="A", passed=True),
+            _PairResult(master_id="A", worker_id="B", passed=True),
+            _PairResult(master_id="B", worker_id="A", passed=True),
         ]
 
-        assert cross_compare(node_ids=["A", "B"], pair_results=results) == []
+        assert _cross_compare(node_ids=["A", "B"], pair_results=results) == []
 
     def test_isolates_bad_node(self) -> None:
         """B fails in both pairs it participates in, A and C only fail when paired with B."""
         results = [
-            PairResult(master_id="A", worker_id="B", passed=False),
-            PairResult(master_id="B", worker_id="C", passed=False),
-            PairResult(master_id="C", worker_id="A", passed=True),
+            _PairResult(master_id="A", worker_id="B", passed=False),
+            _PairResult(master_id="B", worker_id="C", passed=False),
+            _PairResult(master_id="C", worker_id="A", passed=True),
         ]
 
-        bad = cross_compare(node_ids=["A", "B", "C"], pair_results=results)
+        bad = _cross_compare(node_ids=["A", "B", "C"], pair_results=results)
 
         assert bad == ["B"]
 
     def test_all_fail_returns_empty(self) -> None:
         """All nodes fail equally — cannot localize."""
         results = [
-            PairResult(master_id="A", worker_id="B", passed=False),
-            PairResult(master_id="B", worker_id="A", passed=False),
+            _PairResult(master_id="A", worker_id="B", passed=False),
+            _PairResult(master_id="B", worker_id="A", passed=False),
         ]
 
-        assert cross_compare(node_ids=["A", "B"], pair_results=results) == []
+        assert _cross_compare(node_ids=["A", "B"], pair_results=results) == []
 
     def test_single_node_no_pairs(self) -> None:
         """Single node with no pair results."""
-        assert cross_compare(node_ids=["A"], pair_results=[]) == []
+        assert _cross_compare(node_ids=["A"], pair_results=[]) == []
 
     def test_multiple_bad_nodes_with_highest_count(self) -> None:
         """Two nodes both have highest failure count and get flagged."""
         results = [
-            PairResult(master_id="A", worker_id="B", passed=False),
-            PairResult(master_id="B", worker_id="C", passed=False),
-            PairResult(master_id="C", worker_id="D", passed=True),
-            PairResult(master_id="D", worker_id="A", passed=False),
+            _PairResult(master_id="A", worker_id="B", passed=False),
+            _PairResult(master_id="B", worker_id="C", passed=False),
+            _PairResult(master_id="C", worker_id="D", passed=True),
+            _PairResult(master_id="D", worker_id="A", passed=False),
         ]
 
-        bad = cross_compare(node_ids=["A", "B", "C", "D"], pair_results=results)
+        bad = _cross_compare(node_ids=["A", "B", "C", "D"], pair_results=results)
 
         assert bad == ["A", "B"]
 
     def test_empty_pair_results(self) -> None:
-        result = cross_compare(
+        result = _cross_compare(
             node_ids=["A", "B"],
             pair_results=[],
         )
@@ -101,7 +101,7 @@ class TestResolveAddress:
         assert orch._resolve_address("n1") == "10.0.0.1"
 
     def test_fallback_to_node_id(self) -> None:
-        orch = InterMachineOrchestrator(node_agents={}, node_addresses=None)
+        orch = InterMachineOrchestrator(agents={}, node_addresses=None)
 
         assert orch._resolve_address("n1") == "n1"
 
@@ -123,7 +123,7 @@ class TestRunSinglePairMissingAgent:
     @pytest.mark.anyio
     async def test_missing_master_agent_returns_failed(self) -> None:
         agents = {"worker": _make_inter_machine_agent("worker")}
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         result = await orch._run_single_pair(
             master_id="master", worker_id="worker",
@@ -136,7 +136,7 @@ class TestRunSinglePairMissingAgent:
     @pytest.mark.anyio
     async def test_missing_worker_agent_returns_failed(self) -> None:
         agents = {"master": _make_inter_machine_agent("master")}
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         result = await orch._run_single_pair(
             master_id="master", worker_id="worker",
@@ -147,7 +147,7 @@ class TestRunSinglePairMissingAgent:
 
     @pytest.mark.anyio
     async def test_both_agents_missing_returns_failed(self) -> None:
-        orch = InterMachineOrchestrator(node_agents={})
+        orch = InterMachineOrchestrator(agents={})
 
         result = await orch._run_single_pair(
             master_id="A", worker_id="B",
@@ -166,7 +166,7 @@ class TestRunEdgeCases:
     @pytest.mark.anyio
     async def test_single_node_returns_empty(self) -> None:
         agents = {"A": _make_inter_machine_agent("A")}
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         bad = await orch.run(node_ids=["A"], timeout_seconds=30)
 
@@ -174,7 +174,7 @@ class TestRunEdgeCases:
 
     @pytest.mark.anyio
     async def test_empty_nodes_returns_empty(self) -> None:
-        orch = InterMachineOrchestrator(node_agents={})
+        orch = InterMachineOrchestrator(agents={})
 
         bad = await orch.run(node_ids=[], timeout_seconds=30)
 
@@ -186,7 +186,7 @@ class TestRunEdgeCases:
             "A": _make_inter_machine_agent("A"),
             "B": _make_inter_machine_agent("B"),
         }
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         bad = await orch.run(node_ids=["A", "B"], timeout_seconds=30)
 
@@ -206,7 +206,7 @@ class TestRunSinglePairAgentHang:
             "master": HangingNodeAgent(node_id="master"),
             "worker": _make_inter_machine_agent("worker"),
         }
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         result = await orch._run_single_pair(
             master_id="master", worker_id="worker",
@@ -223,7 +223,7 @@ class TestRunSinglePairAgentHang:
             "master": _make_inter_machine_agent("master"),
             "worker": HangingNodeAgent(node_id="worker"),
         }
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         result = await orch._run_single_pair(
             master_id="master", worker_id="worker",
@@ -238,7 +238,7 @@ class TestRunSinglePairAgentHang:
             "A": HangingNodeAgent(node_id="A"),
             "B": HangingNodeAgent(node_id="B"),
         }
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         result = await orch._run_single_pair(
             master_id="A", worker_id="B",
@@ -255,7 +255,7 @@ class TestRunSinglePairAgentHang:
             "B": HangingNodeAgent(node_id="B"),
             "C": _make_inter_machine_agent("C"),
         }
-        orch = InterMachineOrchestrator(node_agents=agents)
+        orch = InterMachineOrchestrator(agents=agents)
 
         bad = await orch.run(node_ids=["A", "B", "C"], timeout_seconds=0)
 

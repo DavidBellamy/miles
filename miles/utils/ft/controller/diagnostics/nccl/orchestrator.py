@@ -19,7 +19,7 @@ _BASE_PORT = 29500
 _RPC_TIMEOUT_BUFFER_SECONDS = 30
 
 
-class PairResult(NamedTuple):
+class _PairResult(NamedTuple):
     master_id: str
     worker_id: str
     passed: bool
@@ -68,7 +68,7 @@ class InterMachineOrchestrator:
 
         results = await asyncio.gather(*tasks)
 
-        return cross_compare(node_ids=sorted_ids, pair_results=list(results))
+        return _cross_compare(node_ids=sorted_ids, pair_results=list(results))
 
     async def _run_single_pair(
         self,
@@ -77,7 +77,7 @@ class InterMachineOrchestrator:
         master_addr: str,
         port: int,
         timeout_seconds: int,
-    ) -> PairResult:
+    ) -> _PairResult:
         master_agent = self._node_agents.get(master_id)
         worker_agent = self._node_agents.get(worker_id)
 
@@ -87,7 +87,7 @@ class InterMachineOrchestrator:
                 master_id, "ok" if master_agent else "missing",
                 worker_id, "ok" if worker_agent else "missing",
             )
-            return PairResult(master_id=master_id, worker_id=worker_id, passed=False)
+            return _PairResult(master_id=master_id, worker_id=worker_id, passed=False)
 
         try:
             master_result, worker_result = await asyncio.wait_for(
@@ -126,7 +126,7 @@ class InterMachineOrchestrator:
             "inter_machine_pair_result master=%s worker=%s passed=%s",
             master_id, worker_id, passed,
         )
-        return PairResult(master_id=master_id, worker_id=worker_id, passed=passed)
+        return _PairResult(master_id=master_id, worker_id=worker_id, passed=passed)
 
     def _resolve_address(self, node_id: str) -> str:
         if self._node_addresses and node_id in self._node_addresses:
@@ -134,9 +134,9 @@ class InterMachineOrchestrator:
         return node_id
 
 
-def cross_compare(
+def _cross_compare(
     node_ids: list[str],
-    pair_results: list[PairResult],
+    pair_results: list[_PairResult],
 ) -> list[str]:
     """Cross-compare pair results to isolate bad nodes.
 

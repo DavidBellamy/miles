@@ -10,7 +10,7 @@ from miles.utils.ft.platform.ray_training_job import (
     RayTrainingJob,
     _parse_ray_status,
     _stop_job,
-    resolve_to_ray_node_ids,
+    _resolve_to_ray_node_ids,
     stop_all_active_jobs,
 )
 
@@ -244,37 +244,37 @@ class TestResolveToRayNodeIds:
     def test_resolves_k8s_node_names(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["gpu-worker-01", "gpu-worker-02"])
+            result = _resolve_to_ray_node_ids(["gpu-worker-01", "gpu-worker-02"])
         assert result == ["aaa111", "bbb222"]
 
     def test_resolves_ip_addresses(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["10.0.0.1"])
+            result = _resolve_to_ray_node_ids(["10.0.0.1"])
         assert result == ["aaa111"]
 
     def test_passes_through_ray_node_ids(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["bbb222"])
+            result = _resolve_to_ray_node_ids(["bbb222"])
         assert result == ["bbb222"]
 
     def test_skips_dead_nodes(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["dead-node"])
+            result = _resolve_to_ray_node_ids(["dead-node"])
         assert result == []
 
     def test_skips_unknown_identifiers(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["nonexistent"])
+            result = _resolve_to_ray_node_ids(["nonexistent"])
         assert result == []
 
     def test_empty_input(self) -> None:
         with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
             mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids([])
+            result = _resolve_to_ray_node_ids([])
         assert result == []
 
 
