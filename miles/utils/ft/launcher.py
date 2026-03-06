@@ -26,8 +26,8 @@ def main(
     ft_id: Annotated[
         str, typer.Option(help="FT instance ID for multi-instance isolation (auto-generated if empty)")
     ] = "",
-    k8s_label_suffix: Annotated[
-        str, typer.Option(help="K8s label suffix for label isolation (empty = no suffix, used in testing)")
+    k8s_label_prefix: Annotated[
+        str, typer.Option(help="K8s label prefix for label isolation (empty = no prefix)", envvar="MILES_FT_K8S_LABEL_PREFIX")
     ] = "",
     tick_interval: Annotated[
         float, typer.Option(help="Controller main loop interval (seconds)")
@@ -65,7 +65,7 @@ def main(
     ft_id = ft_id or uuid4().hex[:8]
     config = FtControllerConfig(
         ft_id=ft_id,
-        k8s_label_suffix=k8s_label_suffix,
+        k8s_label_prefix=k8s_label_prefix,
         platform=platform,
         ray_address=ray_address,
         entrypoint=entrypoint,

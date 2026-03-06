@@ -142,7 +142,10 @@ def execute(args: ScriptArgs) -> None:
         num_gpus_per_node=num_gpus,
         megatron_model_type=MODEL_TYPE,
         config=args,
-        extra_env_vars={"MILES_EXPERIMENTAL_ROLLOUT_REFACTOR": "1"},
+        extra_env_vars={
+            "MILES_EXPERIMENTAL_ROLLOUT_REFACTOR": "1",
+            "MILES_FT_K8S_LABEL_PREFIX": os.environ.get("MILES_FT_K8S_LABEL_PREFIX", ""),
+        },
     )
 
 

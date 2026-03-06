@@ -16,6 +16,7 @@ import threading
 import time
 from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 import pytest
 import ray
@@ -43,6 +44,20 @@ _ACTOR_POLL_INTERVAL: float = 5.0
 # ---------------------------------------------------------------------------
 # Session-scoped: environment validation + Ray cluster connection
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _k8s_label_prefix() -> Generator[str, None, None]:
+    """Generate a random prefix for K8s node labels to isolate concurrent test sessions."""
+    prefix = uuid4().hex[:8]
+    old = os.environ.get("MILES_FT_K8S_LABEL_PREFIX")
+    os.environ["MILES_FT_K8S_LABEL_PREFIX"] = prefix
+    logger.info("k8s_label_prefix=%s", prefix)
+    yield prefix
+    if old is None:
+        os.environ.pop("MILES_FT_K8S_LABEL_PREFIX", None)
+    else:
+        os.environ["MILES_FT_K8S_LABEL_PREFIX"] = old
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -121,39 +136,6 @@ async def _cleanup_environment() -> None:
         await node_mgr.aclose()
 
 
-# ---------------------------------------------------------------------------
-# Function-scoped: independent training launch per test
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-async def ft_controller_handle(
-    ray_cluster: None,
-) -> AsyncGenerator[ray.actor.ActorHandle, None]:
-    """Launch independent training + FT Controller for a single test."""
-    await _cleanup_environment()
-
-    from tests.e2e.ft import launch_standard_run
-
-    thread = threading.Thread(target=launch_standard_run.main, daemon=True)
-    thread.start()
-
-    handle = await _wait_for_named_actor(
-        name=ft_controller_actor_name(""),
-        timeout=300.0,
-    )
-
-    try:
-        yield handle
-    finally:
-        try:
-            ray.get(handle.shutdown.remote(), timeout=60)
-        except Exception:
-            logger.warning("ft_controller_teardown_failed", exc_info=True)
-
-        await _cleanup_environment()
-
-
 async def _wait_for_named_actor(
     name: str,
     timeout: float,
@@ -171,6 +153,46 @@ async def _wait_for_named_actor(
     raise TimeoutError(
         f"Named actor '{name}' did not appear within {timeout}s: {last_error}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Function-scoped: independent training launch per test
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def ft_controller_handle(
+    ray_cluster: None,
+) -> AsyncGenerator[ray.actor.ActorHandle, None]:
+    """Launch independent training + FT Controller for a single test.
+
+    1. Clean up leftover state (controller, K8s node cordons)
+    2. Launch launch_standard_run.main() in background thread
+    3. Wait for FtController actor to appear
+    4. Yield controller handle
+    5. Tear down controller and clean up
+    """
+    await _cleanup_environment()
+
+    from tests.e2e.ft.launch_standard_run import main
+
+    thread = threading.Thread(target=main, daemon=True)
+    thread.start()
+
+    handle = await _wait_for_named_actor(
+        name=ft_controller_actor_name(""),
+        timeout=300.0,
+    )
+
+    try:
+        yield handle
+    finally:
+        try:
+            ray.get(handle.shutdown.remote(), timeout=60)
+        except Exception:
+            logger.warning("ft_controller_teardown_failed", exc_info=True)
+
+        await _cleanup_environment()
 
 
 # ---------------------------------------------------------------------------

@@ -104,11 +104,11 @@ class TestBuildPlatformComponentsK8sRay:
                 entrypoint="python train.py",
             )
 
-        mock_k8s.assert_called_once_with(label_suffix="")
+        mock_k8s.assert_called_once_with(label_prefix="")
         mock_jsc.assert_called_once_with(address="http://ray:8265")
         assert node_mgr is mock_k8s.return_value
 
-    def test_k8s_ray_passes_ft_id_and_label_suffix(self) -> None:
+    def test_k8s_ray_passes_ft_id_and_label_prefix(self) -> None:
         from miles.utils.ft.platform.controller_factory import _build_platform_components
         from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
@@ -124,13 +124,13 @@ class TestBuildPlatformComponentsK8sRay:
                 ray_address="http://ray:8265",
                 entrypoint="python train.py",
                 ft_id="abc",
-                k8s_label_suffix="sfx",
+                k8s_label_prefix="pfx",
             )
 
-        mock_k8s.assert_called_once_with(label_suffix="sfx")
+        mock_k8s.assert_called_once_with(label_prefix="pfx")
         assert isinstance(training_job, RayTrainingJob)
         assert training_job._ft_id == "abc"
-        assert training_job._k8s_label_suffix == "sfx"
+        assert training_job._k8s_label_prefix == "pfx"
 
 
 class TestFtControllerActorProxy:

@@ -130,14 +130,14 @@ class RayTrainingJob:
         runtime_env: dict[str, Any] | None = None,
         poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
         ft_id: str = "",
-        k8s_label_suffix: str = "",
+        k8s_label_prefix: str = "",
     ) -> None:
         self._client = client
         self._entrypoint = entrypoint
         self._runtime_env = runtime_env or {}
         self._poll_interval = poll_interval_seconds
         self._ft_id = ft_id
-        self._k8s_label_suffix = k8s_label_suffix
+        self._k8s_label_prefix = k8s_label_prefix
         self._job_id: str | None = None
 
     async def submit_training(
@@ -148,7 +148,7 @@ class RayTrainingJob:
             **self._runtime_env.get("env_vars", {}),
             "MILES_FT_TRAINING_RUN_ID": run_id,
             "MILES_FT_ID": self._ft_id,
-            "MILES_FT_K8S_LABEL_SUFFIX": self._k8s_label_suffix,
+            "MILES_FT_K8S_LABEL_PREFIX": self._k8s_label_prefix,
         }
         runtime_env = {**self._runtime_env, "env_vars": env_override}
 

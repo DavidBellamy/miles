@@ -29,7 +29,7 @@ class FtControllerConfig(FtBaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ft_id: str = ""
-    k8s_label_suffix: str = ""
+    k8s_label_prefix: str = ""
     platform: Literal["stub", "k8s-ray"] = "stub"
     ray_address: str = "http://127.0.0.1:8265"
     entrypoint: str = ""
@@ -46,7 +46,7 @@ def _build_platform_components(
     entrypoint: str,
     runtime_env: dict[str, Any] | None = None,
     ft_id: str = "",
-    k8s_label_suffix: str = "",
+    k8s_label_prefix: str = "",
 ) -> tuple[StubNodeManager | K8sNodeManager, StubTrainingJob | RayTrainingJob]:
     if platform == "stub":
         return StubNodeManager(), StubTrainingJob()
@@ -56,13 +56,13 @@ def _build_platform_components(
         from miles.utils.ft.platform.ray_training_job import RayTrainingJob
         from ray.job_submission import JobSubmissionClient
 
-        node_manager = K8sNodeManager(label_suffix=k8s_label_suffix)
+        node_manager = K8sNodeManager(label_prefix=k8s_label_prefix)
         training_job = RayTrainingJob(
             client=JobSubmissionClient(address=ray_address),
             entrypoint=entrypoint,
             runtime_env=runtime_env,
             ft_id=ft_id,
-            k8s_label_suffix=k8s_label_suffix,
+            k8s_label_prefix=k8s_label_prefix,
         )
         return node_manager, training_job
 
@@ -183,7 +183,7 @@ def build_ft_controller(
         entrypoint=config.entrypoint,
         runtime_env=config.runtime_env,
         ft_id=ft_id,
-        k8s_label_suffix=config.k8s_label_suffix,
+        k8s_label_prefix=config.k8s_label_prefix,
     )
 
     controller_exporter = ControllerExporter(port=config.controller_exporter_port)
@@ -202,9 +202,9 @@ def build_ft_controller(
         controller_exporter.start()
 
     logger.info(
-        "build_ft_controller ft_id=%s platform=%s backend=%s exporter_port=%d k8s_label_suffix=%s",
+        "build_ft_controller ft_id=%s platform=%s backend=%s exporter_port=%d k8s_label_prefix=%s",
         ft_id, config.platform, config.metric_store_backend,
-        config.controller_exporter_port, config.k8s_label_suffix or "(none)",
+        config.controller_exporter_port, config.k8s_label_prefix or "(none)",
     )
 
     return FtController.create(

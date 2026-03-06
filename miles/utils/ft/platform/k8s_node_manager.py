@@ -14,8 +14,12 @@ _T = TypeVar("_T")
 
 logger = logging.getLogger(__name__)
 
-_BASE_LABEL_KEY = "ft.miles.io/disabled"
-_BASE_REASON_LABEL_KEY = "ft.miles.io/disabled-reason"
+_LABEL_DOMAIN = "ft.miles.io"
+_BASE_DISABLED = "disabled"
+_BASE_REASON = "disabled-reason"
+
+_BASE_LABEL_KEY = f"{_LABEL_DOMAIN}/{_BASE_DISABLED}"
+_BASE_REASON_LABEL_KEY = f"{_LABEL_DOMAIN}/{_BASE_REASON}"
 
 _K8S_API_TIMEOUT_SECONDS = 30
 _K8S_API_MAX_RETRIES = 3
@@ -25,9 +29,13 @@ LABEL_KEY = _BASE_LABEL_KEY
 REASON_LABEL_KEY = _BASE_REASON_LABEL_KEY
 
 
-def _build_label_keys(label_suffix: str) -> tuple[str, str]:
-    tag = f"-{label_suffix}" if label_suffix else ""
-    return f"{_BASE_LABEL_KEY}{tag}", f"{_BASE_REASON_LABEL_KEY}{tag}"
+def _build_label_keys(label_prefix: str) -> tuple[str, str]:
+    if label_prefix:
+        return (
+            f"{_LABEL_DOMAIN}/{label_prefix}-{_BASE_DISABLED}",
+            f"{_LABEL_DOMAIN}/{label_prefix}-{_BASE_REASON}",
+        )
+    return _BASE_LABEL_KEY, _BASE_REASON_LABEL_KEY
 
 
 class K8sNodeManager:
@@ -39,11 +47,13 @@ class K8sNodeManager:
     def __init__(
         self,
         api_client: ApiClient | None = None,
-        label_suffix: str = "",
+        label_prefix: str | None = None,
     ) -> None:
+        if label_prefix is None:
+            label_prefix = os.environ.get("MILES_FT_K8S_LABEL_PREFIX", "")
         self._api_client: ApiClient | None = api_client
         self._core_v1: CoreV1Api | None = None
-        self._label_key, self._reason_label_key = _build_label_keys(label_suffix)
+        self._label_key, self._reason_label_key = _build_label_keys(label_prefix)
 
     async def _ensure_client(self) -> CoreV1Api:
         if self._core_v1 is not None:
@@ -144,12 +154,12 @@ class K8sNodeManager:
         raise last_exc  # type: ignore[misc]
 
 
-def query_bad_nodes(label_suffix: str | None = None) -> list[str] | None:
+def query_bad_nodes(label_prefix: str | None = None) -> list[str] | None:
     """Synchronous helper: query K8s for bad-node names.
 
     Args:
-        label_suffix: K8s label suffix for isolation. If None, reads from
-            the ``MILES_FT_K8S_LABEL_SUFFIX`` environment variable (default empty).
+        label_prefix: K8s label prefix for isolation. If None, reads from
+            the ``MILES_FT_K8S_LABEL_PREFIX`` environment variable (default empty).
 
     Returns a list of node names on success, or None if the query failed.
     Raises RuntimeError if called from within an async context (running event
@@ -157,8 +167,8 @@ def query_bad_nodes(label_suffix: str | None = None) -> list[str] | None:
     """
     import asyncio
 
-    if label_suffix is None:
-        label_suffix = os.environ.get("MILES_FT_K8S_LABEL_SUFFIX", "")
+    if label_prefix is None:
+        label_prefix = os.environ.get("MILES_FT_K8S_LABEL_PREFIX", "")
 
     try:
         asyncio.get_running_loop()
@@ -171,7 +181,7 @@ def query_bad_nodes(label_suffix: str | None = None) -> list[str] | None:
         )
 
     async def _query() -> list[str]:
-        manager = K8sNodeManager(label_suffix=label_suffix)
+        manager = K8sNodeManager(label_prefix=label_prefix)
         try:
             return await manager.get_bad_nodes()
         finally:

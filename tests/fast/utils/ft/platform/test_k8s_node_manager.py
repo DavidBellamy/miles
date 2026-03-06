@@ -15,11 +15,11 @@ from miles.utils.ft.platform.k8s_node_manager import (
 
 
 def _make_manager_with_mock_api(
-    label_suffix: str = "",
+    label_prefix: str = "",
 ) -> tuple[K8sNodeManager, AsyncMock]:
     """Create a K8sNodeManager with a mocked CoreV1Api injected via ApiClient."""
     mock_api_client = MagicMock()
-    manager = K8sNodeManager(api_client=mock_api_client, label_suffix=label_suffix)
+    manager = K8sNodeManager(api_client=mock_api_client, label_prefix=label_prefix)
 
     mock_core_v1 = AsyncMock()
     manager._ensure_client = AsyncMock(return_value=mock_core_v1)
@@ -152,7 +152,7 @@ class TestQueryBadNodesSyncHelper:
 
         assert result is None
 
-    def test_passes_label_suffix_to_manager(self) -> None:
+    def test_passes_label_prefix_to_manager(self) -> None:
         with patch(
             "miles.utils.ft.platform.k8s_node_manager.K8sNodeManager"
         ) as mock_cls:
@@ -162,12 +162,12 @@ class TestQueryBadNodesSyncHelper:
             instance.get_bad_nodes = fake_get_bad_nodes
             instance.aclose = AsyncMock()
 
-            query_bad_nodes(label_suffix="test1")
+            query_bad_nodes(label_prefix="test1")
 
-        mock_cls.assert_called_once_with(label_suffix="test1")
+        mock_cls.assert_called_once_with(label_prefix="test1")
 
-    def test_reads_label_suffix_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("MILES_FT_K8S_LABEL_SUFFIX", "envsfx")
+    def test_reads_label_prefix_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MILES_FT_K8S_LABEL_PREFIX", "envpfx")
         with patch(
             "miles.utils.ft.platform.k8s_node_manager.K8sNodeManager"
         ) as mock_cls:
@@ -179,37 +179,37 @@ class TestQueryBadNodesSyncHelper:
 
             query_bad_nodes()
 
-        mock_cls.assert_called_once_with(label_suffix="envsfx")
+        mock_cls.assert_called_once_with(label_prefix="envpfx")
 
 
-class TestLabelSuffix:
-    def test_build_label_keys_no_suffix(self) -> None:
+class TestLabelPrefix:
+    def test_build_label_keys_no_prefix(self) -> None:
         label_key, reason_key = _build_label_keys("")
         assert label_key == "ft.miles.io/disabled"
         assert reason_key == "ft.miles.io/disabled-reason"
 
-    def test_build_label_keys_with_suffix(self) -> None:
+    def test_build_label_keys_with_prefix(self) -> None:
         label_key, reason_key = _build_label_keys("test1")
-        assert label_key == "ft.miles.io/disabled-test1"
-        assert reason_key == "ft.miles.io/disabled-reason-test1"
+        assert label_key == "ft.miles.io/test1-disabled"
+        assert reason_key == "ft.miles.io/test1-disabled-reason"
 
     @pytest.mark.anyio
-    async def test_mark_node_bad_uses_suffixed_labels(self) -> None:
-        manager, mock_core_v1 = _make_manager_with_mock_api(label_suffix="sfx")
+    async def test_mark_node_bad_uses_prefixed_labels(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(label_prefix="pfx")
 
         await manager.mark_node_bad(node_id="node-1", reason="test")
 
         body = mock_core_v1.patch_node.call_args.kwargs["body"]
-        assert "ft.miles.io/disabled-sfx" in body["metadata"]["labels"]
-        assert "ft.miles.io/disabled-reason-sfx" in body["metadata"]["labels"]
+        assert "ft.miles.io/pfx-disabled" in body["metadata"]["labels"]
+        assert "ft.miles.io/pfx-disabled-reason" in body["metadata"]["labels"]
 
     @pytest.mark.anyio
-    async def test_get_bad_nodes_uses_suffixed_selector(self) -> None:
-        manager, mock_core_v1 = _make_manager_with_mock_api(label_suffix="sfx")
+    async def test_get_bad_nodes_uses_prefixed_selector(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(label_prefix="pfx")
         mock_core_v1.list_node.return_value = SimpleNamespace(items=[])
 
         await manager.get_bad_nodes()
 
         mock_core_v1.list_node.assert_awaited_once_with(
-            label_selector="ft.miles.io/disabled-sfx=true",
+            label_selector="ft.miles.io/pfx-disabled=true",
         )

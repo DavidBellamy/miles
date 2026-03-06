@@ -45,7 +45,7 @@ class TestLauncherCli:
         "--controller-exporte",
         "--runtime-env-json",
         "--ft-id",
-        "--k8s-label-suffix",
+        "--k8s-label-prefix",
     ])
     def test_help_includes_option(self, expected_text: str) -> None:
         result = runner.invoke(app, ["--help"])
@@ -104,19 +104,19 @@ class TestLauncherSubmitAndRun:
         assert "train.py" in config.entrypoint
         assert "--lr" in config.entrypoint
 
-    def test_ft_id_and_label_suffix_passed_to_config(self) -> None:
+    def test_ft_id_and_label_prefix_passed_to_config(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, _):
             result = runner.invoke(app, [
                 "--platform", "stub",
                 "--ft-id", "myft",
-                "--k8s-label-suffix", "sfx",
+                "--k8s-label-prefix", "pfx",
                 "--", "python3", "train.py",
             ])
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert config.ft_id == "myft"
-        assert config.k8s_label_suffix == "sfx"
+        assert config.k8s_label_prefix == "pfx"
 
     def test_runtime_env_json_parsed_to_config(self) -> None:
         runtime_env = {"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}
