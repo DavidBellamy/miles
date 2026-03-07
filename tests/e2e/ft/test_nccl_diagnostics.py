@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.controller.diagnostics.nccl.standalone import (
+from miles.utils.ft.platform.standalone_nccl_diagnostic import (
     run_inter_machine_diagnostics,
     run_intra_machine_diagnostics,
 )
