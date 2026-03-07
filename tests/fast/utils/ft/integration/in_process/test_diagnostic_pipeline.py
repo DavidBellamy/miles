@@ -16,7 +16,6 @@ from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
     advance_until_recovery_complete,
     make_fake_agents,
-    make_in_process_factory,
     make_test_controller,
 )
 
@@ -45,8 +44,7 @@ def _make_diagnostic_test_env(
     pipeline: list[str],
 ) -> tuple[ControllerTestHarness, RecoveryOrchestrator]:
     agents = make_fake_agents(node_results)
-    factory = make_in_process_factory(agents)
-    orchestrator = DiagnosticOrchestrator(agent_factory=factory, agents=agents, pipeline=pipeline)
+    orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=pipeline)
     harness = make_test_controller(
         status_sequence=[JobStatus.RUNNING] * 50,
         diagnostic_orchestrator=orchestrator,

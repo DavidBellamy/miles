@@ -16,7 +16,6 @@ from miles.utils.ft.controller.diagnostics.stack_trace import (
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
-from miles.utils.ft.protocols.diagnostics import DiagnosticAgentFactoryProtocol
 from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol
 
 logger = logging.getLogger(__name__)
@@ -35,23 +34,20 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
 
     def __init__(
         self,
-        agent_factory: DiagnosticAgentFactoryProtocol,
+        agents: dict[str, NodeAgentProtocol],
         pipeline: list[str] | None = None,
         default_timeout_seconds: int = 120,
         pipeline_timeout_seconds: int = 900,
         node_addresses: dict[str, str] | None = None,
-        # Backward compatibility: accept agents dict directly
-        agents: dict[str, NodeAgentProtocol] | None = None,
     ) -> None:
-        self._agent_factory = agent_factory
+        self._agents = agents
         self._pipeline = pipeline or []
         self._default_timeout_seconds = default_timeout_seconds
         self._pipeline_timeout_seconds = pipeline_timeout_seconds
-        self._node_addresses = node_addresses
-
-        # Backward compatibility: when agents dict is passed, store for
-        # collect_stack_trace_suspects which needs agent node_ids
-        self._agents = agents
+        self._inter_machine = InterMachineOrchestrator(
+            node_agents=agents,
+            node_addresses=node_addresses,
+        )
 
     async def run_diagnostic_pipeline(
         self,
@@ -90,12 +86,11 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         suspect_node_ids: list[str] | None = None,
         rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> Decision:
-        all_node_ids = self._get_all_node_ids()
-
-        if trigger_reason == TriggerType.HANG and rank_pids_provider is not None and all_node_ids:
-            suspect_from_trace = await self._run_stack_trace_pre_step(
-                all_node_ids=all_node_ids,
+        if trigger_reason == TriggerType.HANG and rank_pids_provider is not None:
+            suspect_from_trace = await collect_stack_trace_suspects(
+                agents=self._agents,
                 rank_pids_provider=rank_pids_provider,
+                default_timeout_seconds=self._default_timeout_seconds,
             )
             if suspect_from_trace:
                 if suspect_node_ids is not None:
@@ -111,40 +106,14 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                 trigger=trigger_reason,
             )
 
-        target_node_ids = list(suspect_node_ids) if suspect_node_ids is not None else all_node_ids
-
-        if not target_node_ids:
-            logger.info("diagnostic_pipeline_no_nodes")
-            return Decision(
-                action=ActionType.NOTIFY_HUMAN,
-                reason="no nodes to diagnose",
-                trigger=trigger_reason,
-            )
-
-        async with self._agent_factory.create_agents(target_node_ids) as agents:
-            return await self._run_pipeline_with_agents(
-                agents=agents,
-                trigger_reason=trigger_reason,
-            )
-
-    async def _run_stack_trace_pre_step(
-        self,
-        all_node_ids: list[str],
-        rank_pids_provider: Callable[[str], dict[int, int]],
-    ) -> list[str]:
-        async with self._agent_factory.create_agents(all_node_ids) as trace_agents:
-            return await collect_stack_trace_suspects(
-                agents=trace_agents,
-                rank_pids_provider=rank_pids_provider,
-                default_timeout_seconds=self._default_timeout_seconds,
-            )
-
-    async def _run_pipeline_with_agents(
-        self,
-        agents: dict[str, NodeAgentProtocol],
-        trigger_reason: TriggerType,
-    ) -> Decision:
-        remaining_agents = dict(agents)
+        if suspect_node_ids is not None:
+            suspect_set = set(suspect_node_ids)
+            remaining_agents: dict[str, NodeAgentProtocol] = {
+                nid: agent for nid, agent in self._agents.items()
+                if nid in suspect_set
+            }
+        else:
+            remaining_agents: dict[str, NodeAgentProtocol] = dict(self._agents)
 
         for diagnostic_type in self._pipeline:
             if not remaining_agents:
@@ -173,11 +142,6 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             trigger=trigger_reason,
         )
 
-    def _get_all_node_ids(self) -> list[str]:
-        if self._agents is not None:
-            return sorted(self._agents.keys())
-        return []
-
     # ------------------------------------------------------------------
     # Single pipeline step dispatch
     # ------------------------------------------------------------------
@@ -188,11 +152,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         remaining_agents: dict[str, NodeAgentProtocol],
     ) -> tuple[list[str], dict[str, NodeAgentProtocol]]:
         if diagnostic_type == InterMachineCommDiagnostic.diagnostic_type:
-            inter_orch = InterMachineOrchestrator(
-                node_agents=remaining_agents,
-                node_addresses=self._node_addresses,
-            )
-            bad_node_ids = await inter_orch.run(
+            bad_node_ids = await self._inter_machine.run(
                 node_ids=list(remaining_agents.keys()),
                 timeout_seconds=self._default_timeout_seconds,
             )
