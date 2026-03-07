@@ -145,6 +145,7 @@ def execute(args: ScriptArgs) -> None:
         extra_env_vars={
             "MILES_EXPERIMENTAL_ROLLOUT_REFACTOR": "1",
             "MILES_FT_K8S_LABEL_PREFIX": os.environ.get("MILES_FT_K8S_LABEL_PREFIX", ""),
+            "MILES_FT_EXCEPTION_INJECT_PATH": "/tmp/miles_ft_inject_exception",
         },
     )
 
