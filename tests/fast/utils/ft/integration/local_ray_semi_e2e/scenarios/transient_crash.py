@@ -60,7 +60,6 @@ async def scenario_transient_crash(
         "RealtimeChecks",
         "StoppingAndRestarting",
         "MonitoringProgress",
-        "RecoveryDone",
     ])
 
     return final

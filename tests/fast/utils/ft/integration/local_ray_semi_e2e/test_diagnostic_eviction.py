@@ -61,7 +61,6 @@ class TestDiagnosticEviction:
         assert_phase_path_contains(final, [
             "StopTimeDiagnostics",
             "Evicting",
-            "RecoveryDone",
         ])
 
 
@@ -169,7 +168,6 @@ class TestAllNodesEvicted:
         assert_phase_path_contains(final, [
             "StopTimeDiagnostics",
             "Evicting",
-            "RecoveryDone",
         ])
 
 

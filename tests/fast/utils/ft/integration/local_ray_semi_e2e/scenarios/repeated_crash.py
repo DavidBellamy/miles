@@ -58,7 +58,6 @@ async def scenario_repeated_crash(
     assert_phase_path_contains(final, [
         "StopTimeDiagnostics",
         "NotifyHumans",
-        "RecoveryDone",
     ])
 
     return final

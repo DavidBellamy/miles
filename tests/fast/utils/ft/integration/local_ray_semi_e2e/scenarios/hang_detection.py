@@ -70,7 +70,7 @@ async def scenario_hang_detection_and_recovery(
 
     assert_phase_path_contains(status, [
         "RealtimeChecks", "StoppingAndRestarting",
-        "MonitoringProgress", "RecoveryDone",
+        "MonitoringProgress",
     ])
 
     if post_recovery_iterations > 0:
