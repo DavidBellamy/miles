@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
-from miles.utils.ft.utils.graceful_degrade import graceful_degrade
+from miles.utils.ft.utils.graceful_degrade import FaultInjectionError, graceful_degrade
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,13 @@ class FtTrackingAgent:
         self._run_id = run_id or os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
         self._controller_handle: Any | None = None
 
+        inject_path = os.environ.get("MILES_FT_EXCEPTION_INJECT_PATH", "")
+        self._exception_inject_path: Path | None = Path(inject_path) if inject_path else None
+
     @graceful_degrade()
     def log(self, *, metrics: dict[str, float], step: int) -> None:
+        self._check_exception_injection()
+
         if not self._run_id:
             return
 
@@ -34,6 +40,15 @@ class FtTrackingAgent:
                 run_id=self._run_id,
                 step=step,
                 metrics=metrics,
+            )
+
+    def _check_exception_injection(self) -> None:
+        if self._exception_inject_path is None:
+            return
+        if self._exception_inject_path.exists():
+            self._exception_inject_path.unlink(missing_ok=True)
+            raise FaultInjectionError(
+                f"Fault injection triggered via {self._exception_inject_path}"
             )
 
     def _get_controller(self) -> Any | None:
