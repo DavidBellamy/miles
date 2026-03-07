@@ -10,7 +10,7 @@ import time
 
 import ray
 from tests.e2e.ft.conftest import E2eFaultInjector, FaultInjectorFactory
-from tests.fast.utils.ft.helpers.scenarios import scenario_transient_crash
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import scenario_transient_crash
 
 
 async def test_transient_crash_auto_recovery(

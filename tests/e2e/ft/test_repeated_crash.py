@@ -5,7 +5,7 @@ from __future__ import annotations
 import ray
 
 from tests.e2e.ft.conftest import E2eFaultInjector, FaultInjectorFactory
-from tests.fast.utils.ft.helpers.scenarios import scenario_repeated_crash
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import scenario_repeated_crash
 
 
 async def test_repeated_crash_enters_diagnosing(

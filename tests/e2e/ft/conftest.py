@@ -29,7 +29,7 @@ from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
 from miles.utils.ft.utils.polling import poll_until
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-from tests.fast.utils.ft.helpers import scenarios as _scenarios
+from tests.fast.utils.ft.integration.local_ray_semi_e2e import scenarios as _scenarios
 
 logger = logging.getLogger(__name__)
 

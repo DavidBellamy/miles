@@ -21,7 +21,7 @@ from tests.e2e.ft.conftest import (
     wait_for_mode_transition,
     wait_for_training_stable,
 )
-from tests.fast.utils.ft.helpers.scenarios import scenario_hang_detection
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import scenario_hang_detection
 
 logger = logging.getLogger(__name__)
 
