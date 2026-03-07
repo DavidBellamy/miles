@@ -9,7 +9,7 @@ from miles.utils.ft.protocols.agents import DiagnosticProtocol, NodeAgentProtoco
 logger = logging.getLogger(__name__)
 
 
-class DiagnosticRunner(NodeAgentProtocol):
+class DiagnosticRunner:
     """Registry-based diagnostic dispatcher with timeout protection.
 
     Holds a set of DiagnosticProtocol implementations keyed by
