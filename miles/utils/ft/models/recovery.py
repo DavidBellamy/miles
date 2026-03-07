@@ -39,8 +39,8 @@ class RecoverySnapshot(FtBaseModel):
 
 class ControllerStatus(FtBaseModel):
     mode: ControllerMode
-    recovery_phase: RecoveryPhase | None
-    phase_history: list[RecoveryPhase] | None
+    recovery_phase: str | None
+    phase_history: list[str] | None
     tick_count: int
     active_run_id: str | None
     bad_nodes: list[str]
@@ -49,18 +49,3 @@ class ControllerStatus(FtBaseModel):
     latest_iteration: int | None
 
 
-RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
-    RecoveryPhase.CHECK_ALERTS: 1,
-    RecoveryPhase.REATTEMPTING: 2,
-    RecoveryPhase.MONITORING: 3,
-    RecoveryPhase.DIAGNOSING: 4,
-    RecoveryPhase.EVICT_AND_RESTART: 5,
-    RecoveryPhase.NOTIFY: 6,
-    RecoveryPhase.DONE: 7,
-}
-
-BAD_NODES_CONFIRMED_PHASES: frozenset[RecoveryPhase] = frozenset({
-    RecoveryPhase.EVICT_AND_RESTART,
-    RecoveryPhase.NOTIFY,
-    RecoveryPhase.DONE,
-})

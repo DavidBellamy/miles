@@ -6,7 +6,7 @@ from http.server import HTTPServer
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, start_http_server
 
 import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.models.recovery import RECOVERY_PHASE_TO_INT, ControllerMode, RecoveryPhase
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -110,8 +110,8 @@ class ControllerExporter:
     def update_tick_count(self) -> None:
         self._tick_count.inc()
 
-    def update_recovery_phase(self, phase: RecoveryPhase | None) -> None:
-        self._recovery_phase.set(RECOVERY_PHASE_TO_INT.get(phase, 0) if phase else 0)
+    def update_recovery_phase(self, phase_int: int) -> None:
+        self._recovery_phase.set(phase_int)
 
     def update_training_job_status(self, status: JobStatus) -> None:
         self._training_job_status.set(_JOB_STATUS_TO_NUMERIC.get(status, 0))
@@ -143,15 +143,14 @@ class ControllerExporter:
         *,
         job_status: JobStatus,
         mode: ControllerMode,
-        recovery_phase: RecoveryPhase | None,
+        recovery_phase_int: int,
         latest_loss: float | None,
         latest_mfu: float | None,
     ) -> None:
         self.update_training_job_status(job_status)
         self.update_tick_count()
         self.update_mode(is_recovery=(mode == ControllerMode.RECOVERY))
-        if mode != ControllerMode.RECOVERY:
-            self.update_recovery_phase(None)
+        self.update_recovery_phase(recovery_phase_int)
         self.update_training_metrics(loss=latest_loss, mfu=latest_mfu)
 
 
@@ -181,7 +180,7 @@ class NullControllerExporter(ControllerExporter):
     def update_tick_count(self) -> None:
         pass
 
-    def update_recovery_phase(self, phase: RecoveryPhase | None) -> None:
+    def update_recovery_phase(self, phase_int: int) -> None:
         pass
 
     def update_training_job_status(self, status: JobStatus) -> None:
@@ -207,7 +206,7 @@ class NullControllerExporter(ControllerExporter):
         *,
         job_status: JobStatus,
         mode: ControllerMode,
-        recovery_phase: RecoveryPhase | None,
+        recovery_phase_int: int,
         latest_loss: float | None,
         latest_mfu: float | None,
     ) -> None:
