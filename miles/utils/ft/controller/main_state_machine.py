@@ -140,7 +140,7 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
         ret = await self._check_new_bad_nodes_during_recovering(state=state, context=context)
         if ret is not None:
             return ret
-        return await self._advance_recovery(state=state)
+        return await self._call_recovery_stepper(state=state)
 
     async def _check_new_bad_nodes_during_recovering(
         self, *, state: Recovering, context: TickContext,
@@ -165,7 +165,7 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
             )
         return None
 
-    async def _advance_recovery(self, *, state: Recovering) -> MainState | None:
+    async def _call_recovery_stepper(self, *, state: Recovering) -> MainState | None:
         try:
             recovery_ctx = RecoveryContext(
                 trigger=state.trigger,
