@@ -16,6 +16,10 @@ class JobStatus(str, Enum):
     PENDING = "pending"
 
 
+STOP_TRAINING_TIMEOUT_SECONDS: int = 300
+REGISTER_TIMEOUT_SECONDS: float = 10
+
+
 @runtime_checkable
 class NodeManagerProtocol(Protocol):
     async def mark_node_bad(self, node_id: str, reason: str) -> None: ...
@@ -27,7 +31,7 @@ class NodeManagerProtocol(Protocol):
 
 @runtime_checkable
 class TrainingJobProtocol(Protocol):
-    async def stop_training(self, timeout_seconds: int = 300) -> None: ...
+    async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None: ...
 
     async def submit_training(
         self, excluded_node_ids: list[str] | None = None,
@@ -69,7 +73,7 @@ class ControllerClientProtocol(Protocol):
         node_id: str,
         exporter_address: str,
         pid: int,
-        timeout: float = 10,
+        timeout: float = REGISTER_TIMEOUT_SECONDS,
     ) -> None: ...
 
     def log_step(

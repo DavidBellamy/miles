@@ -8,7 +8,7 @@ from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.platform.node_agent_factory import build_node_agent
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol
-from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
 
@@ -82,7 +82,7 @@ class _FtNodeAgentActorCls:
                     agent=self_handle,
                     exporter_address=exporter_address,
                 ),
-                timeout=10,
+                timeout=REGISTER_TIMEOUT_SECONDS,
             )
 
         result = retry_sync(

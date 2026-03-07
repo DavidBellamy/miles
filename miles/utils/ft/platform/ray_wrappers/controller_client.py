@@ -10,7 +10,7 @@ from typing import Any
 
 import ray
 
-from miles.utils.ft.protocols.platform import ControllerClientProtocol, ft_controller_actor_name
+from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ControllerClientProtocol, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class RayControllerClient:
         node_id: str,
         exporter_address: str,
         pid: int,
-        timeout: float = 10,
+        timeout: float = REGISTER_TIMEOUT_SECONDS,
     ) -> None:
         controller = self._get_handle()
         if controller is None:

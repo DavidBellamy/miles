@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.protocols.platform import JobStatus, STOP_TRAINING_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class StubNodeManager:
 class StubTrainingJob:
     """Logs operations but does not call real Ray Job API."""
 
-    async def stop_training(self, timeout_seconds: int = 300) -> None:
+    async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None:
         logger.info("stub_stop_training timeout_seconds=%d", timeout_seconds)
 
     async def submit_training(

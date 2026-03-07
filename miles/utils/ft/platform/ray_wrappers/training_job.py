@@ -10,7 +10,7 @@ import ray
 from ray.job_submission import JobSubmissionClient
 
 from miles.utils.ft.platform.ray_wrappers.node_discovery import resolve_to_ray_node_ids
-from miles.utils.ft.protocols.platform import JobStatus, TrainingJobProtocol
+from miles.utils.ft.protocols.platform import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus, TrainingJobProtocol
 from miles.utils.ft.utils.polling import poll_until
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,6 @@ _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
 _TERMINAL_STATUSES = frozenset(("STOPPED", "FAILED", "SUCCEEDED"))
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 5.0
-_DEFAULT_TIMEOUT_SECONDS = 300
 
 _SUBMIT_TIMEOUT_SECONDS = 60
 _GET_STATUS_TIMEOUT_SECONDS = 30
@@ -128,7 +127,7 @@ class RayTrainingJob(TrainingJobProtocol):
         )
         return run_id
 
-    async def stop_training(self, timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS) -> None:
+    async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None:
         if self._job_id is None:
             logger.warning("stop_training called with no active job")
             return
@@ -175,7 +174,7 @@ def _parse_ray_status(raw_status: Any) -> str:
 async def _stop_job(
     client: JobSubmissionClient,
     job_id: str,
-    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+    timeout_seconds: float = STOP_TRAINING_TIMEOUT_SECONDS,
     poll_interval: float = _DEFAULT_POLL_INTERVAL_SECONDS,
 ) -> None:
     """Stop a single Ray job and poll until it reaches terminal status."""
