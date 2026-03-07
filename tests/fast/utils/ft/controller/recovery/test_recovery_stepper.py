@@ -51,23 +51,6 @@ class FakeAlertChecker:
         return self._faults
 
 
-class FakeDiagOrchestrator:
-    """Returns a programmable DiagnosticPipelineResult."""
-
-    def __init__(self, result: DiagnosticPipelineResult | None = None) -> None:
-        self._result = result or DiagnosticPipelineResult()
-        self.call_count: int = 0
-
-    async def run_diagnostic_pipeline(
-        self,
-        trigger_reason: TriggerType,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: object = None,
-    ) -> DiagnosticPipelineResult:
-        self.call_count += 1
-        return self._result
-
-
 def _make_restart_stepper(
     *,
     training_job: FakeTrainingJob | None = None,
@@ -89,14 +72,14 @@ def _make_restart_stepper(
 def _make_recovery_stepper(
     *,
     alert_checker: FakeAlertChecker | None = None,
-    diagnostic_orchestrator: FakeDiagOrchestrator | None = None,
+    diagnostic_orchestrator: FakeDiagnosticOrchestrator | None = None,
     restart_stepper: RestartStepper | None = None,
     notifier: FakeNotifier | None = None,
     timeout_seconds: int = 1800,
 ) -> RecoveryStepper:
     return RecoveryStepper(
         alert_checker=alert_checker or FakeAlertChecker(),
-        diagnostic_orchestrator=diagnostic_orchestrator or FakeDiagOrchestrator(),
+        diagnostic_orchestrator=diagnostic_orchestrator or FakeDiagnosticOrchestrator(),
         restart_stepper=restart_stepper or _make_restart_stepper(),
         notifier=notifier,
         timeout_seconds=timeout_seconds,
@@ -240,7 +223,7 @@ class TestDirectlyRestarting:
 class TestStopTimeDiagnostics:
     @pytest.mark.asyncio
     async def test_bad_nodes_found_goes_to_evicting_final(self) -> None:
-        diag = FakeDiagOrchestrator(
+        diag = FakeDiagnosticOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=["node-B"], reason="gpu fail"),
         )
         stepper = _make_recovery_stepper(diagnostic_orchestrator=diag)
@@ -251,7 +234,7 @@ class TestStopTimeDiagnostics:
 
     @pytest.mark.asyncio
     async def test_no_bad_nodes_goes_to_notify(self) -> None:
-        diag = FakeDiagOrchestrator(
+        diag = FakeDiagnosticOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=[], reason="all passed"),
         )
         stepper = _make_recovery_stepper(diagnostic_orchestrator=diag)
