@@ -12,8 +12,8 @@ import ray
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.platform.ray_controller_client import RayControllerClient
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
 
@@ -42,17 +42,19 @@ class _OneShotCrashDetector(BaseFaultDetector):
         return Decision(action=ActionType.NONE, reason="no fault")
 
 
-class TestGetControllerHandle:
+class TestRayControllerClient:
     def test_finds_controller_actor(
         self, controller_actor: ray.actor.ActorHandle,
     ) -> None:
-        handle = get_controller_handle("")
+        client = RayControllerClient(ft_id="")
+        handle = client._get_handle()
         assert handle is not None
         status = ray.get(handle.get_status.remote(), timeout=5)
         assert status.mode == ControllerMode.MONITORING
 
     def test_returns_none_for_missing_actor(self, local_ray: None) -> None:
-        result = get_controller_handle("nonexistent_xyz")
+        client = RayControllerClient(ft_id="nonexistent_xyz")
+        result = client._get_handle()
         assert result is None
 
 
@@ -66,10 +68,10 @@ class TestTrainingRankAgentRegistration:
     ) -> None:
         handle, run_id = running_controller
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
+        client = RayControllerClient(ft_id="")
         with patch("socket.gethostname", return_value="fake-node-0"):
-            agent = FtTrainingRankAgent(rank=0, world_size=2)
+            agent = FtTrainingRankAgent(rank=0, world_size=2, controller_client=client)
 
         try:
             status = get_status(handle)
@@ -84,13 +86,13 @@ class TestTrainingRankAgentRegistration:
     ) -> None:
         handle, run_id = running_controller
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
+        client = RayControllerClient(ft_id="")
         agents: list[FtTrainingRankAgent] = []
         try:
             for i in range(4):
                 with patch("socket.gethostname", return_value=f"fake-node-{i}"):
-                    agent = FtTrainingRankAgent(rank=i, world_size=4)
+                    agent = FtTrainingRankAgent(rank=i, world_size=4, controller_client=client)
                     agents.append(agent)
 
             status = get_status(handle)
@@ -110,9 +112,9 @@ class TestTrackingAgentLogStep:
     ) -> None:
         handle, run_id = running_controller
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
-        tracking = FtTrackingAgent(run_id=run_id)
+        client = RayControllerClient(ft_id="")
+        tracking = FtTrackingAgent(run_id=run_id, controller_client=client)
         tracking.log(metrics={"loss": 0.5, "iteration": 10}, step=10)
 
         time.sleep(0.5)
@@ -126,9 +128,9 @@ class TestTrackingAgentLogStep:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "")
-        monkeypatch.setenv("MILES_FT_ID", "")
 
-        tracking = FtTrackingAgent(run_id="")
+        client = RayControllerClient(ft_id="")
+        tracking = FtTrackingAgent(run_id="", controller_client=client)
         tracking.log(metrics={"loss": 0.5}, step=1)
 
         status = get_status(controller_actor)
@@ -145,12 +147,12 @@ class TestPidCorrectness:
     ) -> None:
         handle, run_id = running_controller
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
         caller_pid = os.getpid()
 
+        client = RayControllerClient(ft_id="")
         with patch("socket.gethostname", return_value="pid-test-node"):
-            agent = FtTrainingRankAgent(rank=0, world_size=1)
+            agent = FtTrainingRankAgent(rank=0, world_size=1, controller_client=client)
 
         try:
             status = get_status(handle)

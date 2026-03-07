@@ -10,6 +10,7 @@ import ray
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.platform.ray_controller_client import RayControllerClient
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
@@ -37,9 +38,9 @@ class TestAgentSurvivesControllerDeath:
     ) -> None:
         handle, run_id = running_controller
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
-        tracking = FtTrackingAgent(run_id=run_id)
+        client = RayControllerClient(ft_id="")
+        tracking = FtTrackingAgent(run_id=run_id, controller_client=client)
         tracking.log(metrics={"loss": 0.5}, step=1)
 
         ray.kill(handle, no_restart=True)
@@ -89,10 +90,10 @@ class TestAgentCreatedWithoutController:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "no-ctrl-test")
-        monkeypatch.setenv("MILES_FT_ID", "nonexistent_ft_999")
 
+        client = RayControllerClient(ft_id="nonexistent_ft_999")
         with patch("socket.gethostname", return_value="fake-node"):
-            agent = FtTrainingRankAgent(rank=0, world_size=1)
+            agent = FtTrainingRankAgent(rank=0, world_size=1, controller_client=client)
 
         agent.shutdown()
 
@@ -102,9 +103,9 @@ class TestAgentCreatedWithoutController:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "no-ctrl-track")
-        monkeypatch.setenv("MILES_FT_ID", "nonexistent_ft_999")
 
-        tracking = FtTrackingAgent(run_id="no-ctrl-track")
+        client = RayControllerClient(ft_id="nonexistent_ft_999")
+        tracking = FtTrackingAgent(run_id="no-ctrl-track", controller_client=client)
         tracking.log(metrics={"loss": 0.5}, step=1)
 
 
@@ -122,10 +123,10 @@ class TestBlockingCallRetryAfterControllerDeath:
         time.sleep(0.5)
 
         monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
-        monkeypatch.setenv("MILES_FT_ID", "")
 
+        client = RayControllerClient(ft_id="")
         with patch("socket.gethostname", return_value="fake-retry-node"):
-            agent = FtTrainingRankAgent(rank=0, world_size=1)
+            agent = FtTrainingRankAgent(rank=0, world_size=1, controller_client=client)
 
         agent.shutdown()
 

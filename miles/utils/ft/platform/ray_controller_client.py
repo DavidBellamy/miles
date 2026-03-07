@@ -75,7 +75,3 @@ class RayControllerClient:
             metrics=metrics,
         )
 
-
-assert isinstance(RayControllerClient, type) and issubclass(
-    RayControllerClient, ControllerClientProtocol  # type: ignore[arg-type]
-) or True  # runtime_checkable structural check deferred
