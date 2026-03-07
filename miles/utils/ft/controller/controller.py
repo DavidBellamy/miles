@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from miles.utils.ft.controller.actions import PlatformDeps
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.main_state_machine import (
     MAIN_HANDLER_MAP,
     DetectingAnomaly,
@@ -138,6 +137,8 @@ class FtController:
         monitoring_timeout_seconds: int = 600,
         recovery_timeout_seconds: int = RECOVERY_TIMEOUT_SECONDS,
     ) -> FtController:
+        from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
+
         agents: dict[str, NodeAgentProtocol] = {}
         rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
 
