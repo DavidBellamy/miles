@@ -13,6 +13,7 @@ from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
 from miles.utils.ft.controller.detectors.hang import HangDetectorConfig
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetectorConfig
+from miles.utils.ft.controller.detectors.thermal_throttling import ThermalThrottlingDetectorConfig
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
@@ -24,6 +25,7 @@ app = typer.Typer()
 
 _DEFAULT_HANG = HangDetectorConfig()
 _DEFAULT_NETWORK = NetworkAlertDetectorConfig()
+_DEFAULT_THERMAL = ThermalThrottlingDetectorConfig()
 _DEFAULT_MFU = MfuDeclineDetectorConfig()
 
 
@@ -80,9 +82,6 @@ def main(
     mfu_consecutive_steps: Annotated[
         int, typer.Option(help="MFU detector: consecutive steps to average")
     ] = _DEFAULT_MFU.consecutive_steps,
-    mfu_temperature_delta_threshold: Annotated[
-        float, typer.Option(help="MFU detector: temperature delta threshold (celsius)")
-    ] = _DEFAULT_MFU.temperature_delta_threshold,
     mfu_decline_timeout_minutes: Annotated[
         float, typer.Option(help="MFU detector: decline timeout before NOTIFY_HUMAN (minutes)")
     ] = _DEFAULT_MFU.decline_timeout_minutes,
@@ -92,6 +91,12 @@ def main(
     mfu_absolute_minimum: Annotated[
         float, typer.Option(help="MFU detector: absolute MFU floor (0 = disabled)")
     ] = _DEFAULT_MFU.mfu_absolute_minimum,
+    thermal_temperature_delta_threshold: Annotated[
+        float, typer.Option(help="Thermal detector: temperature delta threshold (celsius)")
+    ] = _DEFAULT_THERMAL.temperature_delta_threshold,
+    thermal_mfu_decline_threshold_ratio: Annotated[
+        float, typer.Option(help="Thermal detector: MFU decline threshold ratio for confirmation")
+    ] = _DEFAULT_THERMAL.mfu_decline_threshold_ratio,
 ) -> None:
     """FT Controller entry point.
 
@@ -117,11 +122,14 @@ def main(
             alert_window_minutes=network_alert_window_minutes,
             alert_threshold=network_alert_threshold,
         ),
+        thermal=ThermalThrottlingDetectorConfig(
+            temperature_delta_threshold=thermal_temperature_delta_threshold,
+            mfu_decline_threshold_ratio=thermal_mfu_decline_threshold_ratio,
+        ),
         mfu=MfuDeclineDetectorConfig(
             mfu_baseline=mfu_baseline if mfu_baseline > 0 else None,
             mfu_threshold_ratio=mfu_threshold_ratio,
             consecutive_steps=mfu_consecutive_steps,
-            temperature_delta_threshold=mfu_temperature_delta_threshold,
             decline_timeout_minutes=mfu_decline_timeout_minutes,
             baseline_steps=mfu_baseline_steps,
             mfu_absolute_minimum=mfu_absolute_minimum,
