@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -21,8 +20,8 @@ import ray
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
 from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.platform.ray_controller_client import RayControllerClient
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -143,7 +142,7 @@ class TrainingWorkerActor:
         self._step_interval = step_interval
 
         self._agent: FtTrainingRankAgent | None = None
-        self._controller_handle: Any | None = None
+        self._controller_client: RayControllerClient | None = None
         self._current_run_id: str = ""
         self._iteration: int = 0
         self._loop_task: asyncio.Task[None] | None = None
@@ -177,13 +176,15 @@ class TrainingWorkerActor:
         os.environ["MILES_FT_ID"] = self._ft_id
         os.environ["MILES_FT_TRAINING_RUN_ID"] = run_id
 
+        self._controller_client = RayControllerClient(ft_id=self._ft_id)
+
         with patch("socket.gethostname", return_value=self._node_id):
             self._agent = FtTrainingRankAgent(
                 rank=self._rank,
                 world_size=self._world_size,
+                controller_client=self._controller_client,
             )
 
-        self._controller_handle = get_controller_handle(self._ft_id)
         self._iteration = 0
 
     def _shutdown_agent(self) -> None:
@@ -209,12 +210,12 @@ class TrainingWorkerActor:
                 self._iteration += 1
                 self._agent.step()
 
-                if self._controller_handle is not None:
+                if self._controller_client is not None:
                     try:
                         custom: dict[str, float] = await self._state_actor.get_custom_log_metrics.remote()
                         metrics: dict[str, float] = {"iteration": float(self._iteration)}
                         metrics.update(custom)
-                        self._controller_handle.log_step.remote(
+                        self._controller_client.log_step(
                             run_id=self._current_run_id,
                             step=self._iteration,
                             metrics=metrics,
