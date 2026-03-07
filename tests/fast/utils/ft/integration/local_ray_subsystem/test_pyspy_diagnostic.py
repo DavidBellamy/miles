@@ -14,10 +14,8 @@ import time
 import pytest
 import ray
 
-from miles.utils.ft.controller.diagnostics.stack_trace import (
-    StackTraceAggregator,
-    StackTraceDiagnostic,
-)
+from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
+from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 _HAS_PYSPY = shutil.which("py-spy") is not None
 

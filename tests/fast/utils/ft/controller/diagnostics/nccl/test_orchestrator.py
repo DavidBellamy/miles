@@ -8,6 +8,7 @@ from miles.utils.ft.controller.diagnostics.nccl.orchestrator import (
     _PairResult,
     _cross_compare,
 )
+
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
