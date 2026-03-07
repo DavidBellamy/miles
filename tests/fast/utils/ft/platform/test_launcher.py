@@ -8,8 +8,10 @@ import pytest
 from typer.testing import CliRunner
 
 from miles.utils.ft.platform.launcher import app
+from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
 from miles.utils.ft.platform.notifiers.factory import build_notifier
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+from miles.utils.ft.platform.notifiers.slack_notifier import SlackWebhookNotifier
 from miles.utils.ft.platform.stubs import StubNotifier
 
 runner = CliRunner()
@@ -46,6 +48,8 @@ class TestLauncherCli:
         "--runtime-env-json",
         "--ft-id",
         "--k8s-label-prefix",
+        "--notify-webhook-url",
+        "--notify-platform",
     ])
     def test_help_includes_option(self, expected_text: str) -> None:
         result = runner.invoke(app, ["--help"])
@@ -54,33 +58,60 @@ class TestLauncherCli:
 
 
 class TestBuildNotifier:
-    def test_webhook_url_returns_lark_notifier(self) -> None:
-        with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://hook.example.com"}):
-            notifier = build_notifier(platform="stub")
+    def test_webhook_url_defaults_to_lark(self) -> None:
+        notifier = build_notifier(platform="stub", notify_webhook_url="https://hook.example.com")
         assert isinstance(notifier, LarkWebhookNotifier)
 
+    def test_webhook_url_with_explicit_lark_platform(self) -> None:
+        notifier = build_notifier(
+            platform="stub", notify_webhook_url="https://hook.example.com", notify_platform="lark",
+        )
+        assert isinstance(notifier, LarkWebhookNotifier)
+
+    def test_webhook_url_with_slack_platform(self) -> None:
+        notifier = build_notifier(
+            platform="stub", notify_webhook_url="https://hooks.slack.com/services/T/B/X", notify_platform="slack",
+        )
+        assert isinstance(notifier, SlackWebhookNotifier)
+
+    def test_webhook_url_with_discord_platform(self) -> None:
+        notifier = build_notifier(
+            platform="stub", notify_webhook_url="https://discord.com/api/webhooks/1/abc", notify_platform="discord",
+        )
+        assert isinstance(notifier, DiscordWebhookNotifier)
+
     def test_stub_mode_without_webhook_returns_stub(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            notifier = build_notifier(platform="stub")
+        notifier = build_notifier(platform="stub")
         assert isinstance(notifier, StubNotifier)
 
     def test_k8s_ray_mode_without_webhook_returns_none(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            notifier = build_notifier(platform="k8s-ray")
+        notifier = build_notifier(platform="k8s-ray")
         assert notifier is None
 
     def test_empty_webhook_url_treated_as_unset(self) -> None:
-        with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "  "}):
-            notifier = build_notifier(platform="stub")
+        notifier = build_notifier(platform="stub", notify_webhook_url="  ")
         assert isinstance(notifier, StubNotifier)
 
     def test_no_webhook_non_stub_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         import logging
-        with patch.dict("os.environ", {}, clear=True):
-            with caplog.at_level(logging.WARNING):
-                notifier = build_notifier(platform="k8s-ray")
+
+        with caplog.at_level(logging.WARNING):
+            notifier = build_notifier(platform="k8s-ray")
+
         assert notifier is None
-        assert "MILES_FT_NOTIFY_WEBHOOK_URL" in caplog.text
+        assert "--notify-webhook-url" in caplog.text
+
+    def test_unknown_platform_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="Unknown notify platform.*'xmpp'"):
+            build_notifier(
+                platform="stub", notify_webhook_url="https://example.com", notify_platform="xmpp",
+            )
+
+    def test_notify_platform_is_case_insensitive(self) -> None:
+        notifier = build_notifier(
+            platform="stub", notify_webhook_url="https://example.com", notify_platform="SLACK",
+        )
+        assert isinstance(notifier, SlackWebhookNotifier)
 
 
 class TestLauncherSubmitAndRun:
@@ -117,6 +148,20 @@ class TestLauncherSubmitAndRun:
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert config.ft_id == "myft"
         assert config.k8s_label_prefix == "pfx"
+
+    def test_notify_args_passed_to_config(self) -> None:
+        with _patch_build_and_run() as (mock_actor_cls, _):
+            result = runner.invoke(app, [
+                "--platform", "stub",
+                "--notify-webhook-url", "https://hook.example.com",
+                "--notify-platform", "slack",
+                "--", "python3", "train.py",
+            ])
+
+        assert result.exit_code == 0, result.output
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
+        assert config.notify_webhook_url == "https://hook.example.com"
+        assert config.notify_platform == "slack"
 
     def test_runtime_env_json_parsed_to_config(self) -> None:
         runtime_env = {"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}

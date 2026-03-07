@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 from pydantic import ValidationError
 
@@ -82,26 +80,23 @@ class TestBuildFtControllerNotifier:
     def test_stub_platform_gets_stub_notifier(self) -> None:
         from miles.utils.ft.platform.stubs import StubNotifier
 
-        with patch.dict("os.environ", {}, clear=True):
-            controller = build_ft_controller(
-                config=FtControllerConfig(platform="stub"),
-                start_exporter=False,
-            )
-            assert isinstance(controller._platform_deps.notifier, StubNotifier)
+        controller = build_ft_controller(
+            config=FtControllerConfig(platform="stub"),
+            start_exporter=False,
+        )
+        assert isinstance(controller._platform_deps.notifier, StubNotifier)
 
-    def test_lark_webhook_url_creates_lark_notifier(self) -> None:
+    def test_webhook_url_creates_lark_notifier(self) -> None:
         from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 
-        with patch.dict(
-            "os.environ",
-            {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://lark.example.com/hook"},
-            clear=True,
-        ):
-            controller = build_ft_controller(
-                config=FtControllerConfig(platform="stub"),
-                start_exporter=False,
-            )
-            assert isinstance(controller._platform_deps.notifier, LarkWebhookNotifier)
+        controller = build_ft_controller(
+            config=FtControllerConfig(
+                platform="stub",
+                notify_webhook_url="https://lark.example.com/hook",
+            ),
+            start_exporter=False,
+        )
+        assert isinstance(controller._platform_deps.notifier, LarkWebhookNotifier)
 
 
 class TestBuildPlatformComponentsUnknown:

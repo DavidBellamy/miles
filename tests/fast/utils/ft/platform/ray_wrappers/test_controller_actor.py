@@ -29,11 +29,14 @@ class TestBuildFtController:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
         assert isinstance(ctrl._platform_deps.notifier, StubNotifier)
 
-    def test_lark_webhook_notifier_when_env_set(self) -> None:
+    def test_lark_webhook_notifier_when_url_provided(self) -> None:
         from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 
-        with patch.dict("os.environ", {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://hook.example.com"}):
-            ctrl = build_ft_controller(platform="stub", start_exporter=False)
+        ctrl = build_ft_controller(
+            platform="stub",
+            notify_webhook_url="https://hook.example.com",
+            start_exporter=False,
+        )
         assert isinstance(ctrl._platform_deps.notifier, LarkWebhookNotifier)
 
     def test_custom_tick_interval(self) -> None:
