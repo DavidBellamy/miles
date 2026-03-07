@@ -117,9 +117,15 @@ class RecoveryOrchestrator:
             self._update_exporter()
             return
 
-        next_phase = await self._dispatch_phase()
-        if next_phase is not None:
+        while True:
+            next_phase = await self._dispatch_phase()
+            if next_phase is None:
+                break
             self._transition(next_phase)
+            if self.is_done():
+                break
+            if self._check_global_timeout():
+                break
 
         self._update_exporter()
 

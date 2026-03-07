@@ -10,7 +10,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbC
 from miles.utils.ft.controller.recovery.context import RecoveryContext
 from miles.utils.ft.controller.recovery.orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.metric_names import CONTROLLER_RECOVERY_PHASE
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import RECOVERY_PHASE_TO_INT, RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
@@ -330,6 +330,7 @@ class TestDiagnosing:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-2"],
             reason="GPU failed diagnostic",
+            trigger=TriggerType.CRASH,
         )
         orch, _, _, _, diag = _make_orchestrator(diagnostic_decision=bad_decision)
         orch._context.phase = RecoveryPhase.DIAGNOSING

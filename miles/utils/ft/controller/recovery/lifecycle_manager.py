@@ -74,6 +74,7 @@ class RecoveryLifecycleManager:
         Records the trigger in the cooldown tracker.  Returns False (without
         creating an orchestrator) if the cooldown limit has been reached.
         """
+        assert decision.trigger is not None
         self._cooldown.record(decision.trigger)
 
         if self._cooldown.is_throttled(decision.trigger):

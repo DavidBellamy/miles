@@ -35,6 +35,7 @@ class TestGpuLostDirectEviction:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0"],
             reason="GPU unavailable",
+            trigger=TriggerType.HARDWARE,
         ))
         harness = make_test_controller(
             detectors=[detector],

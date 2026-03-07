@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     AlwaysMarkBadDetector,
@@ -176,6 +176,7 @@ class TestExecuteDecision:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="test notify",
+            trigger=TriggerType.MISC,
         ))
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
@@ -193,6 +194,7 @@ class TestExecuteDecision:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="test notify no notifier",
+            trigger=TriggerType.MISC,
         ))
         harness = make_test_controller(detectors=[detector], notifier=None)
         await harness.controller._tick()
@@ -232,6 +234,7 @@ class TestExecuteDecision:
             detectors=[FixedDecisionDetector(decision=Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason="test with broken notifier",
+                trigger=TriggerType.MISC,
             ))],
         )
         assert harness.notifier is not None
@@ -244,6 +247,7 @@ class TestExecuteDecision:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="persistent fault",
+            trigger=TriggerType.MISC,
         ))
         harness = make_test_controller(detectors=[detector])
 

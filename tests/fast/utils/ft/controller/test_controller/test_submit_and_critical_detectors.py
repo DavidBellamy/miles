@@ -5,7 +5,7 @@ import pytest
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
@@ -73,6 +73,7 @@ class TestCriticalDetectorExceptionIsolation:
         critical_notify = CriticalFixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="should be ignored during recovery",
+            trigger=TriggerType.MISC,
         ))
         harness = make_test_controller(detectors=[enter_recovery, critical_notify])
 
@@ -92,6 +93,7 @@ class TestCriticalDetectorExceptionIsolation:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=[],
             reason="no bad nodes",
+            trigger=TriggerType.CRASH,
         ))
         harness = make_test_controller(detectors=[enter_recovery, critical_empty])
 

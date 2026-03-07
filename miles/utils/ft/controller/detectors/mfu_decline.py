@@ -6,7 +6,7 @@ from pydantic import ConfigDict, field_validator
 from miles.utils.ft.models.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, TrainingMetricStoreProtocol
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ class MfuDeclineDetector(BaseFaultDetector):
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason=f"MFU {avg_mfu:.4f} below absolute minimum {self._mfu_absolute_minimum:.4f}",
+                trigger=TriggerType.MISC,
             )
 
         baseline = self._get_baseline(ctx.mini_wandb)
@@ -97,6 +98,7 @@ class MfuDeclineDetector(BaseFaultDetector):
                 action=ActionType.MARK_BAD_AND_RESTART,
                 bad_node_ids=[high_temp_node],
                 reason=f"MFU decline ({mfu_stats}) correlated with high temperature on {high_temp_node}",
+                trigger=TriggerType.HARDWARE,
             )
 
         elapsed_minutes = self._compute_decline_duration_minutes(ctx, threshold)
@@ -105,6 +107,7 @@ class MfuDeclineDetector(BaseFaultDetector):
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason=f"MFU decline ({mfu_stats}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
+                trigger=TriggerType.MISC,
             )
 
         return Decision.no_fault(

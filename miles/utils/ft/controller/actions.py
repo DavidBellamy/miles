@@ -71,6 +71,7 @@ async def handle_enter_recovery(
     deps: PlatformDeps,
     recovery_manager: RecoveryLifecycleManager,
 ) -> None:
+    assert decision.trigger is not None
     started = await recovery_manager.start(
         decision=decision, deps=deps,
     )

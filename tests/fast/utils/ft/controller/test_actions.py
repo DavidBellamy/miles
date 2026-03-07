@@ -24,7 +24,7 @@ from tests.fast.utils.ft.conftest import (
 def _make_decision(
     bad_node_ids: list[str],
     action: ActionType = ActionType.MARK_BAD_AND_RESTART,
-    trigger: TriggerType = TriggerType.NONE,
+    trigger: TriggerType = TriggerType.CRASH,
 ) -> Decision:
     return Decision(
         action=action,
@@ -273,6 +273,7 @@ class TestHandleNotifyHuman:
         decision = Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="something bad happened",
+            trigger=TriggerType.MISC,
         )
 
         await handle_notify_human(decision=decision, notifier=notifier)
@@ -287,6 +288,7 @@ class TestHandleNotifyHuman:
         decision = Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="should not crash",
+            trigger=TriggerType.MISC,
         )
 
         await handle_notify_human(decision=decision, notifier=None)

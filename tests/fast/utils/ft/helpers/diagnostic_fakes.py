@@ -11,7 +11,7 @@ from miles.utils.ft.controller.diagnostics.nccl.inter_machine import (
     InterMachineCommDiagnostic,
 )
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +77,7 @@ class FakeDiagnosticOrchestrator:
         self._decision = decision or Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="fake diagnostic — all passed",
+            trigger=TriggerType.MISC,
         )
         self.call_count: int = 0
         self.last_trigger_reason: str | None = None

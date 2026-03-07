@@ -114,6 +114,7 @@ _ALWAYS_MARK_BAD_DECISION = Decision(
     action=ActionType.MARK_BAD_AND_RESTART,
     bad_node_ids=["node-1"],
     reason="test fault detected",
+    trigger=TriggerType.CRASH,
 )
 
 

@@ -275,6 +275,7 @@ class TestStepDiagnosing:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-X"],
             reason="gpu diagnostic failed",
+            trigger=TriggerType.CRASH,
         )
         orchestrator = FakeDiagnosticOrchestrator(decision=decision)
         ctx = _make_ctx()
@@ -289,6 +290,7 @@ class TestStepDiagnosing:
         decision = Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="all diagnostics passed",
+            trigger=TriggerType.CRASH,
         )
         orchestrator = FakeDiagnosticOrchestrator(decision=decision)
         ctx = _make_ctx()

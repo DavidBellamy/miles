@@ -95,10 +95,22 @@ class TestCollectorOutput:
 
 
 class TestDecision:
-    def test_action_type_enum_values(self) -> None:
+    def test_action_none_without_trigger_is_valid(self) -> None:
+        decision = Decision(action=ActionType.NONE, reason="test")
+        assert decision.action == ActionType.NONE
+        assert decision.trigger is None
+
+    def test_non_none_action_without_trigger_raises(self) -> None:
+        with pytest.raises(ValidationError, match="trigger is required"):
+            Decision(action=ActionType.MARK_BAD_AND_RESTART, reason="test")
+
+    def test_non_none_action_with_trigger_is_valid(self) -> None:
         for action in ActionType:
-            decision = Decision(action=action, reason="test")
+            if action == ActionType.NONE:
+                continue
+            decision = Decision(action=action, reason="test", trigger=TriggerType.CRASH)
             assert decision.action == action
+            assert decision.trigger == TriggerType.CRASH
 
     def test_invalid_action_type_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -107,39 +119,48 @@ class TestDecision:
     def test_default_fields(self) -> None:
         decision = Decision(action=ActionType.NONE, reason="all clear")
         assert decision.bad_node_ids == []
-        assert decision.trigger == TriggerType.NONE
+        assert decision.trigger is None
 
     def test_mark_bad_with_nodes(self) -> None:
         decision = Decision(
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0", "node-1"],
             reason="GPU lost on multiple nodes",
+            trigger=TriggerType.HARDWARE,
         )
         assert decision.bad_node_ids == ["node-0", "node-1"]
 
 
 class TestDecisionFromNodeFaults:
     def test_empty_faults_returns_none_action(self) -> None:
-        decision = Decision.from_node_faults(faults=[], fallback_reason="no faults")
+        decision = Decision.from_node_faults(
+            faults=[], fallback_reason="no faults", trigger=TriggerType.HARDWARE,
+        )
 
         assert decision.action == ActionType.NONE
         assert decision.reason == "no faults"
         assert decision.bad_node_ids == []
+        assert decision.trigger is None
 
     def test_single_fault(self) -> None:
         faults = [NodeFault(node_id="node-0", reason="GPU lost")]
-        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+        decision = Decision.from_node_faults(
+            faults=faults, fallback_reason="n/a", trigger=TriggerType.HARDWARE,
+        )
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert decision.bad_node_ids == ["node-0"]
         assert decision.reason == "GPU lost"
+        assert decision.trigger == TriggerType.HARDWARE
 
     def test_multiple_faults_different_nodes_sorted(self) -> None:
         faults = [
             NodeFault(node_id="node-2", reason="NIC down"),
             NodeFault(node_id="node-0", reason="GPU ECC error"),
         ]
-        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+        decision = Decision.from_node_faults(
+            faults=faults, fallback_reason="n/a", trigger=TriggerType.NETWORK,
+        )
 
         assert decision.bad_node_ids == ["node-0", "node-2"]
         assert "NIC down" in decision.reason
@@ -150,7 +171,9 @@ class TestDecisionFromNodeFaults:
             NodeFault(node_id="node-0", reason="GPU 0 lost"),
             NodeFault(node_id="node-0", reason="GPU 1 lost"),
         ]
-        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+        decision = Decision.from_node_faults(
+            faults=faults, fallback_reason="n/a", trigger=TriggerType.HARDWARE,
+        )
 
         assert decision.bad_node_ids == ["node-0"]
         assert decision.reason == "GPU 0 lost; GPU 1 lost"
@@ -161,7 +184,9 @@ class TestDecisionFromNodeFaults:
             NodeFault(node_id="node-1", reason="reason-b"),
             NodeFault(node_id="node-2", reason="reason-c"),
         ]
-        decision = Decision.from_node_faults(faults=faults, fallback_reason="n/a")
+        decision = Decision.from_node_faults(
+            faults=faults, fallback_reason="n/a", trigger=TriggerType.CRASH,
+        )
 
         assert decision.reason == "reason-a; reason-b; reason-c"
 

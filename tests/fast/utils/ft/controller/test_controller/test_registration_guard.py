@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     FixedDecisionDetector,
     make_test_controller,
@@ -16,6 +16,7 @@ class TestRegistrationGuardNoRanks:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0"],
             reason="should not fire",
+            trigger=TriggerType.CRASH,
         ))
         harness = make_test_controller(
             detectors=[detector],
@@ -34,6 +35,7 @@ class TestRegistrationGuardNoRanks:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0"],
             reason="fault",
+            trigger=TriggerType.CRASH,
         ))
         harness = make_test_controller(
             detectors=[detector],
@@ -58,6 +60,7 @@ class TestRegistrationGraceTicks:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0"],
             reason="fault",
+            trigger=TriggerType.CRASH,
         ))
         harness = make_test_controller(
             detectors=[detector],
@@ -81,6 +84,7 @@ class TestRegistrationGraceTicks:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-0"],
             reason="fault",
+            trigger=TriggerType.CRASH,
         ))
         harness = make_test_controller(
             detectors=[detector],

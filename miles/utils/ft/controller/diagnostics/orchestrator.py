@@ -77,6 +77,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason=f"diagnostic pipeline timed out after {self._pipeline_timeout_seconds}s",
+                trigger=trigger_reason,
             )
 
     async def _run_diagnostic_pipeline_inner(
@@ -102,6 +103,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason="no diagnostics configured (empty pipeline)",
+                trigger=trigger_reason,
             )
 
         if suspect_node_ids is not None:
@@ -130,12 +132,14 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                     action=ActionType.MARK_BAD_AND_RESTART,
                     bad_node_ids=sorted(bad_node_ids),
                     reason=f"diagnostic '{diagnostic_type}' failed on nodes: {bad_node_ids}",
+                    trigger=trigger_reason,
                 )
 
         logger.info("diagnostic_pipeline_all_passed trigger=%s", trigger_reason)
         return Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="all diagnostics passed — no bad nodes found",
+            trigger=trigger_reason,
         )
 
     # ------------------------------------------------------------------

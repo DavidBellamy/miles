@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from enum import Enum
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from miles.utils.ft.models.base import FtBaseModel
 
@@ -13,10 +15,12 @@ class ActionType(str, Enum):
 
 
 class TriggerType(str, Enum):
-    NONE = ""
     HANG = "hang"
     NAN_LOSS = "nan_loss"
     CRASH = "crash"
+    HARDWARE = "hardware"
+    NETWORK = "network"
+    MISC = "misc"
 
 
 class NodeFault(FtBaseModel):
@@ -29,19 +33,28 @@ class Decision(FtBaseModel):
     action: ActionType
     bad_node_ids: list[str] = Field(default_factory=list)
     reason: str
-    trigger: TriggerType = TriggerType.NONE
+    trigger: TriggerType | None = None
+
+    @model_validator(mode="after")
+    def _validate_trigger(self) -> Decision:
+        if self.action != ActionType.NONE and self.trigger is None:
+            raise ValueError(
+                f"trigger is required when action={self.action.value}"
+            )
+        return self
 
     @classmethod
-    def no_fault(cls, reason: str) -> "Decision":
+    def no_fault(cls, reason: str) -> Decision:
         return cls(action=ActionType.NONE, reason=reason)
 
     @classmethod
     def from_node_faults(
         cls,
-        faults: "list[NodeFault]",
+        faults: list[NodeFault],
         *,
         fallback_reason: str,
-    ) -> "Decision":
+        trigger: TriggerType,
+    ) -> Decision:
         if not faults:
             return cls(action=ActionType.NONE, reason=fallback_reason)
 
@@ -49,6 +62,7 @@ class Decision(FtBaseModel):
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=sorted(unique_node_ids(faults)),
             reason="; ".join(f.reason for f in faults),
+            trigger=trigger,
         )
 
 
