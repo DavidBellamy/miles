@@ -178,13 +178,15 @@ class TestCheckAlerts:
         orch, node_mgr, _, _, _, metric_store, _ = _make_orchestrator_with_store()
         inject_gpu_unavailable(metric_store, node_id="node-0")
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
+        assert RecoveryPhase.EVICT_AND_RESTART in orch.phase_history
+        assert orch.is_done()
 
     def test_critical_xid_transitions_to_evict(self) -> None:
         orch, node_mgr, _, _, _, metric_store, _ = _make_orchestrator_with_store()
         inject_critical_xid(metric_store, node_id="node-1")
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
+        assert RecoveryPhase.EVICT_AND_RESTART in orch.phase_history
+        assert orch.is_done()
 
 
 # -------------------------------------------------------------------
@@ -214,8 +216,9 @@ class TestReattempting:
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
         asyncio.run(orch.step())  # submit
-        asyncio.run(orch.step())  # poll -> FAILED
-        assert orch.phase == RecoveryPhase.DIAGNOSING
+        asyncio.run(orch.step())  # poll -> FAILED -> DIAGNOSING -> NOTIFY -> DONE
+        assert RecoveryPhase.DIAGNOSING in orch.phase_history
+        assert orch.is_done()
 
     def test_pending_timeout_transitions_to_notify(self) -> None:
         orch, _, _, _, _ = _make_orchestrator(
@@ -225,8 +228,9 @@ class TestReattempting:
 
         asyncio.run(orch.step())  # submit
         orch._context.reattempt.submit_time = datetime.now(timezone.utc) - timedelta(seconds=301)
-        asyncio.run(orch.step())  # poll -> PENDING timeout
-        assert orch.phase == RecoveryPhase.NOTIFY
+        asyncio.run(orch.step())  # poll -> PENDING timeout -> NOTIFY -> DONE
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
 
     def test_stop_training_exception_continues(self) -> None:
         orch, _, training_job, _, _ = _make_orchestrator(
@@ -274,7 +278,8 @@ class TestMonitoring:
         orch._context.reattempt.base_iteration = 0
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.DIAGNOSING
+        assert RecoveryPhase.DIAGNOSING in orch.phase_history
+        assert orch.is_done()
 
     def test_failed_after_some_iterations_goes_to_diagnosing(self) -> None:
         orch, _, _, _, _, _, mini_wandb = _make_orchestrator_with_store(
@@ -292,7 +297,8 @@ class TestMonitoring:
             )
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.DIAGNOSING
+        assert RecoveryPhase.DIAGNOSING in orch.phase_history
+        assert orch.is_done()
 
     def test_monitoring_timeout_goes_to_diagnosing(self) -> None:
         orch, *_ = _make_orchestrator(
@@ -304,7 +310,8 @@ class TestMonitoring:
         orch._context.reattempt.base_iteration = 0
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.DIAGNOSING
+        assert RecoveryPhase.DIAGNOSING in orch.phase_history
+        assert orch.is_done()
 
     def test_running_no_progress_waits(self) -> None:
         orch, *_ = _make_orchestrator(
@@ -336,7 +343,8 @@ class TestDiagnosing:
         orch._context.phase = RecoveryPhase.DIAGNOSING
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
+        assert RecoveryPhase.EVICT_AND_RESTART in orch.phase_history
+        assert orch.is_done()
         assert diag.call_count == 1
         assert orch._context.bad_node_ids == ["node-2"]
 
@@ -345,7 +353,8 @@ class TestDiagnosing:
         orch._context.phase = RecoveryPhase.DIAGNOSING
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
         assert diag.call_count == 1
 
 
@@ -387,7 +396,8 @@ class TestEvictAndRestart:
         node_mgr.mark_node_bad = failing_mark_node_bad
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
 
     def test_empty_bad_node_ids_skips_to_notify(self) -> None:
         orch, node_mgr, training_job, _, _ = _make_orchestrator()
@@ -395,7 +405,8 @@ class TestEvictAndRestart:
         orch._context.bad_node_ids = []
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
         assert not node_mgr._bad_nodes
         assert not training_job._submitted
 
@@ -409,7 +420,8 @@ class TestEvictAndRestart:
         training_job.submit_training = failing_submit_training
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
 
 
 # -------------------------------------------------------------------
@@ -449,7 +461,8 @@ class TestCheckAlertsNicDown:
         inject_nic_down(metric_store, node_id="node-0", device="ib2")
         inject_nic_up(metric_store, node_id="node-0", device="ib3")
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
+        assert RecoveryPhase.EVICT_AND_RESTART in orch.phase_history
+        assert orch.is_done()
 
     def test_minority_nic_down_proceeds_to_reattempting(self) -> None:
         orch, _, _, _, _, metric_store, _ = _make_orchestrator_with_store()
@@ -496,7 +509,8 @@ class TestCheckAlertsEphemeral:
 
         asyncio.run(orch.step())
 
-        assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
+        assert RecoveryPhase.EVICT_AND_RESTART in orch.phase_history
+        assert orch.is_done()
         assert "node-0" in orch.bad_node_ids
         assert "node-1" in orch.bad_node_ids
 
@@ -524,7 +538,8 @@ class TestReattemptingSubmitFailure:
         training_job.submit_training = failing_submit_training
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert RecoveryPhase.NOTIFY in orch.phase_history
+        assert orch.is_done()
 
 
 class TestNotifyWithBrokenNotifier:
@@ -588,7 +603,7 @@ class TestPhaseBeforeNotify:
         orch._context.phase = RecoveryPhase.DIAGNOSING
 
         asyncio.run(orch.step())
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert orch.is_done()
         assert orch._context.phase_before_notify == RecoveryPhase.DIAGNOSING
 
 
@@ -717,5 +732,88 @@ class TestNotifyPhaseNoTimeoutLoop:
 
         assert orch.phase == RecoveryPhase.DONE
         assert orch.is_done()
+
+
+# -------------------------------------------------------------------
+# Step chaining (immediate phases complete in a single step)
+# -------------------------------------------------------------------
+
+
+class TestStepChaining:
+    """Verify that step() chains through immediate phases without waiting."""
+
+    def test_diagnosing_through_evict_completes_in_single_step(self) -> None:
+        """DIAGNOSING → EVICT_AND_RESTART → DONE in one step() call."""
+        bad_decision = Decision(
+            action=ActionType.MARK_BAD_AND_RESTART,
+            bad_node_ids=["node-0"],
+            reason="GPU failed",
+            trigger=TriggerType.CRASH,
+        )
+        orch, node_mgr, training_job, _, _ = _make_orchestrator(
+            diagnostic_decision=bad_decision,
+            status_sequence=[JobStatus.RUNNING],
+        )
+        orch._context.phase = RecoveryPhase.DIAGNOSING
+
+        asyncio.run(orch.step())
+
+        assert orch.phase_history == [RecoveryPhase.EVICT_AND_RESTART, RecoveryPhase.DONE]
+        assert orch.is_done()
+        assert node_mgr.is_node_bad("node-0")
+        assert training_job._submitted
+
+    def test_diagnosing_through_notify_completes_in_single_step(self) -> None:
+        """DIAGNOSING (all passed) → NOTIFY → DONE in one step() call."""
+        notifier = FakeNotifier()
+        orch, _, _, _, _ = _make_orchestrator(notifier=notifier)
+        orch._context.phase = RecoveryPhase.DIAGNOSING
+
+        asyncio.run(orch.step())
+
+        assert orch.phase_history == [RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
+        assert orch.is_done()
+        assert len(notifier.calls) == 1
+
+    def test_check_alerts_chains_to_reattempting_then_stops_on_none(self) -> None:
+        """CHECK_ALERTS → REATTEMPTING (submit returns None) stops in one step()."""
+        orch, _, training_job, _, _ = _make_orchestrator()
+
+        asyncio.run(orch.step())
+
+        assert orch.phase == RecoveryPhase.REATTEMPTING
+        assert orch.phase_history == [RecoveryPhase.REATTEMPTING]
+        assert training_job._submitted
+
+    def test_evict_failure_chains_through_notify_to_done(self) -> None:
+        """EVICT_AND_RESTART (submit fails) → NOTIFY → DONE in one step()."""
+        notifier = FakeNotifier()
+        orch, _, training_job, _, _ = _make_orchestrator(notifier=notifier)
+        orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
+        orch._context.bad_node_ids = ["node-0"]
+        training_job.submit_training = failing_submit_training
+
+        asyncio.run(orch.step())
+
+        assert orch.phase_history == [RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
+        assert orch.is_done()
+        assert len(notifier.calls) == 1
+
+    def test_check_alerts_with_gpu_fault_chains_to_done(self) -> None:
+        """CHECK_ALERTS (GPU fault) → EVICT_AND_RESTART → DONE in one step()."""
+        orch, node_mgr, training_job, _, _, metric_store, _ = _make_orchestrator_with_store(
+            status_sequence=[JobStatus.RUNNING],
+        )
+        inject_gpu_unavailable(metric_store, node_id="node-0")
+
+        asyncio.run(orch.step())
+
+        assert orch.phase_history == [
+            RecoveryPhase.EVICT_AND_RESTART,
+            RecoveryPhase.DONE,
+        ]
+        assert orch.is_done()
+        assert node_mgr.is_node_bad("node-0")
+        assert training_job._submitted
 
 
