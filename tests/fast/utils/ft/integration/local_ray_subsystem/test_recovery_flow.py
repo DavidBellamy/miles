@@ -9,7 +9,7 @@ import ray
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
@@ -129,7 +129,7 @@ class TestRecoveryPhaseHistoryRecorded:
             s = get_status(handle)
             if s.tick_count > 20:
                 return True
-            if s.phase_history and RecoveryPhase.DONE in s.phase_history:
+            if s.phase_history and "RecoveryDone" in s.phase_history:
                 return True
             return False
 
@@ -167,7 +167,7 @@ class TestStatusDuringRecovery:
         _poll_until(_has_recovery_phase, timeout=15)
 
         status = get_status(handle)
-        assert isinstance(status.recovery_phase, RecoveryPhase)
+        assert isinstance(status.recovery_phase, str)
 
 
 class TestControllerKilledDuringRecovery:
