@@ -2,15 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 import pytest
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
+from miles.utils.ft.controller.recovery.recovery_stepper import (
+    EvictingAndRestarting,
+    NotifyHumans,
+    RealtimeChecks,
+    RecoveryDone,
+    StopTimeDiagnostics,
+)
+from miles.utils.ft.controller.recovery.restart_stepper import Evicting
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
@@ -25,8 +35,6 @@ from tests.fast.utils.ft.conftest import (
 
 
 class TestTrainingJobStatusExporter:
-    """Verify training job status is pushed to the ControllerExporter gauge."""
-
     @pytest.mark.parametrize("status_sequence,expected_value", [
         ([JobStatus.RUNNING], 1.0),
         ([JobStatus.FAILED], -1.0),
@@ -120,7 +128,7 @@ class TestGetStatus:
 
     @pytest.mark.asyncio
     async def test_bad_nodes_confirmed_false_in_early_phases(self) -> None:
-        """During REATTEMPTING/MONITORING/DIAGNOSING, bad_nodes_confirmed is False."""
+        """During RealtimeChecks / DirectlyRestarting / StopTimeDiagnostics, bad_nodes_confirmed is False."""
         detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(detectors=[detector])
 
@@ -129,50 +137,41 @@ class TestGetStatus:
         status = harness.controller.get_status()
 
         assert status.recovery_in_progress is True
-        assert status.recovery_phase in {
-            RecoveryPhase.CHECK_ALERTS,
-            RecoveryPhase.REATTEMPTING,
-            RecoveryPhase.MONITORING,
-            RecoveryPhase.DIAGNOSING,
-        }
         assert status.bad_nodes_confirmed is False
 
-    @pytest.mark.parametrize("phase,expected_confirmed", [
-        (RecoveryPhase.EVICT_AND_RESTART, True),
-        (RecoveryPhase.NOTIFY, True),
-        (RecoveryPhase.DIAGNOSING, False),
-    ])
-    def test_bad_nodes_confirmed_by_phase(
-        self, phase: RecoveryPhase, expected_confirmed: bool,
-    ) -> None:
+    def test_bad_nodes_confirmed_when_evicting(self) -> None:
         harness = make_test_controller()
-        controller = harness.controller
-
-        mock_orch = _MockOrchestrator(
-            phase=phase,
-            phase_history=[RecoveryPhase.CHECK_ALERTS, phase],
-            bad_node_ids=["node-0"],
+        harness.controller._machine._state = Recovering(
+            recovery=EvictingAndRestarting(
+                restart=Evicting(bad_node_ids=["node-0"]),
+            ),
+            trigger="crash",
+            recovery_start_time=datetime.now(timezone.utc),
         )
-        controller._recovery_manager._orchestrator = mock_orch
-
-        status = controller.get_status()
+        status = harness.controller.get_status()
         assert status.recovery_in_progress is True
-        assert status.bad_nodes_confirmed is expected_confirmed
+        assert status.bad_nodes_confirmed is True
+        assert status.bad_nodes == ["node-0"]
 
+    def test_bad_nodes_confirmed_when_notifying(self) -> None:
+        harness = make_test_controller()
+        harness.controller._machine._state = Recovering(
+            recovery=NotifyHumans(state_before="Test"),
+            trigger="crash",
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+        status = harness.controller.get_status()
+        assert status.bad_nodes_confirmed is True
 
-class _MockOrchestrator:
-    """Minimal stand-in for RecoveryOrchestrator used in get_status() tests."""
-
-    def __init__(
-        self,
-        *,
-        phase: RecoveryPhase,
-        phase_history: list[RecoveryPhase],
-        bad_node_ids: list[str],
-    ) -> None:
-        self.phase = phase
-        self.phase_history = phase_history
-        self.bad_node_ids = bad_node_ids
+    def test_bad_nodes_not_confirmed_during_diagnostics(self) -> None:
+        harness = make_test_controller()
+        harness.controller._machine._state = Recovering(
+            recovery=StopTimeDiagnostics(),
+            trigger="crash",
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+        status = harness.controller.get_status()
+        assert status.bad_nodes_confirmed is False
 
 
 class TestAgentManagement:
@@ -225,8 +224,6 @@ class TestShutdown:
 
     @pytest.mark.asyncio
     async def test_run_starts_and_stops_scrape_loop(self) -> None:
-        """run() must start the scrape loop as a background task and
-        stop it on shutdown, even if the metric store supports start/stop."""
         harness = make_test_controller(tick_interval=0.01)
         store = harness.metric_store
 

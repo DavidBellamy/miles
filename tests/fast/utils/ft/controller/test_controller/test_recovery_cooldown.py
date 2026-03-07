@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import pytest
 
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     make_test_controller,
 )
+
+
+def _force_recovery_complete(harness) -> None:
+    """Force the machine back to DetectingAnomaly to simulate recovery completion."""
+    harness.controller._machine._state = DetectingAnomaly()
 
 
 class TestRecoveryCooldown:
@@ -19,15 +25,15 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
-        harness.controller._recovery_manager._orchestrator = None
+        assert isinstance(harness.controller._machine.state, Recovering)
+        _force_recovery_complete(harness)
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
-        harness.controller._recovery_manager._orchestrator = None
+        assert isinstance(harness.controller._machine.state, Recovering)
+        _force_recovery_complete(harness)
 
         await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
+        assert not isinstance(harness.controller._machine.state, Recovering)
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1
         title, content, severity = harness.notifier.calls[0]
@@ -43,9 +49,9 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        harness.controller._recovery_manager._orchestrator = None
+        _force_recovery_complete(harness)
         await harness.controller._tick()
-        harness.controller._recovery_manager._orchestrator = None
+        _force_recovery_complete(harness)
 
         crash_detector._decision = Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -53,7 +59,7 @@ class TestRecoveryCooldown:
             reason="hang",
         )
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
 
     @pytest.mark.anyio
     async def test_recovery_within_cooldown_window_counted(self) -> None:
@@ -64,9 +70,9 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        harness.controller._recovery_manager._orchestrator = None
+        _force_recovery_complete(harness)
 
         await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
+        assert not isinstance(harness.controller._machine.state, Recovering)
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1
