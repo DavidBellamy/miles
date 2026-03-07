@@ -10,9 +10,9 @@ import ray
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.platform.ray_controller_client import RayControllerClient
-from miles.utils.ft.platform.controller_actor import FtControllerActor
-from miles.utils.ft.platform.controller_factory import FtControllerConfig
+from miles.utils.ft.platform.config import FtControllerConfig
+from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 from tests.fast.utils.ft.integration.conftest import get_status
 

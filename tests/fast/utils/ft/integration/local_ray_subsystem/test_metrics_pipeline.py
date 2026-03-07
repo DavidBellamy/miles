@@ -16,8 +16,8 @@ from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
-from miles.utils.ft.platform.controller_actor import FtControllerActor
-from miles.utils.ft.platform.controller_factory import FtControllerConfig
+from miles.utils.ft.platform.config import FtControllerConfig
+from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.platform.stubs import StubTrainingJob
 from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name
 
