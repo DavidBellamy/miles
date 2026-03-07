@@ -5,6 +5,7 @@ import os
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.platform.node_agent_factory import DEFAULT_NUM_GPUS
 
 
 class InterMachineCommDiagnostic(BaseDiagnostic):
@@ -21,7 +22,7 @@ class InterMachineCommDiagnostic(BaseDiagnostic):
     def __init__(
         self,
         expected_bandwidth_gbps: float = 40.0,
-        num_gpus: int = 8,
+        num_gpus: int = DEFAULT_NUM_GPUS,
         master_addr: str = "",
         master_port: int = 29500,
         nccl_test_binary: str = "all_gather_perf",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.platform.node_agent_factory import DEFAULT_NUM_GPUS
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 
 
@@ -18,7 +19,7 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
     def __init__(
         self,
         expected_bandwidth_gbps: float = 350.0,
-        num_gpus: int = 8,
+        num_gpus: int = DEFAULT_NUM_GPUS,
         nccl_test_binary: str = "all_reduce_perf",
     ) -> None:
         self._expected_bandwidth_gbps = expected_bandwidth_gbps

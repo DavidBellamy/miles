@@ -6,7 +6,7 @@ import ray
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.platform.node_agent_factory import build_node_agent
+from miles.utils.ft.platform.node_agent_factory import DEFAULT_COLLECT_INTERVAL_SECONDS, DEFAULT_NUM_GPUS, build_node_agent
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol
 from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
@@ -31,8 +31,8 @@ class _FtNodeAgentActorCls:
         self,
         node_id: str = "",
         ft_id: str = "",
-        num_gpus: int = 8,
-        collect_interval_seconds: float = 10.0,
+        num_gpus: int = DEFAULT_NUM_GPUS,
+        collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
         collectors_override: list[BaseCollector] | None = None,
         diagnostics_override: list[DiagnosticProtocol] | None = None,
     ) -> None:

@@ -18,6 +18,9 @@ from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCom
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
 from miles.utils.ft.protocols.agents import DiagnosticProtocol
 
+DEFAULT_NUM_GPUS: int = 8
+DEFAULT_COLLECT_INTERVAL_SECONDS: float = 10.0
+
 
 def build_default_collectors() -> list[GpuCollector | KmsgCollector | NetworkCollector | DiskCollector]:
     return [GpuCollector(), KmsgCollector(), NetworkCollector(), DiskCollector()]
@@ -35,8 +38,8 @@ def build_default_diagnostics(
 
 def build_node_agent(
     node_id: str = "",
-    num_gpus: int = 8,
-    collect_interval_seconds: float = 10.0,
+    num_gpus: int = DEFAULT_NUM_GPUS,
+    collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
     collectors_override: list[BaseCollector] | None = None,
     diagnostics_override: list[DiagnosticProtocol] | None = None,
 ) -> FtNodeAgent:
