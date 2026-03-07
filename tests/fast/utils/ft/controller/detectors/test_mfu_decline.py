@@ -3,17 +3,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from tests.fast.utils.ft.helpers import (
-    inject_gpu_temperature,
     make_detector_context,
-    make_fake_metric_store,
     make_fake_mini_wandb,
 )
 
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models.fault import ActionType
-
-_RANK_PLACEMENT = {0: "node-0", 1: "node-1"}
 
 
 def _make_wandb_with_mfu(
@@ -47,9 +43,7 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
 
@@ -60,49 +54,19 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
 
-    def test_decline_with_high_temperature(self) -> None:
+    def test_decline_monitoring(self) -> None:
         wandb = _make_wandb_with_mfu([0.3] * 10)
-        store = make_fake_metric_store()
-        for i in range(8):
-            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=60.0)
-            inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=105.0)
-
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-            temperature_delta_threshold=20.0,
-        ))
-
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
-
-        assert decision.action == ActionType.ENTER_RECOVERY
-        assert "node-1" in decision.bad_node_ids
-
-    def test_decline_normal_temperature_monitoring(self) -> None:
-        wandb = _make_wandb_with_mfu([0.3] * 10)
-        store = make_fake_metric_store()
-        for i in range(8):
-            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
-            inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=66.0)
-
         detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -115,11 +79,6 @@ class TestMfuDeclineDetector:
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
-        store = make_fake_metric_store()
-        for i in range(8):
-            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
-            inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=66.0)
-
         detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
@@ -127,9 +86,7 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
@@ -141,10 +98,6 @@ class TestMfuDeclineDetector:
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
-        store = make_fake_metric_store()
-        for i in range(8):
-            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
-
         detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
@@ -152,9 +105,7 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -184,10 +135,6 @@ class TestMfuDeclineDetector:
         ]
         wandb = _make_wandb_with_timed_mfu(entries)
 
-        store = make_fake_metric_store()
-        for i in range(8):
-            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
-
         detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
@@ -195,9 +142,7 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -249,7 +194,6 @@ class TestMfuDeclineDetectorValidation:
         (dict(consecutive_steps=0), "consecutive_steps"),
         (dict(decline_timeout_minutes=0.0), "decline_timeout_minutes"),
         (dict(baseline_steps=0), "baseline_steps"),
-        (dict(temperature_delta_threshold=0.0), "temperature_delta_threshold"),
         (dict(mfu_absolute_minimum=-0.1), "mfu_absolute_minimum"),
     ])
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:

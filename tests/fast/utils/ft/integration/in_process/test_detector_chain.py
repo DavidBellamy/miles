@@ -162,6 +162,7 @@ class TestDetectorChainIntegration:
         assert names == [
             "HighConfidenceHardwareDetector",
             "DiskSpaceLowDetector",
+            "ThermalThrottlingDetector",
             "NetworkAlertDetector",
             "TrainingCrashDetector",
             "HangDetector",
@@ -221,7 +222,7 @@ class TestBuildDetectorChainConfig:
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
 
         assert hang._config.training_timeout_minutes == 30
-        assert mfu._mfu_threshold_ratio == 0.6
+        assert mfu._config.mfu_threshold_ratio == 0.6
         assert net._alert_window == timedelta(minutes=15)
         assert net._alert_threshold == 3
 
