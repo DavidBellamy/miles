@@ -3,26 +3,31 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
-from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
 from miles.utils.ft.utils.graceful_degrade import FaultInjectionError, graceful_degrade
+
+if TYPE_CHECKING:
+    from miles.utils.ft.protocols.platform import ControllerClientProtocol
 
 logger = logging.getLogger(__name__)
 
 
 class FtTrackingAgent:
-    """Forwards training metrics to FtController via Ray fire-and-forget calls.
+    """Forwards training metrics to FtController.
 
     Designed to be registered as a hook in tracking_utils.log(), so that all
     metrics logged to Wandb/TensorBoard also reach the fault-tolerance
     controller's MiniWandb store.
     """
 
-    def __init__(self, run_id: str | None = None) -> None:
-        self._ft_id: str = os.environ.get("MILES_FT_ID", "")
+    def __init__(
+        self,
+        run_id: str | None = None,
+        controller_client: ControllerClientProtocol | None = None,
+    ) -> None:
         self._run_id = run_id or os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
-        self._controller_handle: Any | None = None
+        self._controller_client = controller_client
 
         inject_path = os.environ.get("MILES_FT_EXCEPTION_INJECT_PATH", "")
         self._exception_inject_path: Path | None = Path(inject_path) if inject_path else None
@@ -34,9 +39,8 @@ class FtTrackingAgent:
         if not self._run_id:
             return
 
-        controller = self._get_controller()
-        if controller is not None:
-            controller.log_step.remote(
+        if self._controller_client is not None:
+            self._controller_client.log_step(
                 run_id=self._run_id,
                 step=step,
                 metrics=metrics,
@@ -50,8 +54,3 @@ class FtTrackingAgent:
             raise FaultInjectionError(
                 f"Fault injection triggered via {self._exception_inject_path}"
             )
-
-    def _get_controller(self) -> Any | None:
-        if self._controller_handle is None:
-            self._controller_handle = get_controller_handle(self._ft_id)
-        return self._controller_handle
