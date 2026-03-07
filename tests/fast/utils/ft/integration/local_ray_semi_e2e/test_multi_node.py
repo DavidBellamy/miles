@@ -1,9 +1,11 @@
-"""Semi-E2E: multi-node — registration, parallel ranks, grace period."""
+"""Semi-E2E: multi-node — registration, parallel ranks, grace period, stale run_id."""
 from __future__ import annotations
 
 import asyncio
 import time
 from collections.abc import Callable
+
+import ray
 
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
@@ -18,6 +20,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
     wait_for_mode,
+    wait_for_mode_transition,
     wait_for_recovery_complete,
     wait_for_recovery_phase,
     wait_for_training_stable,
@@ -125,3 +128,35 @@ class TestRegistrationGrace:
             timeout=30.0,
         )
         assert status.mode == ControllerMode.RECOVERY
+
+
+class TestStaleRunId:
+    async def test_stale_run_id_registration_rejected(
+        self, e2e_env: E2EEnv,
+    ) -> None:
+        """Registration with old run_id after recovery is silently rejected."""
+        env = e2e_env
+        old_run_id = get_status(env.controller).active_run_id
+        assert old_run_id is not None
+
+        # Step 1: crash → recovery → new run_id
+        await env.injector.crash_training()
+        status = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+        new_run_id = status.active_run_id
+        assert new_run_id != old_run_id
+
+        # Step 2: attempt registration with stale run_id
+        ray.get(env.controller.register_training_rank.remote(
+            run_id=old_run_id, rank=99, world_size=1,
+            node_id="stale-node", exporter_address="http://stale:9090",
+            pid=9999,
+        ), timeout=5)
+
+        # Step 3: training continues normally under new run
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        final = get_status(env.controller)
+        assert final.active_run_id == new_run_id

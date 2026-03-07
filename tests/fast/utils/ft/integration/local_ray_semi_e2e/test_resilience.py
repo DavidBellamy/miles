@@ -1,4 +1,4 @@
-"""Semi-E2E: resilience — agent without controller, fire-and-forget after death."""
+"""Semi-E2E: resilience — agent without controller, fire-and-forget, detector faults."""
 from __future__ import annotations
 
 import asyncio
@@ -9,13 +9,16 @@ from unittest.mock import patch
 import ray
 
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
+from tests.fast.utils.ft.helpers.controller_fakes import CrashingDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
     E2EEnv,
     NodeSpec,
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
+    wait_for_mode_transition,
     wait_for_training_stable,
 )
 
@@ -66,3 +69,27 @@ class TestFireAndForget:
         for worker in env.workers:
             iteration = ray.get(worker.get_iteration.remote(), timeout=5)
             assert iteration > 0
+
+
+class TestDetectorResilience:
+    async def test_detector_exception_does_not_crash_controller(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """A crashing detector is skipped; subsequent detectors still fire normally."""
+        env = make_e2e_env(
+            ft_id="e2edr",
+            nodes=[NodeSpec(node_id="e2edr-node-0")],
+            detectors=[CrashingDetector(), TrainingCrashDetector()],
+        )
+
+        # Step 1: let training run for a while with CrashingDetector throwing every tick
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
+
+        # Step 2: crash training → TrainingCrashDetector should still work
+        await env.injector.crash_training()
+        final = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+        assert final.mode == ControllerMode.MONITORING

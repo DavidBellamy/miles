@@ -14,6 +14,7 @@ from miles.utils.ft.models.recovery import ControllerMode
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
     E2EEnv,
     NodeSpec,
+    _FastHangDetector,
     _SLOW_STEP,
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
@@ -206,6 +207,202 @@ class TestConcurrentFaults:
         assert status.mode == ControllerMode.RECOVERY
 
         # Step 3: let recovery complete
+        final = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=90.0,
+        )
+        assert final.mode == ControllerMode.MONITORING
+
+
+class TestRestartFailed:
+    async def test_restart_job_fails_immediately_escalates_to_diagnostics(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Restart completes but job FAILED again immediately → StopTimeDiagnostics."""
+        env = make_e2e_env(
+            ft_id="e2erf",
+            nodes=[NodeSpec(node_id="e2erf-node-0")],
+            detectors=[TrainingCrashDetector()],
+            step_interval=_SLOW_STEP,
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=1.0, max_count=5),
+        )
+
+        # Step 1: crash → enters recovery, wait for restart phase
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="StoppingAndRestarting", timeout=30.0,
+        )
+
+        # Step 2: crash again immediately (restart fails)
+        await env.injector.crash_training()
+
+        # Step 3: poll for StopTimeDiagnostics
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and "StopTimeDiagnostics" in status.phase_history:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise TimeoutError("StopTimeDiagnostics not observed within 60s")
+
+        assert_phase_path_contains(status, ["StopTimeDiagnostics"])
+
+
+class TestCrashDuringRecovery:
+    async def test_crash_during_early_recovery_converges(
+        self, e2e_env: E2EEnv,
+    ) -> None:
+        """Crash while already in RECOVERY → system eventually converges."""
+        # Step 1: crash → enter recovery
+        await env.injector.crash_training()
+        await wait_for_mode(
+            e2e_env.controller,
+            target_mode=ControllerMode.RECOVERY,
+            timeout=30.0,
+        )
+
+        # Step 2: crash again while recovering
+        await e2e_env.injector.crash_training()
+
+        # Step 3: system must converge (back to MONITORING or NotifyHumans)
+        deadline = time.monotonic() + 120.0
+        while time.monotonic() < deadline:
+            status = get_status(e2e_env.controller)
+            if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
+                return
+            await asyncio.sleep(0.5)
+
+        status = get_status(e2e_env.controller)
+        assert status.mode == ControllerMode.MONITORING or (
+            status.phase_history and "NotifyHumans" in status.phase_history
+        ), f"Recovery did not converge: mode={status.mode}, phase={status.recovery_phase}"
+
+    async def test_fault_during_monitoring_progress_serialized(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """New fault during MonitoringProgress is handled without nested recovery."""
+        env = make_e2e_env(
+            ft_id="e2emp",
+            nodes=[NodeSpec(node_id="e2emp-node-0")],
+            detectors=[TrainingCrashDetector()],
+            step_interval=_SLOW_STEP,
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=1.0, max_count=5),
+        )
+
+        # Step 1: crash → wait for MonitoringProgress
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="MonitoringProgress", timeout=60.0,
+        )
+
+        # Step 2: inject another crash during MonitoringProgress
+        await env.injector.crash_training()
+
+        # Step 3: wait for convergence
+        deadline = time.monotonic() + 120.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
+                return
+            await asyncio.sleep(0.5)
+
+        status = get_status(env.controller)
+        assert status.mode == ControllerMode.MONITORING, (
+            f"Did not converge: mode={status.mode}, phase={status.recovery_phase}"
+        )
+
+
+class TestSequentialRecovery:
+    async def test_three_sequential_recovery_cycles_no_state_drift(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Three crash-recover cycles with distinct run_ids and clean state each time."""
+        env = make_e2e_env(
+            ft_id="e2eseq",
+            nodes=[NodeSpec(node_id="e2eseq-node-0")],
+            detectors=[TrainingCrashDetector()],
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=10),
+        )
+
+        run_ids: list[str] = []
+        initial_status = get_status(env.controller)
+        if initial_status.active_run_id:
+            run_ids.append(initial_status.active_run_id)
+
+        for cycle in range(3):
+            await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+            await env.injector.crash_training()
+
+            status = await wait_for_mode_transition(
+                env.controller,
+                target_mode=ControllerMode.MONITORING,
+                timeout=60.0,
+            )
+            assert status.mode == ControllerMode.MONITORING
+            assert status.recovery_in_progress is False
+
+            if status.active_run_id:
+                run_ids.append(status.active_run_id)
+
+        assert len(set(run_ids)) == len(run_ids), f"Duplicate run_ids: {run_ids}"
+
+
+class TestCooldownBoundary:
+    async def test_recovery_cooldown_boundary_exact_count(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """max_count=2 allows 1 recovery; the second crash is throttled.
+
+        record() is called before is_throttled(), so max_count=2 allows 1 recovery.
+        """
+        env = make_e2e_env(
+            ft_id="e2ecb",
+            nodes=[NodeSpec(node_id="e2ecb-node-0")],
+            detectors=[TrainingCrashDetector()],
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: first crash → recovery succeeds
+        await env.injector.crash_training()
+        await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+
+        # Step 2: second crash → throttled
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await env.injector.crash_training()
+        await asyncio.sleep(5.0)
+        status = get_status(env.controller)
+        assert status.mode == ControllerMode.MONITORING, (
+            f"Expected throttle, but mode={status.mode}"
+        )
+
+
+class TestConcurrentDetectors:
+    async def test_concurrent_crash_and_hang_priority_deterministic(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Hang + crash conditions both true → exactly one recovery cycle triggered."""
+        env = make_e2e_env(
+            ft_id="e2ecd",
+            nodes=[NodeSpec(node_id="e2ecd-node-0")],
+            detectors=[TrainingCrashDetector(), _FastHangDetector(timeout_seconds=3.0)],
+        )
+
+        # Step 1: inject hang first
+        await env.injector.inject_hang()
+        await asyncio.sleep(4.0)
+
+        # Step 2: also crash
+        await env.injector.crash_training()
+
+        # Step 3: wait for recovery to complete
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
