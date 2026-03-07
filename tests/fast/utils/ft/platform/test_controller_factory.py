@@ -82,7 +82,7 @@ class TestBuildFtControllerNotifier:
     def test_stub_platform_gets_stub_notifier(self) -> None:
         from miles.utils.ft.platform.stubs import StubNotifier
 
-        with patch("miles.utils.ft.platform.controller_factory.os.environ", {}):
+        with patch.dict("os.environ", {}, clear=True):
             controller = build_ft_controller(
                 config=FtControllerConfig(platform="stub"),
                 start_exporter=False,
@@ -92,9 +92,10 @@ class TestBuildFtControllerNotifier:
     def test_lark_webhook_url_creates_lark_notifier(self) -> None:
         from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 
-        with patch(
-            "miles.utils.ft.platform.controller_factory.os.environ",
+        with patch.dict(
+            "os.environ",
             {"MILES_FT_NOTIFY_WEBHOOK_URL": "https://lark.example.com/hook"},
+            clear=True,
         ):
             controller = build_ft_controller(
                 config=FtControllerConfig(platform="stub"),
