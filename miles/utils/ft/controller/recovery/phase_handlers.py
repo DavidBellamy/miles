@@ -40,13 +40,13 @@ async def step_check_alerts(
     ctx: RecoveryContext,
     alert_checker: AlertChecker,
 ) -> RecoveryPhase:
-    faults = alert_checker.check_alerts()
-    if not faults:
+    node_faults = alert_checker.check_alerts()
+    if not node_faults:
         logger.info("check_alerts_clean trigger=%s", ctx.trigger)
         return RecoveryPhase.REATTEMPTING
 
-    non_ephemeral = [f for f in faults if not f.ephemeral]
-    ephemeral_only = [f for f in faults if f.ephemeral]
+    non_ephemeral = [f for f in node_faults if not f.ephemeral]
+    ephemeral_only = [f for f in node_faults if f.ephemeral]
 
     if non_ephemeral:
         all_faults = non_ephemeral + ephemeral_only
