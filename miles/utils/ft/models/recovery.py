@@ -52,7 +52,7 @@ RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
     RecoveryPhase.DONE: 7,
 }
 
-_BAD_NODES_CONFIRMED_PHASES: frozenset[RecoveryPhase] = frozenset({
+BAD_NODES_CONFIRMED_PHASES: frozenset[RecoveryPhase] = frozenset({
     RecoveryPhase.EVICT_AND_RESTART,
     RecoveryPhase.NOTIFY,
     RecoveryPhase.DONE,

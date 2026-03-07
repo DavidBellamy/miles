@@ -8,7 +8,7 @@ from miles.utils.ft.controller.actions import PlatformDeps
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.fault import Decision
-from miles.utils.ft.models.recovery import RecoveryPhase, RecoverySnapshot, _BAD_NODES_CONFIRMED_PHASES
+from miles.utils.ft.models.recovery import RecoveryPhase, RecoverySnapshot, BAD_NODES_CONFIRMED_PHASES
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class RecoveryLifecycleManager:
         if self._orchestrator is not None:
             phase = self._orchestrator.phase
             phase_history = list(self._orchestrator.phase_history)
-            bad_nodes_confirmed = phase in _BAD_NODES_CONFIRMED_PHASES
+            bad_nodes_confirmed = phase in BAD_NODES_CONFIRMED_PHASES
             diagnosing_nodes = sorted(self._orchestrator.bad_node_ids)
         else:
             phase = None
