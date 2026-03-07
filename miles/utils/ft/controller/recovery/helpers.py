@@ -79,10 +79,12 @@ async def safe_notify(
 
 
 class SlidingWindowThrottle:
-    """Tracks event frequency per trigger and throttles when a limit is exceeded.
+    """Tracks total recovery frequency and throttles when a limit is exceeded.
 
-    Within a sliding window of ``window_minutes``, if the same trigger fires
-    ``max_count`` or more times, ``is_throttled`` returns True.
+    Within a sliding window of ``window_minutes``, if **any** combination of
+    triggers fires ``max_count`` or more times, ``is_throttled`` returns True.
+    The trigger type is still recorded for observability but does not partition
+    the count — a recovery storm should be throttled regardless of fault mix.
     """
 
     def __init__(self, window_minutes: float, max_count: int) -> None:
@@ -95,8 +97,5 @@ class SlidingWindowThrottle:
 
     def is_throttled(self, trigger: TriggerType) -> bool:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._window_minutes)
-        recent_count = sum(
-            1 for t, ts in self._history
-            if t == trigger and ts >= cutoff
-        )
+        recent_count = sum(1 for _, ts in self._history if ts >= cutoff)
         return recent_count >= self._max_count

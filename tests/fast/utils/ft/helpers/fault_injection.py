@@ -71,5 +71,9 @@ class LocalRayFaultInjector:
     async def clear_nan_loss(self) -> None:
         await self._state.set_custom_log_metrics.remote({})
 
+    async def inject_custom_metrics(self, metrics: dict[str, float]) -> None:
+        """Inject arbitrary key-value metrics into the training worker's log_step."""
+        await self._state.set_custom_log_metrics.remote(metrics)
+
     async def inject_python_exception(self) -> None:
         await self._state.set_status.remote(JobStatus.FAILED.value)
