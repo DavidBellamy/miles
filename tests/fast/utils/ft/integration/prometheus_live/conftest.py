@@ -174,9 +174,15 @@ class MiniBackend(MetricBackend):
 
 
 class LiveBackend(MetricBackend):
+    _FLUSH_POLL_INTERVAL: float = 0.3
+    _FLUSH_TIMEOUT: float = 10.0
+
     def __init__(self, exporter: DynamicExporter, prometheus_url: str) -> None:
         self._exporter = exporter
-        self._client = PrometheusClient(url=prometheus_url)
+        self._client = PrometheusClient(url=prometheus_url, range_query_step_seconds=1)
+        self._pending_metric: str | None = None
+        self._pending_value: float | None = None
+        self._pending_labels: dict[str, str] | None = None
 
     @property
     def store(self) -> PrometheusClient:
@@ -189,9 +195,30 @@ class LiveBackend(MetricBackend):
         labels: dict[str, str] | None = None,
     ) -> None:
         self._exporter.set_gauge(name=name, value=value, labels=labels)
+        self._pending_metric = name
+        self._pending_value = value
+        self._pending_labels = labels
 
     async def flush(self) -> None:
-        await asyncio.sleep(2)
+        """Poll until Prometheus has scraped and returns the expected value."""
+        if self._pending_metric is None:
+            await asyncio.sleep(2)
+            return
+
+        metric = self._pending_metric
+        expected = self._pending_value
+        labels = self._pending_labels
+        deadline = time.monotonic() + self._FLUSH_TIMEOUT
+        while time.monotonic() < deadline:
+            df = self._client.query_latest(metric, label_filters=labels)
+            if not df.is_empty() and df["value"][0] == expected:
+                return
+            await asyncio.sleep(self._FLUSH_POLL_INTERVAL)
+
+        raise TimeoutError(
+            f"Prometheus did not return expected value {expected} for "
+            f"metric '{metric}' (labels={labels}) within {self._FLUSH_TIMEOUT}s"
+        )
 
 
 # ---------------------------------------------------------------------------
