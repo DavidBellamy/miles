@@ -2,6 +2,8 @@
 
 ***WARN: This is experimental and can only be stabilized after sufficiently many large training runs.***
 
+![](ft_arch.svg)
+
 ## Architecture
 
 The directory layout also tightly follows the architecture.
