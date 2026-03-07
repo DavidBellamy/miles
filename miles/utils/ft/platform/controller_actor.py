@@ -6,6 +6,7 @@ from miles.utils.ft.platform.controller_factory import (
     FtControllerConfig,
     build_ft_controller,
 )
+from miles.utils.ft.platform.ray_node_agent_proxy import RayNodeAgentProxy
 
 
 class _FtControllerActorCls:
@@ -63,17 +64,11 @@ class _FtControllerActorCls:
         )
 
     def register_node_agent(
-        self,
-        node_id: str,
-        exporter_address: str = "",
-        ray_node_id: str = "",
-        # Backward compatibility: accept agent handle (ignored)
-        agent: object = None,
+        self, node_id: str, agent: object, exporter_address: str = "",
     ) -> None:
+        proxy = RayNodeAgentProxy(agent)
         self._ctrl.register_node_agent(
-            node_id=node_id,
-            exporter_address=exporter_address,
-            ray_node_id=ray_node_id,
+            node_id=node_id, agent=proxy, exporter_address=exporter_address,
         )
 
     def get_status(self) -> object:

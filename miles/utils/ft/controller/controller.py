@@ -50,7 +50,6 @@ class FtController:
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None,
         agents: dict[str, NodeAgentProtocol],
-        node_ray_ids: dict[str, str],
         metric_store: MetricStoreProtocol,
         detectors: list[BaseFaultDetector],
         tick_interval: float,
@@ -63,7 +62,6 @@ class FtController:
         self._mini_wandb = mini_wandb
         self._scrape_target_manager = scrape_target_manager
         self._agents = agents
-        self._node_ray_ids = node_ray_ids
         self._detectors = detectors
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter or NullControllerExporter()
@@ -91,7 +89,6 @@ class FtController:
         registration_grace_ticks: int = 5,
     ) -> FtController:
         agents: dict[str, NodeAgentProtocol] = {}
-        node_ray_ids: dict[str, str] = {}
         rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
 
         resolved_orchestrator: DiagnosticOrchestratorProtocol = (
@@ -128,7 +125,6 @@ class FtController:
             mini_wandb=mini_wandb,
             scrape_target_manager=scrape_target_manager,
             agents=agents,
-            node_ray_ids=node_ray_ids,
             metric_store=metric_store,
             detectors=detectors or [],
             tick_interval=tick_interval,
@@ -153,25 +149,14 @@ class FtController:
         return self._mini_wandb
 
     def register_node_agent(
-        self,
-        node_id: str,
-        exporter_address: str = "",
-        ray_node_id: str = "",
-        # Backward compatibility: accept agent (stored in _agents for tests)
-        agent: NodeAgentProtocol | None = None,
+        self, node_id: str, agent: NodeAgentProtocol, exporter_address: str = "",
     ) -> None:
-        if agent is not None:
-            self._agents[node_id] = agent
-        if ray_node_id:
-            self._node_ray_ids[node_id] = ray_node_id
+        self._agents[node_id] = agent
         if exporter_address and self._scrape_target_manager is not None:
             self._scrape_target_manager.add_scrape_target(
                 target_id=node_id, address=exporter_address,
             )
-        logger.info(
-            "agent_registered node_id=%s exporter=%s ray_node_id=%s",
-            node_id, exporter_address, ray_node_id,
-        )
+        logger.info("agent_registered node_id=%s exporter=%s", node_id, exporter_address)
 
     async def submit_initial_training(self) -> str:
         run_id = await self._training_job.submit_training()
