@@ -1,29 +1,36 @@
 from datetime import timedelta
 
+from pydantic import ConfigDict, field_validator
+
 from miles.utils.ft.models.metric_names import (
     PHASE_CHECKPOINT_SAVING,
     TRAINING_ITERATION,
     TRAINING_PHASE,
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.protocols.platform import JobStatus
 
 
-class HangDetector(BaseFaultDetector):
-    def __init__(
-        self,
-        training_timeout_minutes: int = 10,
-        checkpoint_saving_timeout_minutes: int = 30,
-    ) -> None:
-        if training_timeout_minutes < 1:
-            raise ValueError(f"training_timeout_minutes must be >= 1, got {training_timeout_minutes}")
-        if checkpoint_saving_timeout_minutes < 1:
-            raise ValueError(f"checkpoint_saving_timeout_minutes must be >= 1, got {checkpoint_saving_timeout_minutes}")
+class HangDetectorConfig(FtBaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-        self._training_timeout_minutes = training_timeout_minutes
-        self._checkpoint_saving_timeout_minutes = checkpoint_saving_timeout_minutes
+    training_timeout_minutes: int = 10
+    checkpoint_saving_timeout_minutes: int = 30
+
+    @field_validator("training_timeout_minutes", "checkpoint_saving_timeout_minutes")
+    @classmethod
+    def _must_be_at_least_one(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be >= 1")
+        return value
+
+
+class HangDetector(BaseFaultDetector):
+    def __init__(self, config: HangDetectorConfig | None = None) -> None:
+        self._config = config or HangDetectorConfig()
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
         if ctx.job_status != JobStatus.RUNNING:
@@ -31,9 +38,9 @@ class HangDetector(BaseFaultDetector):
 
         is_checkpoint_saving = self._is_checkpoint_saving(ctx.metric_store)
         timeout_minutes = (
-            self._checkpoint_saving_timeout_minutes
+            self._config.checkpoint_saving_timeout_minutes
             if is_checkpoint_saving
-            else self._training_timeout_minutes
+            else self._config.training_timeout_minutes
         )
 
         iteration_changes = self._get_iteration_changes(ctx.metric_store, window_minutes=timeout_minutes)

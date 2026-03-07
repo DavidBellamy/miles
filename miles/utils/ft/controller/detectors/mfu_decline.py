@@ -1,51 +1,68 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
+from pydantic import ConfigDict, field_validator
+
 from miles.utils.ft.models.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, TrainingMetricStoreProtocol
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MFU_THRESHOLD_RATIO = 0.8
-_DEFAULT_CONSECUTIVE_STEPS = 10
-_DEFAULT_TEMPERATURE_DELTA_THRESHOLD = 20.0
-_DEFAULT_DECLINE_TIMEOUT_MINUTES = 30.0
-_DEFAULT_BASELINE_STEPS = 50
+
+class MfuDeclineDetectorConfig(FtBaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mfu_baseline: float = 0.0
+    mfu_threshold_ratio: float = 0.8
+    consecutive_steps: int = 10
+    temperature_delta_threshold: float = 20.0
+    decline_timeout_minutes: float = 30.0
+    baseline_steps: int = 50
+    mfu_absolute_minimum: float = 0.0
+
+    @field_validator("mfu_threshold_ratio")
+    @classmethod
+    def _ratio_in_range(cls, value: float) -> float:
+        if value <= 0 or value > 1:
+            raise ValueError("mfu_threshold_ratio must be in (0, 1]")
+        return value
+
+    @field_validator("consecutive_steps", "baseline_steps")
+    @classmethod
+    def _must_be_at_least_one(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be >= 1")
+        return value
+
+    @field_validator("temperature_delta_threshold", "decline_timeout_minutes")
+    @classmethod
+    def _must_be_positive(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("must be > 0")
+        return value
+
+    @field_validator("mfu_absolute_minimum")
+    @classmethod
+    def _must_be_non_negative(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("mfu_absolute_minimum must be >= 0")
+        return value
 
 
 class MfuDeclineDetector(BaseFaultDetector):
-    def __init__(
-        self,
-        mfu_baseline: float = 0.0,
-        mfu_threshold_ratio: float = _DEFAULT_MFU_THRESHOLD_RATIO,
-        consecutive_steps: int = _DEFAULT_CONSECUTIVE_STEPS,
-        temperature_delta_threshold: float = _DEFAULT_TEMPERATURE_DELTA_THRESHOLD,
-        decline_timeout_minutes: float = _DEFAULT_DECLINE_TIMEOUT_MINUTES,
-        baseline_steps: int = _DEFAULT_BASELINE_STEPS,
-        mfu_absolute_minimum: float = 0.0,
-    ) -> None:
-        if mfu_threshold_ratio <= 0 or mfu_threshold_ratio > 1:
-            raise ValueError(f"mfu_threshold_ratio must be in (0, 1], got {mfu_threshold_ratio}")
-        if consecutive_steps < 1:
-            raise ValueError(f"consecutive_steps must be >= 1, got {consecutive_steps}")
-        if temperature_delta_threshold <= 0:
-            raise ValueError(f"temperature_delta_threshold must be > 0, got {temperature_delta_threshold}")
-        if decline_timeout_minutes <= 0:
-            raise ValueError(f"decline_timeout_minutes must be > 0, got {decline_timeout_minutes}")
-        if baseline_steps < 1:
-            raise ValueError(f"baseline_steps must be >= 1, got {baseline_steps}")
-        if mfu_absolute_minimum < 0:
-            raise ValueError(f"mfu_absolute_minimum must be >= 0, got {mfu_absolute_minimum}")
+    def __init__(self, config: MfuDeclineDetectorConfig | None = None) -> None:
+        self._config = config or MfuDeclineDetectorConfig()
 
-        self._mfu_baseline = mfu_baseline
-        self._mfu_threshold_ratio = mfu_threshold_ratio
-        self._consecutive_steps = consecutive_steps
-        self._temperature_delta_threshold = temperature_delta_threshold
-        self._decline_timeout_minutes = decline_timeout_minutes
-        self._baseline_steps = baseline_steps
-        self._mfu_absolute_minimum = mfu_absolute_minimum
+        self._mfu_baseline = self._config.mfu_baseline
+        self._mfu_threshold_ratio = self._config.mfu_threshold_ratio
+        self._consecutive_steps = self._config.consecutive_steps
+        self._temperature_delta_threshold = self._config.temperature_delta_threshold
+        self._decline_timeout_minutes = self._config.decline_timeout_minutes
+        self._baseline_steps = self._config.baseline_steps
+        self._mfu_absolute_minimum = self._config.mfu_absolute_minimum
 
         self._baseline_locked: bool = False
         self._locked_baseline: float | None = None
