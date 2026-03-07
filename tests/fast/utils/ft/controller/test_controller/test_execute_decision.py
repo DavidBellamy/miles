@@ -207,12 +207,15 @@ class TestExecuteDecision:
         assert len(harness.notifier.calls) == 0
 
     @pytest.mark.anyio
-    async def test_mark_bad_does_not_notify(self) -> None:
+    async def test_mark_bad_sends_eviction_success_notification(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         await harness.controller._tick()
 
         assert harness.notifier is not None
-        assert len(harness.notifier.calls) == 0
+        assert len(harness.notifier.calls) == 1
+        title, _, severity = harness.notifier.calls[0]
+        assert title == "Node Eviction Succeeded"
+        assert severity == "warning"
 
     @pytest.mark.anyio
     async def test_enter_recovery_does_not_notify(self) -> None:
