@@ -17,6 +17,8 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     StopTimeDiagnostics,
 )
 
+RECOVERY_TIMEOUT_SECONDS: int = 1800
+
 RECOVERY_HANDLER_MAP: dict[type, type] = {
     RealtimeChecks: RealtimeChecksHandler,
     EvictingAndRestarting: EvictingAndRestartingHandler,
@@ -31,6 +33,7 @@ __all__ = [
     "NotifyHumans",
     "NotifyHumansHandler",
     "RECOVERY_HANDLER_MAP",
+    "RECOVERY_TIMEOUT_SECONDS",
     "RECOVERY_STATE_TO_INT",
     "RealtimeChecks",
     "RealtimeChecksHandler",
