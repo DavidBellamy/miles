@@ -31,7 +31,7 @@ class TestAgentWithoutController:
         with patch("socket.gethostname", return_value="test-node"):
             agent = FtTrainingRankAgent(rank=0, world_size=1)
 
-        agent.step(1)
+        agent.step()
         agent.shutdown()
 
 
