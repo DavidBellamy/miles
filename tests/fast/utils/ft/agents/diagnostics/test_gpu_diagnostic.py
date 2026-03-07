@@ -17,23 +17,25 @@ from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
 def _make_gpu_result(
     *,
     gpu_index: int = 0,
-    passed: bool = True,
+    nvml_passed: bool = True,
     ecc_errors_uncorrectable: int = 0,
     retired_pages_count: int = 0,
     power_state_abnormal: bool = False,
     row_remap_failure: bool = False,
-    matmul_passed: bool = True,
+    compute_hash: str = "abc123",
+    compute_error: str = "",
     details: str = "all checks passed",
 ) -> dict[str, object]:
     return asdict(
         GpuCheckResult(
             gpu_index=gpu_index,
-            passed=passed,
+            nvml_passed=nvml_passed,
             ecc_errors_uncorrectable=ecc_errors_uncorrectable,
             retired_pages_count=retired_pages_count,
             power_state_abnormal=power_state_abnormal,
             row_remap_failure=row_remap_failure,
-            matmul_passed=matmul_passed,
+            compute_hash=compute_hash,
+            compute_error=compute_error,
             details=details,
         )
     )
@@ -63,18 +65,21 @@ class TestGpuDiagnosticSingleFailure:
         "gpu_kwargs,expected_detail",
         [
             (
-                dict(gpu_index=0, passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"),
+                dict(gpu_index=0, nvml_passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"),
                 "ECC",
             ),
-            (dict(gpu_index=2, passed=False, matmul_passed=False, details="matmul mismatch"), "matmul"),
-            (dict(gpu_index=0, passed=False, retired_pages_count=3, details="retired pages: 3"), "retired"),
             (
-                dict(gpu_index=0, passed=False, power_state_abnormal=True, details="abnormal power state"),
+                dict(gpu_index=2, nvml_passed=True, compute_hash="", compute_error="cuda error", details="compute error"),
+                "compute error",
+            ),
+            (dict(gpu_index=0, nvml_passed=False, retired_pages_count=3, details="retired pages: 3"), "retired"),
+            (
+                dict(gpu_index=0, nvml_passed=False, power_state_abnormal=True, details="abnormal power state"),
                 "power state",
             ),
-            (dict(gpu_index=3, passed=False, row_remap_failure=True, details="row remap failure"), "row remap"),
+            (dict(gpu_index=3, nvml_passed=False, row_remap_failure=True, details="row remap failure"), "row remap"),
         ],
-        ids=["ecc", "matmul", "retired_pages", "power_state", "row_remap"],
+        ids=["ecc", "compute_error", "retired_pages", "power_state", "row_remap"],
     )
     @pytest.mark.anyio
     async def test_single_failure_detected(self, gpu_kwargs: dict, expected_detail: str) -> None:
@@ -172,16 +177,17 @@ class TestGpuDiagnosticMultiGpuPartialFail:
             _make_gpu_result(gpu_index=0),
             _make_gpu_result(
                 gpu_index=1,
-                passed=False,
+                nvml_passed=False,
                 ecc_errors_uncorrectable=2,
                 details="uncorrectable ECC errors: 2",
             ),
             _make_gpu_result(gpu_index=2),
             _make_gpu_result(
                 gpu_index=3,
-                passed=False,
-                matmul_passed=False,
-                details="matmul mismatch",
+                nvml_passed=True,
+                compute_hash="",
+                compute_error="cuda error",
+                details="compute error",
             ),
         ]
         process = make_mock_subprocess(stdout=json.dumps(results))
