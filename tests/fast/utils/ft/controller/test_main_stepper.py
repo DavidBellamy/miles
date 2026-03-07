@@ -98,6 +98,7 @@ def _make_main_stepper(
 
     return MainStepper(
         platform_deps=_make_platform_deps(notifier=notifier),
+        restart_stepper=restart_stepper,
         recovery_stepper=recovery_stepper,
         detectors=detectors or [],
         cooldown=cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3),
@@ -293,6 +294,36 @@ class TestRecovering:
         result = await stepper(state)
         assert isinstance(result, Recovering)
         assert isinstance(result.recovery, NotifyHumans)
+
+    @pytest.mark.anyio
+    async def test_recovery_exception_forces_notify_then_done_then_detecting(self) -> None:
+        """Exception → NotifyHumans → RecoveryDone → DetectingAnomaly full chain."""
+        recovery_stepper = AsyncMock()
+        recovery_stepper.step_with_context = AsyncMock(
+            side_effect=[RuntimeError("boom"), RecoveryDone()],
+        )
+        stepper = _make_main_stepper(recovery_stepper=recovery_stepper)
+        stepper.set_tick_context(
+            job_status=JobStatus.RUNNING,
+            tick_count=1,
+            should_run_detectors=False,
+            detector_context=None,
+        )
+
+        state = Recovering(
+            recovery=RealtimeChecks(),
+            trigger=TriggerType.CRASH.value,
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+
+        # Step 1: exception → NotifyHumans
+        result = await stepper(state)
+        assert isinstance(result, Recovering)
+        assert isinstance(result.recovery, NotifyHumans)
+
+        # Step 2: NotifyHumans → RecoveryDone → DetectingAnomaly
+        result = await stepper(result)
+        assert isinstance(result, DetectingAnomaly)
 
     @pytest.mark.asyncio
     async def test_duration_callback_on_recovery_done(self) -> None:
