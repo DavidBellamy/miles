@@ -137,6 +137,14 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
     # -- Recovering -------------------------------------------------------
 
     async def _handle_recovering(self, state: Recovering, context: TickContext) -> MainState | None:
+        merged = await self._merge_dynamic_bad_nodes(state=state, context=context)
+        if merged is not None:
+            return merged
+        return await self._advance_recovery(state=state)
+
+    async def _merge_dynamic_bad_nodes(
+        self, *, state: Recovering, context: TickContext,
+    ) -> MainState | None:
         new_bad_nodes = self._collect_critical_bad_nodes(context)
         if len(new_bad_nodes) >= self._max_simultaneous_bad_nodes:
             await self._notify_too_many_bad_nodes(
@@ -150,13 +158,14 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
         truly_new = new_bad_nodes - known_bad
         if truly_new:
             all_bad = sorted(known_bad | new_bad_nodes)
-            now = datetime.now(timezone.utc)
             return Recovering(
                 recovery=RealtimeChecks(pre_identified_bad_nodes=all_bad),
                 trigger=state.trigger,
-                recovery_start_time=now,
+                recovery_start_time=datetime.now(timezone.utc),
             )
+        return None
 
+    async def _advance_recovery(self, *, state: Recovering) -> MainState | None:
         try:
             recovery_ctx = RecoveryContext(
                 trigger=state.trigger,
