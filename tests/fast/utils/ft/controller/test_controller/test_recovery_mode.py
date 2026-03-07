@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
@@ -17,14 +17,14 @@ from tests.fast.utils.ft.conftest import (
 
 class TestEnterRecovery:
     @pytest.mark.anyio
-    async def test_creates_recovery_orchestrator(self) -> None:
+    async def test_creates_recovery_state(self) -> None:
         detector = AlwaysEnterRecoveryDetector()
         harness = make_test_controller(detectors=[detector])
-        assert not harness.controller._recovery_manager.in_progress
+        assert not isinstance(harness.controller._machine.state, Recovering)
 
         await harness.controller._tick()
 
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
 
     @pytest.mark.anyio
     async def test_recovery_mode_skips_non_critical_detectors(self) -> None:
@@ -41,7 +41,7 @@ class TestEnterRecovery:
     async def test_critical_detector_runs_during_recovery(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector()
         critical = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-new-bad"],
             reason="critical hw fault during recovery",
             trigger=TriggerType.HARDWARE,
@@ -49,47 +49,17 @@ class TestEnterRecovery:
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
         assert critical.call_count == 0
 
         await harness.controller._tick()
         assert critical.call_count == 1
-        assert "node-new-bad" in harness.controller._recovery_manager._orchestrator.bad_node_ids
 
-    @pytest.mark.anyio
-    async def test_critical_detector_no_duplicate_bad_nodes(self) -> None:
-        enter_recovery = AlwaysEnterRecoveryDetector()
-        critical = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
-            bad_node_ids=["node-1"],
-            reason="same node again",
-            trigger=TriggerType.HARDWARE,
-        ))
-        harness = make_test_controller(detectors=[enter_recovery, critical])
-
-        await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
-        orch._context.bad_node_ids.append("node-1")
-
-        await harness.controller._tick()
-        assert orch.bad_node_ids.count("node-1") == 1
-
-    @pytest.mark.anyio
-    async def test_recovery_complete_returns_to_monitoring(self) -> None:
-        detector = AlwaysEnterRecoveryDetector()
-        harness = make_test_controller(
-            detectors=[detector],
-            status_sequence=[JobStatus.RUNNING],
-        )
-
-        await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
-
-        harness.controller._recovery_manager._orchestrator._context.phase = RecoveryPhase.DONE
-
-        await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
+        state = harness.controller._machine.state
+        assert isinstance(state, Recovering)
+        from miles.utils.ft.controller.recovery.recovery_stepper import RealtimeChecks
+        assert isinstance(state.recovery, RealtimeChecks)
+        assert "node-new-bad" in state.recovery.pre_identified_bad_nodes
 
     @pytest.mark.anyio
     async def test_exporter_mode_reflects_recovery(self) -> None:

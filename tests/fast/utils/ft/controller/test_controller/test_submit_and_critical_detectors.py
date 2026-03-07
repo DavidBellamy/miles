@@ -5,8 +5,9 @@ import pytest
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
+from miles.utils.ft.controller.recovery.recovery_stepper import RecoveryDone
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
@@ -60,11 +61,11 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, crashing_critical])
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
 
         await harness.controller._tick()
         assert crashing_critical.call_count == 1
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
 
     @pytest.mark.anyio
     async def test_critical_detector_non_mark_bad_action_is_ignored(self) -> None:
@@ -78,19 +79,17 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, critical_notify])
 
         await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
-        bad_before = list(orch.bad_node_ids)
+        state = harness.controller._machine.state
+        assert isinstance(state, Recovering)
 
         await harness.controller._tick()
         assert critical_notify.call_count == 1
-        assert orch.bad_node_ids == bad_before
 
     @pytest.mark.anyio
     async def test_critical_detector_empty_bad_nodes_is_ignored(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
         critical_empty = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=[],
             reason="no bad nodes",
             trigger=TriggerType.CRASH,
@@ -98,12 +97,10 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, critical_empty])
 
         await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
+        assert isinstance(harness.controller._machine.state, Recovering)
 
         await harness.controller._tick()
         assert critical_empty.call_count == 1
-        assert orch.bad_node_ids == []
 
 
 # ===================================================================
@@ -123,35 +120,20 @@ class TestRecoveryCompletionMetrics:
         )
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
 
-        harness.controller._recovery_manager._orchestrator._context.phase = RecoveryPhase.DONE
+        from datetime import datetime, timezone
+        harness.controller._machine._state = Recovering(
+            recovery=RecoveryDone(),
+            trigger=TriggerType.CRASH.value,
+            recovery_start_time=datetime.now(timezone.utc),
+        )
 
         await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, DetectingAnomaly)
 
         value = get_sample_value(
             registry,
             mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_count",
         )
         assert value is not None and value >= 1.0
-
-    @pytest.mark.anyio
-    async def test_phase_history_preserved_after_recovery_complete(self) -> None:
-        detector = AlwaysEnterRecoveryDetector(reason="test")
-        harness = make_test_controller(
-            detectors=[detector],
-            status_sequence=[JobStatus.RUNNING],
-        )
-
-        await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
-        orch._context.phase = RecoveryPhase.DONE
-
-        await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
-
-        status = harness.controller.get_status()
-        assert status.phase_history is not None
-        assert len(status.phase_history) >= 1

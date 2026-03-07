@@ -102,7 +102,7 @@ class TestDecision:
 
     def test_non_none_action_without_trigger_raises(self) -> None:
         with pytest.raises(ValidationError, match="trigger is required"):
-            Decision(action=ActionType.MARK_BAD_AND_RESTART, reason="test")
+            Decision(action=ActionType.ENTER_RECOVERY, reason="test")
 
     def test_non_none_action_with_trigger_is_valid(self) -> None:
         for action in ActionType:
@@ -123,7 +123,7 @@ class TestDecision:
 
     def test_mark_bad_with_nodes(self) -> None:
         decision = Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0", "node-1"],
             reason="GPU lost on multiple nodes",
             trigger=TriggerType.HARDWARE,
@@ -148,7 +148,7 @@ class TestDecisionFromNodeFaults:
             faults=faults, fallback_reason="n/a", trigger=TriggerType.HARDWARE,
         )
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.bad_node_ids == ["node-0"]
         assert decision.reason == "GPU lost"
         assert decision.trigger == TriggerType.HARDWARE

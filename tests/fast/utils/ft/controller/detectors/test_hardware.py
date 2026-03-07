@@ -32,7 +32,7 @@ class TestHighConfidenceHardwareDetector:
 
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
         assert "GPU unavailable" in decision.reason
 
@@ -43,7 +43,7 @@ class TestHighConfidenceHardwareDetector:
 
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
         assert "non-auto-recoverable XID" in decision.reason
 
@@ -57,7 +57,7 @@ class TestHighConfidenceHardwareDetector:
 
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
         assert "majority NIC down" in decision.reason
 
@@ -94,7 +94,7 @@ class TestHighConfidenceHardwareDetector:
 
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
         assert "node-1" in decision.bad_node_ids
 

@@ -13,7 +13,7 @@ class TestRegistrationGuardNoRanks:
     @pytest.mark.anyio
     async def test_detectors_skipped_when_no_ranks_registered(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0"],
             reason="should not fire",
             trigger=TriggerType.CRASH,
@@ -32,7 +32,7 @@ class TestRegistrationGuardNoRanks:
     @pytest.mark.anyio
     async def test_detectors_run_when_ranks_registered(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0"],
             reason="fault",
             trigger=TriggerType.CRASH,
@@ -57,7 +57,7 @@ class TestRegistrationGraceTicks:
     @pytest.mark.anyio
     async def test_detectors_skipped_during_grace_period(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0"],
             reason="fault",
             trigger=TriggerType.CRASH,
@@ -81,7 +81,7 @@ class TestRegistrationGraceTicks:
     @pytest.mark.anyio
     async def test_detectors_run_after_grace_period(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0"],
             reason="fault",
             trigger=TriggerType.CRASH,

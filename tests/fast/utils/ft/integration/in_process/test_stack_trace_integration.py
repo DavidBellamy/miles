@@ -57,7 +57,7 @@ class TestHangWithStackTraceSuspect:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert decision.action == ActionType.ENTER_RECOVERY
             assert decision.bad_node_ids == ["node-2"]
 
     async def test_hang_all_traces_same_runs_pipeline_on_all(self) -> None:
@@ -123,7 +123,7 @@ class TestCrashSkipsStackTrace:
             )
 
             mock_diag_cls.assert_not_called()
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert decision.action == ActionType.ENTER_RECOVERY
             assert decision.bad_node_ids == ["node-1"]
 
 
@@ -162,6 +162,6 @@ class TestHangWithCollectionFailure:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert decision.action == ActionType.ENTER_RECOVERY
             assert "node-1" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids

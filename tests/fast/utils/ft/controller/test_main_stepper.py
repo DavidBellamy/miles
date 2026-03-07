@@ -330,7 +330,7 @@ class TestRecovering:
         recovery_stepper.step_with_context = AsyncMock(return_value=None)
 
         critical_detector = CriticalFixedDecisionDetector(Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-new"],
             reason="critical fault",
             trigger=TriggerType.HARDWARE,

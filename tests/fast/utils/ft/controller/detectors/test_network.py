@@ -57,7 +57,7 @@ class TestNetworkAlertDetector:
         detector = NetworkAlertDetector()
         decision = detector.evaluate(make_detector_context(metric_store=store))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
 
     def test_multi_node_each_one_alert(self) -> None:

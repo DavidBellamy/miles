@@ -111,7 +111,7 @@ class FixedDecisionDetector(BaseFaultDetector):
 
 _ALWAYS_NONE_DECISION = Decision(action=ActionType.NONE, reason="always none")
 _ALWAYS_MARK_BAD_DECISION = Decision(
-    action=ActionType.MARK_BAD_AND_RESTART,
+    action=ActionType.ENTER_RECOVERY,
     bad_node_ids=["node-1"],
     reason="test fault detected",
     trigger=TriggerType.CRASH,
@@ -306,8 +306,10 @@ async def run_controller_briefly(harness: ControllerTestHarness, delay: float = 
 
 async def advance_until_recovery_complete(harness: ControllerTestHarness, max_ticks: int = 10) -> None:
     """Tick the controller until recovery is no longer in progress."""
+    from miles.utils.ft.controller.main_state_machine import Recovering
+
     for _ in range(max_ticks):
-        if not harness.controller._recovery_manager.in_progress:
+        if not isinstance(harness.controller._machine.state, Recovering):
             return
         await harness.controller._tick()
-    assert not harness.controller._recovery_manager.in_progress
+    assert not isinstance(harness.controller._machine.state, Recovering)

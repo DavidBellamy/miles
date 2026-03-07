@@ -75,7 +75,7 @@ class TestDetectorChainIntegration:
             if decision.action != ActionType.NONE:
                 break
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
         assert "GPU unavailable" in decision.reason
 
@@ -130,7 +130,7 @@ class TestDetectorChainIntegration:
             if decision.action != ActionType.NONE:
                 break
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "NIC" in decision.reason
 
     def test_crash_with_nan_loss(self) -> None:

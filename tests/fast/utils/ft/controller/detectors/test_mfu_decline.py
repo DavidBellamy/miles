@@ -84,7 +84,7 @@ class TestMfuDeclineDetector:
             metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
         ))
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-1" in decision.bad_node_ids
 
     def test_decline_normal_temperature_monitoring(self) -> None:

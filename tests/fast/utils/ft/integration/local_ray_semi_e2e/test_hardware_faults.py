@@ -28,7 +28,7 @@ class TestHardwareAlert:
     async def test_gpu_lost_triggers_direct_eviction(
         self, e2e_full_detector_env: E2EEnv,
     ) -> None:
-        """GPU_AVAILABLE=0 → HighConfidenceHardwareDetector → MARK_BAD_AND_RESTART."""
+        """GPU_AVAILABLE=0 → HighConfidenceHardwareDetector → ENTER_RECOVERY."""
         env = e2e_full_detector_env
 
         old_run_id = get_status(env.controller).active_run_id
@@ -42,7 +42,7 @@ class TestHardwareAlert:
             ),
         ])
 
-        # Step 2: MARK_BAD_AND_RESTART evicts directly without entering recovery
+        # Step 2: ENTER_RECOVERY evicts directly without entering recovery
         # mode (no RecoveryOrchestrator, no phase_history). Poll until
         # active_run_id changes, indicating eviction and restart happened.
         deadline = time.monotonic() + 60.0

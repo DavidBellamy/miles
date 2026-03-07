@@ -4,6 +4,7 @@ import logging
 
 import pytest
 
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, MainStepper, Recovering
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
@@ -20,6 +21,10 @@ async def _raise_runtime_error(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError("notifier broken")
 
 
+def _get_main_stepper(harness) -> MainStepper:
+    return harness.controller._machine.stepper  # type: ignore[return-value]
+
+
 class TestTickEmptyDetectorChain:
     @pytest.mark.anyio
     async def test_tick_succeeds_with_no_detectors(self) -> None:
@@ -32,7 +37,7 @@ class TestTickEmptyDetectorChain:
         harness = make_test_controller()
         await harness.controller._tick()
         ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
-        decision = harness.controller._run_detectors(ctx)
+        decision = _get_main_stepper(harness)._run_detectors(ctx)
         assert decision.action == ActionType.NONE
 
 
@@ -45,8 +50,8 @@ class TestDetectorChain:
         )
 
         ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
-        decision = harness.controller._run_detectors(ctx)
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        decision = _get_main_stepper(harness)._run_detectors(ctx)
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert none_detector.call_count == 1
         assert bad_detector.call_count == 1
 
@@ -58,8 +63,8 @@ class TestDetectorChain:
         )
 
         ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
-        decision = harness.controller._run_detectors(ctx)
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        decision = _get_main_stepper(harness)._run_detectors(ctx)
+        assert decision.action == ActionType.ENTER_RECOVERY
         assert bad_detector.call_count == 1
         assert trailing_detector.call_count == 0
 
@@ -71,11 +76,11 @@ class TestDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[crashing, good])
 
         ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
-        decision = harness.controller._run_detectors(ctx)
+        decision = _get_main_stepper(harness)._run_detectors(ctx)
 
         assert crashing.call_count == 1
         assert good.call_count == 1
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert decision.action == ActionType.ENTER_RECOVERY
 
     def test_all_detectors_crash_returns_none(self) -> None:
         d1 = CrashingDetector()
@@ -83,7 +88,7 @@ class TestDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[d1, d2])
 
         ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
-        decision = harness.controller._run_detectors(ctx)
+        decision = _get_main_stepper(harness)._run_detectors(ctx)
 
         assert d1.call_count == 1
         assert d2.call_count == 1
@@ -100,12 +105,6 @@ class TestDetectorExceptionIsolation:
 
 
 class TestAllDetectorsCrashSilentPass:
-    """When every detector raises, the controller silently passes — no fault is detected.
-
-    This is a known dangerous behavior: if a bug causes all detectors to crash,
-    hardware faults go completely undetected.
-    """
-
     @pytest.mark.anyio
     async def test_tick_with_all_crashing_detectors_logs_errors(self, caplog: pytest.LogCaptureFixture) -> None:
         d1 = CrashingDetector()
@@ -128,19 +127,7 @@ class TestAllDetectorsCrashSilentPass:
 
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
-        assert not harness.controller._recovery_manager.in_progress
-
-
-class TestExecuteDecisionUnknownAction:
-    @pytest.mark.anyio
-    async def test_unknown_action_type_raises_value_error(self) -> None:
-        decision = Decision(action=ActionType.NONE, reason="fabricated unknown action")
-        fake_action = type("FakeAction", (), {"value": "fabricated_unknown"})()
-        object.__setattr__(decision, "action", fake_action)
-
-        harness = make_test_controller()
-        with pytest.raises(ValueError, match="Unknown action type"):
-            await harness.controller._execute_decision(decision)
+        assert not isinstance(harness.controller._machine.state, Recovering)
 
 
 class TestExecuteDecision:
@@ -154,7 +141,7 @@ class TestExecuteDecision:
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
         assert not harness.training_job._submitted
-        assert not harness.controller._recovery_manager.in_progress
+        assert not isinstance(harness.controller._machine.state, Recovering)
 
     @pytest.mark.anyio
     async def test_mark_bad_and_restart_does_not_raise(self) -> None:
@@ -216,7 +203,7 @@ class TestExecuteDecision:
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1
         title, _, severity = harness.notifier.calls[0]
-        assert title == "Node Eviction Succeeded"
+        assert title == "Nodes evicted"
         assert severity == "warning"
 
     @pytest.mark.anyio

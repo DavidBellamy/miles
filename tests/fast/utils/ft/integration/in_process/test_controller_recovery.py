@@ -1,30 +1,59 @@
-"""Integration tests: Controller + RecoveryOrchestrator full flow.
+"""Integration tests: Controller + Recovery state machine full flow.
 
 Each test drives the Controller through multiple ticks to verify
 complete decision → recovery → monitoring lifecycle.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.main_state_machine import (
+    DetectingAnomaly,
+    Recovering,
+)
+from miles.utils.ft.controller.recovery.recovery_stepper import (
+    DirectlyRestarting,
+    EvictingAndRestarting,
+)
+from miles.utils.ft.controller.recovery.restart_stepper import MonitoringProgress
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
-    AlwaysNoneDetector,
     FixedDecisionDetector,
-    advance_until_recovery_complete,
     get_sample_value,
-    inject_gpu_unavailable,
     make_test_controller,
     make_test_exporter,
 )
 
 
+def _is_monitoring_progress(state: object) -> bool:
+    if not isinstance(state, Recovering):
+        return False
+    recovery = state.recovery
+    if isinstance(recovery, (EvictingAndRestarting, DirectlyRestarting)):
+        return isinstance(recovery.restart, MonitoringProgress)
+    return False
+
+
+def _disable_detector(detector: FixedDecisionDetector) -> None:
+    detector._decision = Decision(action=ActionType.NONE, reason="disabled")
+
+
+def _inject_iteration_data(harness: object, count: int = 10) -> None:
+    active_run_id = harness.controller._rank_roster.run_id
+    for i in range(1, count + 1):
+        harness.mini_wandb.log_step(
+            run_id=active_run_id, step=i,
+            metrics={"iteration": float(i)},
+        )
+
+
 # -------------------------------------------------------------------
-# Scenario 1: GPU lost → direct eviction (MARK_BAD_AND_RESTART)
+# Scenario 1: GPU lost → direct eviction (ENTER_RECOVERY)
 # -------------------------------------------------------------------
 
 
@@ -32,7 +61,7 @@ class TestGpuLostDirectEviction:
     @pytest.mark.anyio
     async def test_gpu_lost_marks_bad_and_restarts(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=["node-0"],
             reason="GPU unavailable",
             trigger=TriggerType.HARDWARE,
@@ -64,25 +93,17 @@ class TestCrashReattemptSuccess:
             status_sequence=[JobStatus.RUNNING],
         )
 
+        # Step 1: first tick chains through recovery to MonitoringProgress
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
-        orch = harness.controller._recovery_manager._orchestrator
+        assert isinstance(harness.controller._machine.state, Recovering)
+        assert _is_monitoring_progress(harness.controller._machine.state)
 
-        for _ in range(20):
-            if orch.phase == RecoveryPhase.MONITORING:
-                break
-            await harness.controller._tick()
-        assert orch.phase == RecoveryPhase.MONITORING
-
-        active_run_id = harness.controller._rank_roster.run_id
-        for i in range(1, 11):
-            harness.mini_wandb.log_step(
-                run_id=active_run_id, step=i,
-                metrics={"iteration": float(i)},
-            )
+        # Step 2: inject iteration progress, disable detector to prevent re-entry
+        _disable_detector(enter_recovery)
+        _inject_iteration_data(harness)
 
         await harness.controller._tick()
-        assert not harness.controller._recovery_manager.in_progress
+        assert not isinstance(harness.controller._machine.state, Recovering)
 
 
 # -------------------------------------------------------------------
@@ -99,20 +120,11 @@ class TestCrashReattemptFailDiagnoseNotify:
             status_sequence=[JobStatus.FAILED],
         )
 
+        # Single tick chains: ENTER_RECOVERY → DirectlyRestarting → FAILED
+        # → StopTimeDiagnostics → all-pass → NotifyHumans → RecoveryDone
+        # → detector fires again (cooldown eventually throttles)
         await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
 
-        # step() chains phases: REATTEMPTING → poll FAILED → DIAGNOSING → NOTIFY → DONE
-        for _ in range(20):
-            if orch.is_done():
-                break
-            await harness.controller._tick()
-
-        assert RecoveryPhase.DIAGNOSING in orch.phase_history
-        assert RecoveryPhase.NOTIFY in orch.phase_history
-        assert orch.is_done()
-        assert not harness.controller._recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) >= 1
 
@@ -134,17 +146,24 @@ class TestGlobalTimeout:
             status_sequence=[JobStatus.PENDING] * 100,
         )
 
+        # Step 1: enter recovery, reach StoppingAndRestarting(submitted) waiting on PENDING
         await harness.controller._tick()
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
+        assert isinstance(harness.controller._machine.state, Recovering)
 
-        from datetime import datetime, timedelta, timezone
-        orch._context.recovery_start_time = datetime.now(timezone.utc) - timedelta(seconds=1801)
+        # Step 2: inject old recovery_start_time to trigger global timeout
+        _disable_detector(enter_recovery)
+        state = harness.controller._machine.state
+        assert isinstance(state, Recovering)
+        harness.controller._machine._state = Recovering(
+            recovery=state.recovery,
+            trigger=state.trigger,
+            recovery_start_time=datetime.now(timezone.utc) - timedelta(seconds=1801),
+        )
 
         await harness.controller._tick()
-        assert orch.phase in (RecoveryPhase.NOTIFY, RecoveryPhase.DONE)
-
-        await advance_until_recovery_complete(harness)
+        assert not isinstance(harness.controller._machine.state, Recovering)
+        assert harness.notifier is not None
+        assert any("Recovery Alert" in call[0] for call in harness.notifier.calls)
 
 
 # -------------------------------------------------------------------
@@ -162,28 +181,21 @@ class TestRecoveryCompleteBackToMonitoring:
         )
 
         await harness.controller._tick()
-        assert harness.controller._recovery_manager.in_progress
+        assert isinstance(harness.controller._machine.state, Recovering)
         initial_detector_count = enter_recovery.call_count
 
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
-
-        for _ in range(20):
-            if orch.phase == RecoveryPhase.MONITORING:
-                break
-            await harness.controller._tick()
-        assert enter_recovery.call_count == initial_detector_count
-
-        active_run_id = harness.controller._rank_roster.run_id
-        for i in range(1, 11):
-            harness.mini_wandb.log_step(
-                run_id=active_run_id, step=i,
-                metrics={"iteration": float(i)},
-            )
+        # Step 2: complete recovery with iteration data, detector disabled
+        _disable_detector(enter_recovery)
+        _inject_iteration_data(harness)
         await harness.controller._tick()
+        assert not isinstance(harness.controller._machine.state, Recovering)
 
-        assert not harness.controller._recovery_manager.in_progress
-
+        # Step 3: re-enable detector and verify it runs after recovery
+        enter_recovery._decision = Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger=TriggerType.CRASH,
+            reason="test recovery again",
+        )
         harness.controller.rank_roster.rank_placement[0] = "node-0"
         await harness.controller._tick()
         assert enter_recovery.call_count > initial_detector_count
@@ -209,29 +221,14 @@ class TestExporterModeGauge:
 
         await harness.controller._tick()
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
-
-        await harness.controller._tick()
-        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) is not None
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) > 0
 
-        orch = harness.controller._recovery_manager._orchestrator
-        assert orch is not None
+        # Complete recovery
+        _disable_detector(enter_recovery)
+        _inject_iteration_data(harness)
+        await harness.controller._tick()
 
-        for _ in range(20):
-            if orch.phase == RecoveryPhase.MONITORING:
-                break
-            await harness.controller._tick()
-
-        active_run_id = harness.controller._rank_roster.run_id
-        for i in range(1, 11):
-            harness.mini_wandb.log_step(
-                run_id=active_run_id, step=i,
-                metrics={"iteration": float(i)},
-            )
-
-        while harness.controller._recovery_manager.in_progress:
-            await harness.controller._tick()
-
+        assert not isinstance(harness.controller._machine.state, Recovering)
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) == 0.0

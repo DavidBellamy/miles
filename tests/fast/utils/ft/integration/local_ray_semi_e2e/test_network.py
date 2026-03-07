@@ -26,9 +26,9 @@ class TestEphemeralNic:
     async def test_ephemeral_nic_fault_goes_to_reattempting(
         self, make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """NIC up→down transition → NetworkAlertDetector → MARK_BAD_AND_RESTART.
+        """NIC up→down transition → NetworkAlertDetector → ENTER_RECOVERY.
 
-        MARK_BAD_AND_RESTART evicts directly without entering recovery mode,
+        ENTER_RECOVERY evicts directly without entering recovery mode,
         so we detect the action by observing run_id change.
         """
         env = make_e2e_env(
@@ -69,7 +69,7 @@ class TestEphemeralNic:
             ),
         ])
 
-        # Step 3: MARK_BAD_AND_RESTART evicts and restarts without entering
+        # Step 3: ENTER_RECOVERY evicts and restarts without entering
         # recovery mode; poll until active_run_id changes.
         deadline = time.monotonic() + 60.0
         while time.monotonic() < deadline:
@@ -87,9 +87,9 @@ class TestNetworkAlert:
     async def test_sustained_nic_down_triggers_eviction(
         self, make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Sustained NIC up→down → NetworkAlertDetector → MARK_BAD_AND_RESTART.
+        """Sustained NIC up→down → NetworkAlertDetector → ENTER_RECOVERY.
 
-        MARK_BAD_AND_RESTART evicts directly without entering recovery mode.
+        ENTER_RECOVERY evicts directly without entering recovery mode.
         """
         env = make_e2e_env(
             ft_id="e2enet",
@@ -139,7 +139,7 @@ class TestNetworkAlert:
             ),
         ])
 
-        # Step 3: poll until active_run_id changes (MARK_BAD_AND_RESTART
+        # Step 3: poll until active_run_id changes (ENTER_RECOVERY
         # evicts and restarts without entering recovery mode)
         deadline = time.monotonic() + 60.0
         while time.monotonic() < deadline:
