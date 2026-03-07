@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections.abc import Callable
 from unittest.mock import patch
 
@@ -16,9 +17,14 @@ from tests.fast.utils.ft.helpers.controller_fakes import CrashingDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
     E2EEnv,
     NodeSpec,
+    _SLOW_STEP,
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
+    assert_phase_path_contains,
+    get_status,
+    wait_for_mode,
     wait_for_mode_transition,
+    wait_for_recovery_phase,
     wait_for_training_stable,
 )
 
@@ -69,6 +75,43 @@ class TestFireAndForget:
         for worker in env.workers:
             iteration = ray.get(worker.get_iteration.remote(), timeout=5)
             assert iteration > 0
+
+
+class TestRestartStepperException:
+    async def test_restart_stepper_exception_forces_notify_humans(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Exception inside recovery stepper → MainStepper catches → NotifyHumans."""
+        env = make_e2e_env(
+            ft_id="e2erse",
+            nodes=[NodeSpec(node_id="e2erse-node-0")],
+            detectors=[TrainingCrashDetector()],
+            step_interval=_SLOW_STEP,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=1, timeout=30.0)
+
+        # Step 1: crash → enter recovery
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="StoppingAndRestarting", timeout=30.0,
+        )
+
+        # Step 2: kill state_actor → training job RPCs will raise RayActorError
+        ray.kill(env.state_actor, no_restart=True)
+
+        # Step 3: poll for NotifyHumans in phase_history
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and "NotifyHumans" in status.phase_history:
+                break
+            if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
+                break
+            await asyncio.sleep(0.5)
+
+        status = get_status(env.controller)
+        assert_phase_path_contains(status, ["NotifyHumans"])
 
 
 class TestDetectorResilience:

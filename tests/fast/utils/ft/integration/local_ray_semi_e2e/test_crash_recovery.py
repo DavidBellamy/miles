@@ -444,6 +444,81 @@ class TestNotification:
         assert len(calls) > 0, "Notifier should have received at least one call"
 
 
+class TestRecoveryOverallTimeout:
+    async def test_recovery_overall_timeout_escalates_to_notify_humans(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """recovery_timeout_seconds fires when MonitoringProgress stalls → NotifyHumans."""
+        env = make_e2e_env(
+            ft_id="e2erot",
+            nodes=[NodeSpec(node_id="e2erot-node-0")],
+            detectors=[TrainingCrashDetector()],
+            step_interval=999.0,
+            recovery_timeout_seconds=3,
+            monitoring_timeout_seconds=999,
+            monitoring_success_iterations=999,
+        )
+
+        # Step 1: crash → recovery starts, reaches MonitoringProgress but never succeeds
+        await env.injector.crash_training()
+
+        # Step 2: wait for NotifyHumans due to overall recovery timeout
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and "NotifyHumans" in status.phase_history:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise TimeoutError("Recovery overall timeout did not escalate to NotifyHumans within 60s")
+
+        assert_phase_path_contains(status, ["NotifyHumans"])
+
+
+class TestCooldownExpiry:
+    async def test_cooldown_window_expired_allows_recovery_again(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """After cooldown window expires, a new crash triggers recovery normally."""
+        window_seconds = 2
+        env = make_e2e_env(
+            ft_id="e2ecwe",
+            nodes=[NodeSpec(node_id="e2ecwe-node-0")],
+            detectors=[TrainingCrashDetector()],
+            recovery_cooldown=SlidingWindowThrottle(
+                window_minutes=window_seconds / 60.0,
+                max_count=2,
+            ),
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: first crash → recovery
+        await env.injector.crash_training()
+        await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+
+        # Step 2: second crash immediately → throttled
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await env.injector.crash_training()
+        await asyncio.sleep(3.0)
+        status = get_status(env.controller)
+        assert status.mode == ControllerMode.MONITORING, "Expected throttle"
+
+        # Step 3: sleep past cooldown window, then crash again → recovery succeeds
+        await asyncio.sleep(window_seconds + 1)
+        await env.injector.crash_training()
+        final = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+        assert final.mode == ControllerMode.MONITORING
+
+
 class TestFalsePositiveGuard:
     async def test_too_many_bad_nodes_treated_as_false_positive(
         self, make_e2e_env: Callable[..., E2EEnv],
