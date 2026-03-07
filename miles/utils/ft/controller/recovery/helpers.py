@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 logger = logging.getLogger(__name__)
@@ -50,12 +51,9 @@ async def stop_and_submit(
     return True
 
 
+@graceful_degrade(default=set(), msg="get_bad_nodes_failed, proceeding without filter")
 async def get_already_bad_nodes(node_manager: NodeManagerProtocol) -> set[str]:
-    try:
-        return set(await node_manager.get_bad_nodes())
-    except Exception:
-        logger.warning("get_bad_nodes_failed, proceeding without filter", exc_info=True)
-        return set()
+    return set(await node_manager.get_bad_nodes())
 
 
 async def retry_mark_node_bad(
@@ -69,6 +67,7 @@ async def retry_mark_node_bad(
     )
 
 
+@graceful_degrade()
 async def safe_notify(
     notifier: NotificationProtocol | None,
     title: str,
@@ -77,10 +76,7 @@ async def safe_notify(
 ) -> None:
     if notifier is None:
         return
-    try:
-        await notifier.send(title=title, content=content, severity=severity)
-    except Exception:
-        logger.exception("notifier_send_failed title=%s", title)
+    await notifier.send(title=title, content=content, severity=severity)
 
 
 async def evict_and_notify(

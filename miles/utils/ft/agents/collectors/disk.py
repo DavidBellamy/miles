@@ -7,6 +7,7 @@ from pathlib import Path
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
 
@@ -54,21 +55,16 @@ class DiskCollector(BaseCollector):
         return samples
 
     @staticmethod
+    @graceful_degrade(default=[])
     def _collect_single_device_io(device_dir: Path) -> list[GaugeSample]:
         stat_file = device_dir / "stat"
-        try:
-            text = stat_file.read_text().strip()
-            fields = text.split()
-            if len(fields) >= 10:
-                io_time_ms = int(fields[9])
-                return [GaugeSample(
-                    name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
-                    labels={"device": device_dir.name},
-                    value=io_time_ms / 1000.0,
-                )]
-            return []
-        except Exception:
-            logger.warning(
-                "Failed to read disk stat for %s", device_dir.name, exc_info=True,
-            )
-            return []
+        text = stat_file.read_text().strip()
+        fields = text.split()
+        if len(fields) >= 10:
+            io_time_ms = int(fields[9])
+            return [GaugeSample(
+                name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
+                labels={"device": device_dir.name},
+                value=io_time_ms / 1000.0,
+            )]
+        return []

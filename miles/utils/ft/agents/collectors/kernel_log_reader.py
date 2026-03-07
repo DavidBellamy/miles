@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,14 +61,8 @@ class DmesgSubprocessReader:
     def __init__(self) -> None:
         self._last_dmesg_time: datetime = datetime.now(timezone.utc)
 
+    @graceful_degrade(default=[], msg="dmesg read failed")
     def read_new_lines(self) -> list[str]:
-        try:
-            return self._read_new_lines_inner()
-        except Exception:
-            logger.warning("dmesg read failed", exc_info=True)
-            return []
-
-    def _read_new_lines_inner(self) -> list[str]:
         since_str = self._last_dmesg_time.astimezone().strftime("%Y-%m-%d %H:%M:%S")
         new_time = datetime.now(timezone.utc)
 
