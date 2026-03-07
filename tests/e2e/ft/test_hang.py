@@ -1,29 +1,22 @@
 """E2E: Training hang via SIGSTOP → detection → recovery.
 
 Slowest E2E test due to the hang detection timeout (~5-10 min).
-Uses E2eFaultInjector with scenario_hang_detection for the initial
-detection phase, then verifies full recovery with E2E-specific checks.
+Uses scenario_hang_detection_and_recovery which handles the full
+detection → recovery → verify-training-resumes pipeline.
 """
 
 from __future__ import annotations
 
-import logging
-import time
-
 import pytest
 import ray
-from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     E2eFaultInjector,
     FaultInjectorFactory,
-    assert_phase_path_contains,
-    get_status,
-    wait_for_mode_transition,
     wait_for_training_stable,
 )
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import scenario_hang_detection
-
-logger = logging.getLogger(__name__)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
+    scenario_hang_detection_and_recovery,
+)
 
 _HANG_TIMEOUT_MINUTES = 10
 _DETECTION_BUFFER_SECONDS = 60
@@ -47,38 +40,12 @@ async def test_hang_detection_and_recovery(
         target_node=target_node,
     )
 
-    t_inject = time.monotonic()
-    await scenario_hang_detection(
+    await scenario_hang_detection_and_recovery(
         handle=ft_controller_handle,
         injector=fault,
         hang_timeout=720.0,
-    )
-
-    status = await wait_for_mode_transition(
-        handle=ft_controller_handle,
-        target_mode=ControllerMode.MONITORING,
-        timeout=720.0,
-        poll_interval=10.0,
-    )
-
-    t_detect = time.monotonic() - t_inject
-    logger.info("hang_detected_and_recovered t_detect=%.1fs", t_detect)
-
-    assert t_detect < _MAX_DETECTION_SECONDS, (
-        f"Hang detection took {t_detect:.0f}s, expected < {_MAX_DETECTION_SECONDS}s "
-        f"(hang_timeout={_HANG_TIMEOUT_MINUTES}min + {_DETECTION_BUFFER_SECONDS}s buffer)"
-    )
-
-    final_status = get_status(ft_controller_handle)
-    assert_phase_path_contains(final_status, [
-        RecoveryPhase.CHECK_ALERTS,
-        RecoveryPhase.REATTEMPTING,
-        RecoveryPhase.MONITORING,
-        RecoveryPhase.DONE,
-    ])
-
-    await wait_for_training_stable(
-        handle=ft_controller_handle,
-        n_iterations=5,
-        timeout=300.0,
+        recovery_timeout=720.0,
+        max_detection_seconds=_MAX_DETECTION_SECONDS,
+        post_recovery_iterations=5,
+        post_recovery_timeout=300.0,
     )

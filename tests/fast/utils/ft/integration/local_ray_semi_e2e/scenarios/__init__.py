@@ -9,6 +9,7 @@ processes (E2E) or by changing simulated state (local_ray).
 """
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.hang_detection import (
     scenario_hang_detection,
+    scenario_hang_detection_and_recovery,
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.no_false_positive import (
     scenario_no_false_positive,
@@ -33,6 +34,7 @@ __all__ = [
     "assert_phase_path_contains",
     "get_status",
     "scenario_hang_detection",
+    "scenario_hang_detection_and_recovery",
     "scenario_no_false_positive",
     "scenario_repeated_crash",
     "scenario_transient_crash",
