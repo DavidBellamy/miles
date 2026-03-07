@@ -13,6 +13,7 @@ from typing import Any
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
 from miles.utils.ft.controller.diagnostics.nccl.orchestrator import InterMachineOrchestrator
@@ -98,10 +99,13 @@ class _StandaloneDiagnosticAgent:
     """Lightweight Ray actor pinned to a node for running NCCL diagnostics."""
 
     def __init__(self, node_id: str, num_gpus: int) -> None:
-        self._node_id = node_id
-        self._num_gpus = num_gpus
-        self._intra = IntraMachineCommDiagnostic(num_gpus=num_gpus)
-        self._inter = InterMachineCommDiagnostic(num_gpus=num_gpus)
+        self._agent = FtNodeAgent(
+            node_id=node_id,
+            diagnostics=[
+                IntraMachineCommDiagnostic(num_gpus=num_gpus),
+                InterMachineCommDiagnostic(num_gpus=num_gpus),
+            ],
+        )
 
     async def run_diagnostic(
         self,
@@ -109,21 +113,11 @@ class _StandaloneDiagnosticAgent:
         timeout_seconds: int = 120,
         **kwargs: object,
     ) -> DiagnosticResult:
-        if diagnostic_type == "intra_machine":
-            return await self._intra.run(
-                node_id=self._node_id,
-                timeout_seconds=timeout_seconds,
-            )
-
-        if diagnostic_type == "inter_machine":
-            return await self._inter.run(
-                node_id=self._node_id,
-                timeout_seconds=timeout_seconds,
-                master_addr=str(kwargs.get("master_addr", "")),
-                master_port=int(kwargs.get("master_port", 29500)),
-            )
-
-        raise ValueError(f"Unknown diagnostic type: {diagnostic_type}")
+        return await self._agent.run_diagnostic(
+            diagnostic_type=diagnostic_type,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
 
 
 def _deploy_agents(
