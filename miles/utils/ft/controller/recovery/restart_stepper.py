@@ -14,7 +14,7 @@ from miles.utils.ft.controller.recovery.helpers import (
     safe_notify,
     stop_and_submit,
 )
-from miles.utils.ft.controller.state_machine import StateMachineStepper
+from miles.utils.ft.utils.state_machine import StateMachineStepper
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.protocols.platform import (
     JobStatus,

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from miles.utils.ft.controller.actions import PlatformDeps, handle_notify_human
+from miles.utils.ft.controller.actions import PlatformDeps
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.main_state_machine import (
@@ -28,7 +28,7 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
     RecoveryState,
 )
 from miles.utils.ft.controller.recovery.restart_stepper import RestartStepper
-from miles.utils.ft.controller.state_machine import StateMachine
+from miles.utils.ft.utils.state_machine import StateMachine
 from miles.utils.ft.models.recovery import (
     ControllerMode,
     ControllerStatus,

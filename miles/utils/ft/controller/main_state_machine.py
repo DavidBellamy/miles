@@ -19,8 +19,7 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
     RecoveryStepper,
     RecoveryState,
 )
-from miles.utils.ft.controller.recovery.restart_stepper import RestartStepper
-from miles.utils.ft.controller.state_machine import StateMachineStepper
+from miles.utils.ft.utils.state_machine import StateMachineStepper
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import JobStatus

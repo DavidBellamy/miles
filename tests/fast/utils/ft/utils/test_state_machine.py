@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from miles.utils.ft.controller.state_machine import StateMachine, StateMachineStepper
+from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 
 # -- Dummy states for testing --------------------------------------------------
