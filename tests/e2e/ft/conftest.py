@@ -385,13 +385,17 @@ class E2eFaultInjector:
     Wraps the remote FaultInjector actor to kill/stop real training processes.
     """
 
+    _DEFAULT_EXCEPTION_FLAG_PATH = "/tmp/miles_ft_inject_exception"
+
     def __init__(
         self,
         injector_handle: ray.actor.ActorHandle,
         target_node: str,
+        exception_flag_path: str = _DEFAULT_EXCEPTION_FLAG_PATH,
     ) -> None:
         self._injector = injector_handle
         self._target_node = target_node
+        self._exception_flag_path = exception_flag_path
 
     async def crash_training(self) -> None:
         pid = await wait_for_training_pid(
@@ -405,3 +409,6 @@ class E2eFaultInjector:
     async def inject_hang(self) -> None:
         pid = find_training_pid(self._injector, node_id=self._target_node)
         ray.get(self._injector.stop_process.remote(pid=pid))
+
+    async def inject_python_exception(self) -> None:
+        ray.get(self._injector.write_exception_flag.remote(path=self._exception_flag_path))
