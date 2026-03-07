@@ -8,7 +8,7 @@ from miles.utils.ft.models.base import FtBaseModel
 class RecoveryPhase(str, Enum):
     # Entry point: inspect collected alerts for known hardware/network faults
     CHECK_ALERTS = "check_alerts"
-    # Restart training without evicting nodes (ephemeral or unknown fault)
+    # Stop current run and resubmit without evicting nodes; poll until job starts
     REATTEMPTING = "reattempting"
     # Watch the reattempted run for iteration progress to confirm recovery
     MONITORING = "monitoring"
