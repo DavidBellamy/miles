@@ -459,3 +459,36 @@ class TestRealtimeChecksDiscovery:
         final = await wait_for_recovery_complete(env.controller, timeout=90.0)
         assert final.mode == ControllerMode.MONITORING
         assert_phase_path_contains(final, ["Evicting"])
+
+
+class TestMaxBadNodesOneBoundary:
+    async def test_max_simultaneous_bad_nodes_one_single_fault_is_false_positive(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """max_simultaneous_bad_nodes=1 → even a single GPU fault is treated as false positive."""
+        env = make_e2e_env(
+            ft_id="e2emb1",
+            nodes=[NodeSpec(node_id="e2emb1-node-0", use_remote_collector=True)],
+            detectors=build_detector_chain(),
+            scrape_interval_seconds=_FAST_SCRAPE,
+            max_simultaneous_bad_nodes=1,
+            use_notifier=True,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: inject GPU fault on the single node
+        env.set_collector_metrics("e2emb1-node-0", [
+            GaugeSample(
+                name=GPU_AVAILABLE,
+                labels={"node_id": "e2emb1-node-0", "gpu": "0"},
+                value=0.0,
+            ),
+        ])
+
+        # Step 2: wait for detection cycles, verify no recovery
+        await asyncio.sleep(5.0)
+        status = get_status(env.controller)
+        assert status.mode == ControllerMode.MONITORING, (
+            f"max_simultaneous_bad_nodes=1 should block recovery, but mode={status.mode}"
+        )

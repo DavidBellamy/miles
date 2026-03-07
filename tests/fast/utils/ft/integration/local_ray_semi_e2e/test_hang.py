@@ -113,3 +113,60 @@ class TestMonitoringProgressTimeout:
             )
 
         assert_phase_path_contains(status, ["MonitoringProgress", "StopTimeDiagnostics"])
+
+
+class TestMonitoringSuccessIterationsZero:
+    async def test_monitoring_success_iterations_zero_immediate_restart_done(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """monitoring_success_iterations=0 → RUNNING with 0 progress instantly yields RestartDone."""
+        env = make_e2e_env(
+            ft_id="e2esi0",
+            nodes=[NodeSpec(node_id="e2esi0-node-0")],
+            detectors=[TrainingCrashDetector()],
+            monitoring_success_iterations=0,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: crash → recovery → MonitoringProgress should resolve immediately
+        await env.injector.crash_training()
+        final = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=30.0,
+        )
+        assert final.mode == ControllerMode.MONITORING
+
+        # Step 2: StopTimeDiagnostics should NOT appear (no timeout needed)
+        assert not final.phase_history or "StopTimeDiagnostics" not in final.phase_history
+
+
+class TestMonitoringTimeoutZero:
+    async def test_monitoring_timeout_zero_immediate_restart_failed(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """monitoring_timeout_seconds=0 → MonitoringProgress times out immediately → StopTimeDiagnostics."""
+        env = make_e2e_env(
+            ft_id="e2emt0",
+            nodes=[NodeSpec(node_id="e2emt0-node-0")],
+            detectors=[TrainingCrashDetector()],
+            step_interval=999.0,
+            monitoring_timeout_seconds=0,
+            monitoring_success_iterations=999,
+        )
+
+        # Step 1: crash → recovery
+        await env.injector.crash_training()
+
+        # Step 2: MonitoringProgress should time out immediately → StopTimeDiagnostics
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and "StopTimeDiagnostics" in status.phase_history:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise TimeoutError("monitoring_timeout_seconds=0 did not trigger StopTimeDiagnostics")
+
+        assert_phase_path_contains(status, ["StopTimeDiagnostics"])
