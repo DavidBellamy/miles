@@ -35,6 +35,10 @@ class FaultInjectionProtocol(Protocol):
         """Remove injected NaN loss, returning to normal metrics."""
         ...
 
+    async def inject_python_exception(self) -> None:
+        """Trigger a Python exception inside the training process."""
+        ...
+
 
 class LocalRayFaultInjector:
     """Fault injector for local_ray tests.
@@ -66,3 +70,6 @@ class LocalRayFaultInjector:
 
     async def clear_nan_loss(self) -> None:
         await self._state.set_custom_log_metrics.remote({})
+
+    async def inject_python_exception(self) -> None:
+        await self._state.set_status.remote(JobStatus.FAILED.value)
