@@ -11,7 +11,7 @@ from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from tests.fast.utils.ft.helpers import (
     FakeNodeAgent,
     HangingNodeAgent,
@@ -71,14 +71,14 @@ class TestDiagnosticOrchestratorEmptyPipeline:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_no_pipeline_arg_returns_notify_human(self) -> None:
         orchestrator = DiagnosticOrchestrator(agents={})
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="hang")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
 
 class TestDiagnosticOrchestratorSingleStep:
@@ -91,7 +91,7 @@ class TestDiagnosticOrchestratorSingleStep:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_one_node_fails_returns_mark_bad(self) -> None:
@@ -102,7 +102,7 @@ class TestDiagnosticOrchestratorSingleStep:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
 
@@ -115,7 +115,7 @@ class TestDiagnosticOrchestratorSingleStep:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
 
@@ -131,7 +131,7 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-0"]
         assert "gpu" in decision.reason
 
@@ -146,7 +146,7 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-1"]
         assert "intra" in decision.reason
 
@@ -161,7 +161,7 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
 
 class TestDiagnosticOrchestratorErrorHandling:
@@ -181,7 +181,7 @@ class TestDiagnosticOrchestratorErrorHandling:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -202,7 +202,7 @@ class TestDiagnosticOrchestratorErrorHandling:
         orchestrator = DiagnosticOrchestrator(agents={}, pipeline=["gpu"])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_suspect_node_ids_limits_scope(self) -> None:
@@ -217,7 +217,7 @@ class TestDiagnosticOrchestratorErrorHandling:
             suspect_node_ids=["node-0", "node-2"],
         )
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-0" in decision.bad_node_ids
         assert "node-1" not in decision.bad_node_ids
         assert "node-2" not in decision.bad_node_ids
@@ -237,7 +237,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_inter_machine_one_bad_node(self) -> None:
@@ -251,7 +251,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-0" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -265,7 +265,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_inter_machine_two_nodes_pair_fails(self) -> None:
@@ -277,7 +277,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_inter_machine_single_node_skipped(self) -> None:
@@ -286,7 +286,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
 
     def test_inter_machine_pairing_is_round_robin(self) -> None:
         node_ids = ["node-0", "node-1", "node-2", "node-3"]
@@ -335,7 +335,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
 
 
@@ -355,7 +355,7 @@ class TestDiagnosticOrchestratorLiveAgents:
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
         finally:
             await agent0.stop()
             await agent1.stop()
@@ -378,7 +378,7 @@ class TestDiagnosticOrchestratorLiveAgents:
             )
             # node-1 has diagnostic_type="failing", not "stub",
             # so it gets "unknown diagnostic type" → treated as fail
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
         finally:
             await agent0.stop()
@@ -416,7 +416,7 @@ class TestStackTracePreStep:
             )
 
             assert mock_diag_cls.call_count == 2
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_crash_trigger_skips_stack_trace(self) -> None:
@@ -442,7 +442,7 @@ class TestStackTracePreStep:
             )
 
             mock_diag_cls.assert_not_called()
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_no_rank_pids_provider_skips_stack_trace(self) -> None:
@@ -462,7 +462,7 @@ class TestStackTracePreStep:
             )
 
             mock_diag_cls.assert_not_called()
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_stack_trace_suspect_limits_pipeline_scope(self) -> None:
@@ -491,7 +491,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert len(decision.bad_node_ids) > 0
             assert decision.bad_node_ids == ["node-2"]
 
     @pytest.mark.anyio
@@ -518,7 +518,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_collection_failure_makes_node_suspect(self) -> None:
@@ -544,7 +544,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -574,7 +574,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids
 
@@ -604,7 +604,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=raising_provider,
             )
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-0" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -635,7 +635,7 @@ class TestStackTracePreStep:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.MARK_BAD_AND_RESTART
+            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
             assert "node-2" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids
@@ -661,7 +661,7 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
 
@@ -681,7 +681,7 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
         assert "node-1" not in decision.bad_node_ids
@@ -700,7 +700,7 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
 
@@ -725,7 +725,7 @@ class TestPipelineTimeout:
 
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
         assert "timed out" in decision.reason
 
     @pytest.mark.anyio
@@ -744,5 +744,5 @@ class TestPipelineTimeout:
 
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
-        assert decision.action == ActionType.NOTIFY_HUMAN
+        assert decision.bad_node_ids == []
         assert "timed out" in decision.reason

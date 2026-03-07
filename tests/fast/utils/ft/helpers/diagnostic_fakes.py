@@ -11,7 +11,7 @@ from miles.utils.ft.agents.diagnostics.nccl.inter_machine import (
     InterMachineCommDiagnostic,
 )
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 
 
 # ---------------------------------------------------------------------------
@@ -73,11 +73,10 @@ class SlowDiagnostic(BaseDiagnostic):
 class FakeDiagnosticOrchestrator:
     """Programmable stub for DiagnosticOrchestrator in recovery tests."""
 
-    def __init__(self, decision: Decision | None = None) -> None:
-        self._decision = decision or Decision(
-            action=ActionType.NOTIFY_HUMAN,
+    def __init__(self, result: DiagnosticPipelineResult | None = None) -> None:
+        self._result = result or DiagnosticPipelineResult(
+            bad_node_ids=[],
             reason="fake diagnostic — all passed",
-            trigger=TriggerType.MISC,
         )
         self.call_count: int = 0
         self.last_trigger_reason: str | None = None
@@ -88,11 +87,11 @@ class FakeDiagnosticOrchestrator:
         trigger_reason: str,
         suspect_node_ids: list[str] | None = None,
         rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
-    ) -> Decision:
+    ) -> DiagnosticPipelineResult:
         self.call_count += 1
         self.last_trigger_reason = trigger_reason
         self.last_suspect_node_ids = suspect_node_ids
-        return self._decision
+        return self._result
 
 
 class HangingDiagnosticOrchestrator:
@@ -103,7 +102,7 @@ class HangingDiagnosticOrchestrator:
         trigger_reason: str,
         suspect_node_ids: list[str] | None = None,
         rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
-    ) -> Decision:
+    ) -> DiagnosticPipelineResult:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
