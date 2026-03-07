@@ -74,21 +74,21 @@ def _make_main_stepper(
     recovery_stepper: RecoveryStepper | AsyncMock | None = None,
     on_recovery_duration=None,
     notifier: FakeNotifier | None = None,
+    max_simultaneous_bad_nodes: int = 3,
 ) -> MainStepper:
     from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
     from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 
-    restart_stepper = RestartStepper(
-        node_manager=FakeNodeManager(),
-        training_job=FakeTrainingJob(),
-        mini_wandb=MiniWandb(),
-        notifier=None,
-        on_new_run=None,
-        monitoring_success_iterations=10,
-        monitoring_timeout_seconds=600,
-    )
-
     if recovery_stepper is None:
+        restart_stepper = RestartStepper(
+            node_manager=FakeNodeManager(),
+            training_job=FakeTrainingJob(),
+            mini_wandb=MiniWandb(),
+            notifier=None,
+            on_new_run=None,
+            monitoring_success_iterations=10,
+            monitoring_timeout_seconds=600,
+        )
         recovery_stepper = RecoveryStepper(
             alert_checker=AlertChecker(metric_store=MiniPrometheus(config=MiniPrometheusConfig())),
             diagnostic_orchestrator=AsyncMock(),
@@ -98,11 +98,11 @@ def _make_main_stepper(
 
     return MainStepper(
         platform_deps=_make_platform_deps(notifier=notifier),
-        restart_stepper=restart_stepper,
         recovery_stepper=recovery_stepper,
         detectors=detectors or [],
         cooldown=cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3),
         on_recovery_duration=on_recovery_duration,
+        max_simultaneous_bad_nodes=max_simultaneous_bad_nodes,
     )
 
 
@@ -388,6 +388,150 @@ class TestRecovering:
         assert isinstance(result, Recovering)
         assert isinstance(result.recovery, RealtimeChecks)
         assert set(result.recovery.pre_identified_bad_nodes) == {"node-old", "node-new"}
+
+
+# ---------------------------------------------------------------------------
+# StateMachine integration
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Bad node count safeguard
+# ---------------------------------------------------------------------------
+
+
+class TestBadNodeCountSafeguard:
+    @pytest.mark.asyncio
+    async def test_too_many_bad_nodes_triggers_notify_human(self) -> None:
+        """Detector reports >= threshold bad nodes -> NOTIFY_HUMAN, no recovery."""
+        notifier = FakeNotifier()
+        detector = FixedDecisionDetector(Decision(
+            action=ActionType.ENTER_RECOVERY,
+            bad_node_ids=["node-1", "node-2", "node-3"],
+            reason="three nodes bad",
+            trigger=TriggerType.HARDWARE,
+        ))
+        stepper = _make_main_stepper(
+            detectors=[detector],
+            notifier=notifier,
+            max_simultaneous_bad_nodes=3,
+        )
+        stepper.set_tick_context(
+            job_status=JobStatus.RUNNING,
+            tick_count=1,
+            should_run_detectors=True,
+            detector_context=_make_detector_context(),
+        )
+        result = await stepper(DetectingAnomaly())
+        assert result is None
+        assert len(notifier.calls) == 1
+        assert "likely false positive" in notifier.calls[0][1]
+
+    @pytest.mark.asyncio
+    async def test_bad_nodes_below_threshold_enters_recovery(self) -> None:
+        """Detector reports fewer bad nodes than threshold -> normal recovery."""
+        detector = FixedDecisionDetector(Decision(
+            action=ActionType.ENTER_RECOVERY,
+            bad_node_ids=["node-1", "node-2"],
+            reason="two nodes bad",
+            trigger=TriggerType.HARDWARE,
+        ))
+        stepper = _make_main_stepper(
+            detectors=[detector],
+            max_simultaneous_bad_nodes=3,
+        )
+        stepper.set_tick_context(
+            job_status=JobStatus.RUNNING,
+            tick_count=1,
+            should_run_detectors=True,
+            detector_context=_make_detector_context(),
+        )
+        result = await stepper(DetectingAnomaly())
+        assert isinstance(result, Recovering)
+        assert isinstance(result.recovery, RealtimeChecks)
+        assert set(result.recovery.pre_identified_bad_nodes) == {"node-1", "node-2"}
+
+    @pytest.mark.asyncio
+    async def test_too_many_dynamic_bad_nodes_aborts_recovery(self) -> None:
+        """Critical detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN."""
+        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting
+        from miles.utils.ft.controller.recovery.restart_stepper import Evicting
+
+        notifier = FakeNotifier()
+        recovery_stepper = AsyncMock()
+        recovery_stepper.step_with_context = AsyncMock(return_value=None)
+
+        critical_detector = CriticalFixedDecisionDetector(Decision(
+            action=ActionType.ENTER_RECOVERY,
+            bad_node_ids=["node-a", "node-b", "node-c"],
+            reason="three critical faults",
+            trigger=TriggerType.HARDWARE,
+        ))
+
+        stepper = _make_main_stepper(
+            detectors=[critical_detector],
+            recovery_stepper=recovery_stepper,
+            notifier=notifier,
+            max_simultaneous_bad_nodes=3,
+        )
+        stepper.set_tick_context(
+            job_status=JobStatus.RUNNING,
+            tick_count=1,
+            should_run_detectors=True,
+            detector_context=_make_detector_context(),
+        )
+
+        state = Recovering(
+            recovery=EvictingAndRestarting(
+                restart=Evicting(bad_node_ids=["node-old"]),
+            ),
+            trigger=TriggerType.CRASH,
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+        result = await stepper(state)
+        assert isinstance(result, DetectingAnomaly)
+        assert len(notifier.calls) == 1
+        assert "likely false positive" in notifier.calls[0][1]
+
+    @pytest.mark.asyncio
+    async def test_dynamic_bad_nodes_below_threshold_continues_recovery(self) -> None:
+        """One new bad node during recovery (with 2 existing) -> normal merge, continues."""
+        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting
+        from miles.utils.ft.controller.recovery.restart_stepper import Evicting
+
+        recovery_stepper = AsyncMock()
+        recovery_stepper.step_with_context = AsyncMock(return_value=None)
+
+        critical_detector = CriticalFixedDecisionDetector(Decision(
+            action=ActionType.ENTER_RECOVERY,
+            bad_node_ids=["node-new"],
+            reason="one critical fault",
+            trigger=TriggerType.HARDWARE,
+        ))
+
+        stepper = _make_main_stepper(
+            detectors=[critical_detector],
+            recovery_stepper=recovery_stepper,
+            max_simultaneous_bad_nodes=3,
+        )
+        stepper.set_tick_context(
+            job_status=JobStatus.RUNNING,
+            tick_count=1,
+            should_run_detectors=True,
+            detector_context=_make_detector_context(),
+        )
+
+        state = Recovering(
+            recovery=EvictingAndRestarting(
+                restart=Evicting(bad_node_ids=["node-old-1", "node-old-2"]),
+            ),
+            trigger=TriggerType.CRASH,
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+        result = await stepper(state)
+        assert isinstance(result, Recovering)
+        assert isinstance(result.recovery, RealtimeChecks)
+        assert set(result.recovery.pre_identified_bad_nodes) == {"node-old-1", "node-old-2", "node-new"}
 
 
 # ---------------------------------------------------------------------------

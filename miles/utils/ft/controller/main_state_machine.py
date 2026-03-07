@@ -74,12 +74,14 @@ class MainStepper(StateMachineStepper[MainState]):
         detectors: list[BaseFaultDetector],
         cooldown: SlidingWindowThrottle,
         on_recovery_duration: Callable[[float], None] | None = None,
+        max_simultaneous_bad_nodes: int = 3,
     ) -> None:
         self._platform_deps = platform_deps
         self._recovery_stepper = recovery_stepper
         self._detectors = detectors
         self._cooldown = cooldown
         self._on_recovery_duration = on_recovery_duration
+        self._max_simultaneous_bad_nodes = max_simultaneous_bad_nodes
 
         self._tick_context: _TickContext | None = None
         super().__init__()
@@ -120,6 +122,25 @@ class MainStepper(StateMachineStepper[MainState]):
             await handle_notify_human(decision=decision, notifier=self._platform_deps.notifier)
             return None
 
+        if len(decision.bad_node_ids) >= self._max_simultaneous_bad_nodes:
+            logger.warning(
+                "too_many_bad_nodes count=%d threshold=%d, likely false positive",
+                len(decision.bad_node_ids),
+                self._max_simultaneous_bad_nodes,
+            )
+            await handle_notify_human(
+                decision=Decision(
+                    action=ActionType.NOTIFY_HUMAN,
+                    reason=(
+                        f"Detector reported {len(decision.bad_node_ids)} bad nodes "
+                        f"(>= {self._max_simultaneous_bad_nodes}), likely false positive"
+                    ),
+                    trigger=decision.trigger,
+                ),
+                notifier=self._platform_deps.notifier,
+            )
+            return None
+
         if decision.trigger is None:
             raise ValueError(f"Decision with action={decision.action} has no trigger")
         self._cooldown.record(decision.trigger)
@@ -148,6 +169,25 @@ class MainStepper(StateMachineStepper[MainState]):
         ctx = self._tick_context
         if ctx is not None:
             new_bad_nodes = self._collect_critical_bad_nodes(ctx)
+            if len(new_bad_nodes) >= self._max_simultaneous_bad_nodes:
+                logger.warning(
+                    "too_many_dynamic_bad_nodes count=%d threshold=%d, likely false positive",
+                    len(new_bad_nodes),
+                    self._max_simultaneous_bad_nodes,
+                )
+                await handle_notify_human(
+                    decision=Decision(
+                        action=ActionType.NOTIFY_HUMAN,
+                        reason=(
+                            f"Critical detectors reported {len(new_bad_nodes)} new bad nodes "
+                            f"during recovery (>= {self._max_simultaneous_bad_nodes}), likely false positive"
+                        ),
+                        trigger=state.trigger,
+                    ),
+                    notifier=self._platform_deps.notifier,
+                )
+                return DetectingAnomaly()
+
             if new_bad_nodes:
                 all_bad = list(set(get_known_bad_nodes(state.recovery)) | set(new_bad_nodes))
                 now = datetime.now(timezone.utc)
