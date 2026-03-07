@@ -17,6 +17,7 @@ from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCom
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
 from miles.utils.ft.controller.diagnostics.nccl.orchestrator import InterMachineOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.platform.ray_wrappers.node_discovery import build_node_address_map, get_alive_gpu_nodes
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ async def run_intra_machine_diagnostics(
 
     Returns one DiagnosticResult per node.
     """
-    nodes = _discover_gpu_nodes(node_ids=node_ids)
+    nodes = get_alive_gpu_nodes(node_ids=node_ids)
 
     async with _managed_agents(nodes) as agents:
         futures = {
@@ -66,7 +67,7 @@ async def run_inter_machine_diagnostics(
 
     Returns list of bad node IDs (empty if all healthy).
     """
-    nodes = _discover_gpu_nodes(node_ids=node_ids)
+    nodes = get_alive_gpu_nodes(node_ids=node_ids)
 
     if len(nodes) < _MIN_INTER_MACHINE_NODES:
         logger.info(
@@ -76,7 +77,7 @@ async def run_inter_machine_diagnostics(
         return []
 
     async with _managed_agents(nodes) as agents:
-        node_addresses = _build_node_addresses(nodes)
+        node_addresses = build_node_address_map(nodes)
         orchestrator = InterMachineOrchestrator(
             node_agents=agents,
             node_addresses=node_addresses,
@@ -86,33 +87,6 @@ async def run_inter_machine_diagnostics(
             node_ids=sorted(agents.keys()),
             timeout_seconds=timeout_seconds,
         )
-
-
-# ---------------------------------------------------------------------------
-# Node discovery
-# ---------------------------------------------------------------------------
-
-def _discover_gpu_nodes(
-    node_ids: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    nodes = [
-        n for n in ray.nodes()
-        if n.get("Alive") and n.get("Resources", {}).get("GPU", 0) > 0
-    ]
-
-    if node_ids is not None:
-        allowed = set(node_ids)
-        nodes = [n for n in nodes if n["NodeID"] in allowed]
-
-    return nodes
-
-
-def _build_node_addresses(nodes: list[dict[str, Any]]) -> dict[str, str]:
-    return {
-        node["NodeID"]: addr
-        for node in nodes
-        if (addr := node.get("NodeManagerAddress", ""))
-    }
 
 
 # ---------------------------------------------------------------------------

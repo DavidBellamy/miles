@@ -9,40 +9,11 @@ from uuid import uuid4
 import ray
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.utils.polling import poll_until
+from miles.utils.ft.platform.ray_wrappers.node_discovery import resolve_to_ray_node_ids
 from miles.utils.ft.protocols.platform import JobStatus, TrainingJobProtocol
+from miles.utils.ft.utils.polling import poll_until
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
-    """Map node identifiers (K8s names, IPs, or Ray hex IDs) to Ray node IDs.
-
-    Looks up each identifier against NodeName, NodeManagerAddress, and NodeID
-    of alive Ray nodes. Identifiers already matching a NodeID pass through.
-    Unresolvable identifiers are logged and skipped.
-    """
-    lookup: dict[str, str] = {}
-    for node in ray.nodes():
-        if not node.get("Alive"):
-            continue
-        ray_id = node["NodeID"]
-        lookup[ray_id] = ray_id
-        if name := node.get("NodeName"):
-            lookup[name] = ray_id
-        if addr := node.get("NodeManagerAddress"):
-            lookup[addr] = ray_id
-
-    seen: set[str] = set()
-    resolved: list[str] = []
-    for ident in identifiers:
-        ray_id = lookup.get(ident)
-        if ray_id is not None and ray_id not in seen:
-            seen.add(ray_id)
-            resolved.append(ray_id)
-        elif ray_id is None:
-            logger.warning("_resolve_to_ray_node_ids: %s not found in Ray cluster, skipping", ident)
-    return resolved
 
 
 _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
@@ -133,7 +104,7 @@ class RayTrainingJob(TrainingJobProtocol):
 
         entrypoint = self._entrypoint
         if excluded_node_ids:
-            ray_node_ids = await asyncio.to_thread(_resolve_to_ray_node_ids, excluded_node_ids)
+            ray_node_ids = await asyncio.to_thread(resolve_to_ray_node_ids, excluded_node_ids)
             if ray_node_ids:
                 entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 
