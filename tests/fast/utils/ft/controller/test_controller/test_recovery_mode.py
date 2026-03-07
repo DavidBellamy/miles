@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
@@ -44,6 +44,7 @@ class TestEnterRecovery:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-new-bad"],
             reason="critical hw fault during recovery",
+            trigger=TriggerType.HARDWARE,
         ))
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
@@ -62,6 +63,7 @@ class TestEnterRecovery:
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=["node-1"],
             reason="same node again",
+            trigger=TriggerType.HARDWARE,
         ))
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
