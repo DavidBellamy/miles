@@ -144,11 +144,9 @@ def main(
 
     actor_name = ft_controller_actor_name(ft_id)
     logger.info(
-        "launcher_started actor_name=%s platform=%s backend=%s exporter_port=%d entrypoint=%s",
+        "launcher_started actor_name=%s config=%s entrypoint=%s",
         actor_name,
-        config.platform,
-        config.metric_store_backend,
-        config.controller_exporter_port,
+        str(config),
         entrypoint,
     )
 
