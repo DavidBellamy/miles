@@ -1,37 +1,41 @@
 """Tests for recovery stepper handler classes."""
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.fast.utils.ft.helpers.controller_fakes import FakeNodeManager, FakeNotifier, FakeTrainingJob
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.recovery_stepper import (
-    RECOVERY_HANDLER_MAP,
     EvictingAndRestarting,
     NotifyHumans,
     RealtimeChecks,
     RecoveryContext,
     RecoveryDone,
     StopTimeDiagnostics,
-    recovery_timeout_check,
+    create_recovery_stepper,
 )
 from miles.utils.ft.controller.recovery.restart_stepper import (
-    RESTART_HANDLER_MAP,
     Evicting,
     MonitoringProgress,
     RestartContext,
     RestartDone,
     RestartFailed,
     StoppingAndRestarting,
+    create_restart_stepper,
 )
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from miles.utils.ft.models.fault import NodeFault, TriggerType
 from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
+
+from tests.fast.utils.ft.helpers.controller_fakes import (
+    FakeNodeManager,
+    FakeNotifier,
+    FakeTrainingJob,
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,10 +70,7 @@ class FakeDiagOrchestrator:
 
 
 def _make_stepper(*, timeout_seconds: int = 1800) -> StateMachineStepper:
-    return StateMachineStepper(
-        handler_map=RECOVERY_HANDLER_MAP,
-        pre_dispatch=recovery_timeout_check,
-    )
+    return create_recovery_stepper()
 
 
 def _make_restart_stepper_and_context(
@@ -83,7 +84,7 @@ def _make_restart_stepper_and_context(
     resolved_training_job = training_job or FakeTrainingJob()
     resolved_mini_wandb = mini_wandb or MiniWandb()
 
-    stepper = StateMachineStepper(handler_map=RESTART_HANDLER_MAP)
+    stepper = create_restart_stepper()
     ctx = RestartContext(
         node_manager=resolved_node_manager,
         training_job=resolved_training_job,
@@ -117,7 +118,7 @@ def _make_ctx(
         restart_stepper = real_stepper
         restart_context = real_ctx
     elif restart_stepper is None:
-        restart_stepper = StateMachineStepper(handler_map=RESTART_HANDLER_MAP)
+        restart_stepper = create_restart_stepper()
     elif restart_context is None:
         _, restart_context = _make_restart_stepper_and_context()
 
@@ -430,8 +431,7 @@ class TestFullRecoveryFlow:
         mini_wandb.log_step(run_id="r", step=1, metrics={"iteration": 100})
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job,
-            mini_wandb=mini_wandb,
+            training_job=training_job, mini_wandb=mini_wandb,
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
@@ -473,10 +473,8 @@ class TestFullRecoveryFlow:
         notifier = FakeNotifier()
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job,
-            mini_wandb=mini_wandb,
-            node_manager=node_manager,
-            notifier=notifier,
+            training_job=training_job, mini_wandb=mini_wandb,
+            node_manager=node_manager, notifier=notifier,
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
@@ -524,8 +522,7 @@ class TestFullRecoveryFlow:
         node_manager = FakeNodeManager()
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job,
-            mini_wandb=mini_wandb,
+            training_job=training_job, mini_wandb=mini_wandb,
             node_manager=node_manager,
         )
         diag = FakeDiagOrchestrator(
@@ -593,3 +590,4 @@ class TestFullRecoveryFlow:
         stepper = _make_stepper()
         result = await _step(stepper, NotifyHumans(state_before="Test"), notifier=notifier)
         assert isinstance(result, RecoveryDone)
+ce(result, RecoveryDone)

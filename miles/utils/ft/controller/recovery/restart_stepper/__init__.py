@@ -14,8 +14,9 @@ from miles.utils.ft.controller.recovery.restart_stepper.states import (
     RestartState,
     StoppingAndRestarting,
 )
+from miles.utils.ft.utils.state_machine import StateMachineStepper
 
-RESTART_HANDLER_MAP: dict[type, type] = {
+_RESTART_HANDLER_MAP: dict[type, type] = {
     Evicting: EvictingHandler,
     StoppingAndRestarting: StoppingAndRestartingHandler,
     MonitoringProgress: MonitoringProgressHandler,
@@ -23,12 +24,16 @@ RESTART_HANDLER_MAP: dict[type, type] = {
     RestartFailed: TerminalHandler,
 }
 
+
+def create_restart_stepper() -> StateMachineStepper:
+    return StateMachineStepper(handler_map=_RESTART_HANDLER_MAP)
+
+
 __all__ = [
     "Evicting",
     "EvictingHandler",
     "MonitoringProgress",
     "MonitoringProgressHandler",
-    "RESTART_HANDLER_MAP",
     "RestartContext",
     "RestartDone",
     "RestartFailed",
@@ -36,5 +41,6 @@ __all__ = [
     "StoppingAndRestarting",
     "StoppingAndRestartingHandler",
     "TerminalHandler",
+    "create_restart_stepper",
     "iteration_progress",
 ]

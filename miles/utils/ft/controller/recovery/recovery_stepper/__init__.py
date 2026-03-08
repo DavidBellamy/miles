@@ -16,10 +16,11 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     RecoveryState,
     StopTimeDiagnostics,
 )
+from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 RECOVERY_TIMEOUT_SECONDS: int = 1800
 
-RECOVERY_HANDLER_MAP: dict[type, type] = {
+_RECOVERY_HANDLER_MAP: dict[type, type] = {
     RealtimeChecks: RealtimeChecksHandler,
     EvictingAndRestarting: EvictingAndRestartingHandler,
     StopTimeDiagnostics: StopTimeDiagnosticsHandler,
@@ -27,12 +28,19 @@ RECOVERY_HANDLER_MAP: dict[type, type] = {
     RecoveryDone: RecoveryDoneHandler,
 }
 
+
+def create_recovery_stepper() -> StateMachineStepper:
+    return StateMachineStepper(
+        handler_map=_RECOVERY_HANDLER_MAP,
+        pre_dispatch=recovery_timeout_check,
+    )
+
+
 __all__ = [
     "EvictingAndRestarting",
     "EvictingAndRestartingHandler",
     "NotifyHumans",
     "NotifyHumansHandler",
-    "RECOVERY_HANDLER_MAP",
     "RECOVERY_TIMEOUT_SECONDS",
     "RECOVERY_STATE_TO_INT",
     "RealtimeChecks",
@@ -43,5 +51,6 @@ __all__ = [
     "RecoveryState",
     "StopTimeDiagnostics",
     "StopTimeDiagnosticsHandler",
+    "create_recovery_stepper",
     "recovery_timeout_check",
 ]

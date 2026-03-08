@@ -1,10 +1,24 @@
 """Tests for restart stepper handler classes."""
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 import pytest
+
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery.restart_stepper import (
+    Evicting,
+    MonitoringProgress,
+    RestartContext,
+    RestartDone,
+    RestartFailed,
+    StoppingAndRestarting,
+    create_restart_stepper,
+    iteration_progress,
+)
+from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.utils.state_machine import StateMachineStepper
+
 from tests.fast.utils.ft.helpers.controller_fakes import (
     FakeNodeManager,
     FakeNotifier,
@@ -14,23 +28,9 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     failing_submit_training,
 )
 
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery.restart_stepper import (
-    RESTART_HANDLER_MAP,
-    Evicting,
-    MonitoringProgress,
-    RestartContext,
-    RestartDone,
-    RestartFailed,
-    StoppingAndRestarting,
-    iteration_progress,
-)
-from miles.utils.ft.protocols.platform import JobStatus
-from miles.utils.ft.utils.state_machine import StateMachineStepper
-
 
 def _make_stepper() -> StateMachineStepper:
-    return StateMachineStepper(handler_map=RESTART_HANDLER_MAP)
+    return create_restart_stepper()
 
 
 def _make_context(
@@ -351,9 +351,7 @@ class TestMonitoringProgress:
         ids=["nan", "inf", "neg_inf", "none", "negative_raw", "zero_raw", "normal"],
     )
     def test_iteration_progress_boundary_values(
-        self,
-        metric_value: float | None,
-        expected_progress: int,
+        self, metric_value: float | None, expected_progress: int,
     ) -> None:
         mini_wandb = MiniWandb()
         if metric_value is not None:
