@@ -6,6 +6,7 @@ from typing import Any
 import polars as pl
 
 from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
+from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,9 @@ def parse_range_response(data: dict[str, Any]) -> pl.DataFrame:
 
 def _extract_results(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str] | None:
     if data.get("status") != "success":
-        logger.warning("prometheus_query_error response=%s", data)
-        return None
+        raise PrometheusQueryError(
+            f"Prometheus returned status={data.get('status')}: {data.get('error', '')}"
+        )
 
     data_section = data.get("data") or {}
     result = data_section.get("result") or []

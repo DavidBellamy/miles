@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
+import pytest
+
+from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
 from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_instant_response,
     parse_range_response,
@@ -10,15 +12,14 @@ from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
 
 
 class TestParseInstantResponseErrors:
-    def test_non_success_status_returns_empty(self) -> None:
+    def test_non_success_status_raises(self) -> None:
         data = {"status": "error", "errorType": "bad_data", "error": "parse error"}
-        result = parse_instant_response(data)
-        assert result.shape == EMPTY_INSTANT.shape
-        assert len(result) == 0
+        with pytest.raises(PrometheusQueryError, match="status=error"):
+            parse_instant_response(data)
 
-    def test_missing_status_returns_empty(self) -> None:
-        result = parse_instant_response({})
-        assert len(result) == 0
+    def test_missing_status_raises(self) -> None:
+        with pytest.raises(PrometheusQueryError, match="status=None"):
+            parse_instant_response({})
 
     def test_empty_result_returns_empty(self) -> None:
         data = {"status": "success", "data": {"resultType": "vector", "result": []}}
@@ -96,10 +97,9 @@ class TestParseInstantResponseVector:
 
 
 class TestParseRangeResponseErrors:
-    def test_non_success_returns_empty(self) -> None:
-        result = parse_range_response({"status": "error"})
-        assert result.shape == EMPTY_RANGE.shape
-        assert len(result) == 0
+    def test_non_success_raises(self) -> None:
+        with pytest.raises(PrometheusQueryError, match="status=error"):
+            parse_range_response({"status": "error"})
 
     def test_non_matrix_type_returns_empty(self) -> None:
         data = {

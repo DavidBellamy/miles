@@ -10,11 +10,11 @@ import httpx
 import polars as pl
 
 from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
-from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
 from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_instant_response,
     parse_range_response,
 )
+from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol
 from miles.utils.ft.utils.retry import retry_sync
 
@@ -81,8 +81,6 @@ class PrometheusClient(RangeAggregationMixin, MetricStoreProtocol):
     ) -> pl.DataFrame:
         promql = _build_selector(metric_name, label_filters)
         data = await self._afetch_json("/api/v1/query", params={"query": promql})
-        if data is None:
-            return EMPTY_INSTANT
         return parse_instant_response(data)
 
     async def aquery_range(
@@ -98,8 +96,6 @@ class PrometheusClient(RangeAggregationMixin, MetricStoreProtocol):
             "/api/v1/query_range",
             params={"query": promql, "start": start, "end": now, "step": self._range_query_step_seconds},
         )
-        if data is None:
-            return EMPTY_RANGE
         return parse_range_response(data)
 
     # -------------------------------------------------------------------
@@ -119,8 +115,6 @@ class PrometheusClient(RangeAggregationMixin, MetricStoreProtocol):
 
     def _instant_query_raw(self, promql: str) -> pl.DataFrame:
         data = self._fetch_json("/api/v1/query", params={"query": promql})
-        if data is None:
-            return EMPTY_INSTANT
         return parse_instant_response(data)
 
     def _range_query_raw(self, promql: str, window: timedelta) -> pl.DataFrame:
@@ -131,11 +125,9 @@ class PrometheusClient(RangeAggregationMixin, MetricStoreProtocol):
             "/api/v1/query_range",
             params={"query": promql, "start": start, "end": now, "step": self._range_query_step_seconds},
         )
-        if data is None:
-            return EMPTY_RANGE
         return parse_range_response(data)
 
-    def _fetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any] | None:
+    def _fetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any]:
         def _do_fetch() -> dict[str, Any]:
             response = self._client.get(f"{self._url}{path}", params=params)
             response.raise_for_status()
@@ -148,9 +140,13 @@ class PrometheusClient(RangeAggregationMixin, MetricStoreProtocol):
             backoff_base=_FETCH_RETRY_DELAY_SECONDS,
             max_backoff=_FETCH_RETRY_DELAY_SECONDS,
         )
-        return result.value
+        if not result.ok:
+            raise PrometheusQueryError(
+                f"Prometheus query failed after {_FETCH_MAX_RETRIES} retries: {path}"
+            ) from result.exception
+        return result.value  # type: ignore[return-value]
 
-    async def _afetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any] | None:
+    async def _afetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any]:
         return await asyncio.to_thread(self._fetch_json, path, params)
 
 

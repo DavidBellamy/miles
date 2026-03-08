@@ -11,6 +11,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
 from miles.utils.ft.controller.metrics.prometheus_api.store import (
     PrometheusClient,
     _build_selector,
@@ -99,7 +100,7 @@ class TestQueryLatestVector:
 
 
 class TestQueryLatestErrors:
-    def test_http_500_returns_empty(self) -> None:
+    def test_http_500_raises(self) -> None:
         error_response = httpx.Response(
             status_code=500,
             text="Internal Server Error",
@@ -108,20 +109,16 @@ class TestQueryLatestErrors:
 
         with patch.object(httpx.Client, "get", return_value=error_response):
             client = PrometheusClient(url="http://fake:9090")
-            df = client.query_latest("up")
+            with pytest.raises(PrometheusQueryError):
+                client.query_latest("up")
 
-        assert df.is_empty()
-        assert "__name__" in df.columns
-        assert "value" in df.columns
-
-    def test_timeout_returns_empty(self) -> None:
+    def test_timeout_raises(self) -> None:
         with patch.object(httpx.Client, "get", side_effect=httpx.TimeoutException("timed out")):
             client = PrometheusClient(url="http://fake:9090")
-            df = client.query_latest("up")
+            with pytest.raises(PrometheusQueryError):
+                client.query_latest("up")
 
-        assert df.is_empty()
-
-    def test_prometheus_error_status(self) -> None:
+    def test_prometheus_error_status_raises(self) -> None:
         json_data = {
             "status": "error",
             "errorType": "bad_data",
@@ -129,9 +126,8 @@ class TestQueryLatestErrors:
         }
 
         with _mock_prometheus_client(json_data) as client:
-            df = client.query_latest("some_metric")
-
-        assert df.is_empty()
+            with pytest.raises(PrometheusQueryError, match="status=error"):
+                client.query_latest("some_metric")
 
 
 class TestQueryRange:
@@ -202,13 +198,11 @@ class TestQueryRange:
 
 
 class TestQueryRangeErrors:
-    def test_timeout_returns_empty(self) -> None:
+    def test_timeout_raises(self) -> None:
         with patch.object(httpx.Client, "get", side_effect=httpx.TimeoutException("timed out")):
             client = PrometheusClient(url="http://fake:9090")
-            df = client.query_range("up", window=timedelta(hours=24))
-
-        assert df.is_empty()
-        assert "timestamp" in df.columns
+            with pytest.raises(PrometheusQueryError):
+                client.query_range("up", window=timedelta(hours=24))
 
 
 class TestLabelColumns:
@@ -467,12 +461,11 @@ class TestAsyncQueryLatest:
         assert df["value"][0] == 1.0
 
     @pytest.mark.asyncio
-    async def test_aquery_latest_returns_empty_on_error(self) -> None:
+    async def test_aquery_latest_raises_on_error(self) -> None:
         with patch.object(httpx.Client, "get", side_effect=httpx.TimeoutException("timed out")):
             client = PrometheusClient(url="http://fake:9090")
-            df = await client.aquery_latest("up")
-
-        assert df.is_empty()
+            with pytest.raises(PrometheusQueryError):
+                await client.aquery_latest("up")
 
 
 class TestAsyncQueryRange:
@@ -501,13 +494,11 @@ class TestAsyncQueryRange:
         assert df["value"].to_list() == [0.3, 0.5]
 
     @pytest.mark.asyncio
-    async def test_aquery_range_returns_empty_on_error(self) -> None:
+    async def test_aquery_range_raises_on_error(self) -> None:
         with patch.object(httpx.Client, "get", side_effect=httpx.TimeoutException("timed out")):
             client = PrometheusClient(url="http://fake:9090")
-            df = await client.aquery_range("up", window=timedelta(hours=1))
-
-        assert df.is_empty()
-        assert "timestamp" in df.columns
+            with pytest.raises(PrometheusQueryError):
+                await client.aquery_range("up", window=timedelta(hours=1))
 
 
 class TestFormatDuration:
@@ -657,7 +648,7 @@ class TestRetryBehaviour:
         assert df.shape[0] == 1
         assert df["value"][0] == 1.0
 
-    def test_retry_exhausted_returns_empty(self) -> None:
+    def test_retry_exhausted_raises(self) -> None:
         error_response = httpx.Response(
             status_code=500,
             text="Internal Server Error",
@@ -672,10 +663,10 @@ class TestRetryBehaviour:
 
         with patch.object(httpx.Client, "get", side_effect=_side_effect):
             client = PrometheusClient(url="http://fake:9090")
-            df = client.query_latest("up")
+            with pytest.raises(PrometheusQueryError):
+                client.query_latest("up")
 
         assert call_count == 2
-        assert df.is_empty()
 
 
 # ---------------------------------------------------------------------------
@@ -763,11 +754,9 @@ class TestPromQLLabelEscaping:
 
 class TestLifecycle:
     @pytest.mark.asyncio
-    async def test_query_after_stop_returns_empty(self) -> None:
+    async def test_query_after_stop_raises(self) -> None:
         client = PrometheusClient(url="http://fake:9090")
         await client.stop()
 
-        df = client.query_latest("some_metric")
-        assert df.is_empty()
-        assert "__name__" in df.columns
-        assert "value" in df.columns
+        with pytest.raises(PrometheusQueryError):
+            client.query_latest("some_metric")
