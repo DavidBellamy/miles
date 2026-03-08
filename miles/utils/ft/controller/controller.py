@@ -7,7 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.state_machines.main import (
+from miles.utils.ft.controller.node_agent_coverage import NodeAgentCoverageChecker
+from miles.utils.ft.controller.main_stepper import (
     DetectingAnomaly,
     MainContext,
     MainState,
@@ -20,7 +21,7 @@ from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task,
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
-from miles.utils.ft.controller.state_machines.recovery import (
+from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
     EvictingAndRestarting,
@@ -30,8 +31,8 @@ from miles.utils.ft.controller.state_machines.recovery import (
     RecoveryState,
     create_recovery_stepper,
 )
-from miles.utils.ft.controller.state_machines.restart import RestartContext, create_restart_stepper
-from miles.utils.ft.controller.state_machines.utils import safe_notify
+from miles.utils.ft.controller.recovery.restart_stepper import RestartContext, create_restart_stepper
+from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
@@ -40,7 +41,7 @@ from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
 from miles.utils.ft.protocols.platform import (
     JobStatus,
     NodeManagerProtocol,
-    NotifierProtocol,
+    NotificationProtocol,
     TrainingJobProtocol,
 )
 from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
@@ -56,7 +57,7 @@ class PlatformDeps:
     training_job: TrainingJobProtocol
     metric_store: MetricQueryProtocol
     mini_wandb: MiniWandb
-    notifier: NotifierProtocol | None
+    notifier: NotificationProtocol | None
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     controller_exporter: ControllerExporter | None
     on_new_run: Callable[[str], None] | None = field(default=None)
@@ -83,7 +84,7 @@ class FtController:
         detectors: list[BaseFaultDetector],
         tick_interval: float,
         # deps for MainContext building
-        notifier: NotifierProtocol | None,
+        notifier: NotificationProtocol | None,
         cooldown: SlidingWindowThrottle,
         recovery_stepper: StateMachineStepper,
         on_recovery_duration: Callable[[float], None] | None,
@@ -120,6 +121,7 @@ class FtController:
         self._restart_context: RestartContext | None = None
         self._detector_crash_tracker = SlidingWindowCounter(window_seconds=1800, threshold=5)
         self._tick_failure_tracker = SlidingWindowCounter(window_seconds=300, threshold=5)
+        self._node_agent_coverage_checker = NodeAgentCoverageChecker()
 
         self._shutting_down: bool = False
         self._tick_count: int = 0
@@ -132,7 +134,7 @@ class FtController:
         metric_store: MetricStoreProtocol,
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None = None,
-        notifier: NotifierProtocol | None = None,
+        notifier: NotificationProtocol | None = None,
         detectors: list[BaseFaultDetector] | None = None,
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
@@ -365,6 +367,10 @@ class FtController:
         job_status: JobStatus | None = None
         try:
             self._rank_roster.warn_if_incomplete()
+            self._node_agent_coverage_checker.check(
+                training_node_ids=set(self._rank_roster.rank_placement.values()),
+                registered_agent_node_ids=set(self._agents.keys()),
+            )
             job_status = await self._training_job.get_training_status()
 
             should_run = self._should_run_detectors()
