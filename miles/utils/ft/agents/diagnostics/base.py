@@ -20,8 +20,10 @@ class BaseNodeExecutor(NodeExecutorProtocol, ABC):
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        if not getattr(cls, "__abstractmethods__", None) and not hasattr(cls, "diagnostic_type"):
-            raise TypeError(f"{cls.__name__} must define a 'diagnostic_type' class attribute")
+        if not getattr(cls, "__abstractmethods__", None):
+            has_attr = hasattr(cls, "diagnostic_type") or "diagnostic_type" in getattr(cls, "__annotations__", {})
+            if not has_attr:
+                raise TypeError(f"{cls.__name__} must define a 'diagnostic_type' class attribute")
 
     def _fail(
         self,
