@@ -5,9 +5,11 @@ import contextlib
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
 from miles.utils.ft.agents.types import DiagnosticPipelineResult, DiagnosticResult
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 
 # ---------------------------------------------------------------------------
 # Diagnostic test helpers
@@ -69,7 +71,7 @@ class SlowDiagnostic(BaseNodeExecutor):
 # ---------------------------------------------------------------------------
 
 
-class FakeDiagnosticOrchestrator:
+class FakeDiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
     """Programmable stub for DiagnosticOrchestrator in recovery tests."""
 
     def __init__(self, result: DiagnosticPipelineResult | None = None) -> None:
@@ -87,7 +89,7 @@ class FakeDiagnosticOrchestrator:
         return self._result
 
 
-class HangingDiagnosticOrchestrator:
+class HangingDiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
     """Orchestrator whose run_diagnostic_pipeline never returns (simulates hang)."""
 
     async def run_diagnostic_pipeline(
@@ -103,7 +105,7 @@ class HangingDiagnosticOrchestrator:
 # ---------------------------------------------------------------------------
 
 
-class FakeNodeAgent:
+class FakeNodeAgent(NodeAgentProtocol):
     def __init__(
         self,
         diagnostic_results: dict[str, DiagnosticResult] | None = None,
@@ -129,7 +131,7 @@ class FakeNodeAgent:
         return result
 
 
-class HangingNodeAgent:
+class HangingNodeAgent(NodeAgentProtocol):
     """Agent whose run_diagnostic never returns (simulates unreachable node / RPC hang)."""
 
     def __init__(self, node_id: str = "hanging") -> None:

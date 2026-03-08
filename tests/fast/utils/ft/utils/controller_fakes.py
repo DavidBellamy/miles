@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 from prometheus_client import CollectorRegistry
 
-from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.adapters.types import JobStatus, NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.factory import create_ft_controller
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
@@ -22,7 +22,7 @@ from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 # ---------------------------------------------------------------------------
 
 
-class FakeNodeManager:
+class FakeNodeManager(NodeManagerProtocol):
     """In-memory implementation of NodeManagerProtocol for testing."""
 
     def __init__(self) -> None:
@@ -46,7 +46,7 @@ class FakeNodeManager:
         return sorted(self._bad_nodes)
 
 
-class FakeNotifier:
+class FakeNotifier(NotifierProtocol):
     """Records all send() calls for assertion in tests."""
 
     def __init__(self) -> None:
@@ -59,7 +59,7 @@ class FakeNotifier:
         pass
 
 
-class FakeTrainingJob:
+class FakeTrainingJob(TrainingJobProtocol):
     """Programmable implementation of TrainingJobProtocol for testing."""
 
     def __init__(self, status_sequence: list[JobStatus] | None = None) -> None:

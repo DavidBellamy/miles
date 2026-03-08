@@ -1,6 +1,8 @@
-"""Protocol compliance tests for NodeAgentProtocol and NodeExecutorProtocol."""
+"""ABC compliance tests for NodeAgentProtocol and NodeExecutorProtocol."""
 
 from __future__ import annotations
+
+import pytest
 
 from miles.utils.ft.adapters.types import NodeAgentProtocol, NodeExecutorProtocol
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
@@ -20,23 +22,12 @@ class TestNodeAgentProtocolCompliance:
         runner = NodeDiagnosticDispatcher(node_id="test-node")
         assert isinstance(runner, NodeAgentProtocol)
 
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
-            async def run_diagnostic(
-                self,
-                diagnostic_type: str,
-                timeout_seconds: int = 120,
-                **kwargs: object,
-            ) -> object:
-                return None
-
-        assert isinstance(_Conforming(), NodeAgentProtocol)
-
-    def test_missing_method_fails_isinstance(self) -> None:
-        class _Empty:
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _Incomplete(NodeAgentProtocol):
             pass
 
-        assert not isinstance(_Empty(), NodeAgentProtocol)
+        with pytest.raises(TypeError):
+            _Incomplete()
 
 
 class TestNodeExecutorProtocolCompliance:
@@ -49,17 +40,9 @@ class TestNodeExecutorProtocolCompliance:
     def test_nccl_simple_diagnostic_satisfies_protocol(self) -> None:
         assert isinstance(NcclSimpleNodeExecutor(), NodeExecutorProtocol)
 
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _Incomplete(NodeExecutorProtocol):
             diagnostic_type = "test"
 
-            async def run(self, node_id: str, timeout_seconds: int = 120) -> object:
-                return None
-
-        assert isinstance(_Conforming(), NodeExecutorProtocol)
-
-    def test_missing_run_method_fails_isinstance(self) -> None:
-        class _MissingRun:
-            diagnostic_type = "test"
-
-        assert not isinstance(_MissingRun(), NodeExecutorProtocol)
+        with pytest.raises(TypeError):
+            _Incomplete()

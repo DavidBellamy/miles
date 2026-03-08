@@ -10,6 +10,7 @@ from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FakeNoti
 
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.agents.types import DiagnosticPipelineResult
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.recovery import (
     EvictingAndRestarting,
@@ -37,7 +38,7 @@ from miles.utils.ft.utils.state_machine import StateMachineStepper
 # ---------------------------------------------------------------------------
 
 
-class FakeDiagOrchestrator:
+class FakeDiagOrchestrator(DiagnosticOrchestratorProtocol):
     """Returns a programmable DiagnosticPipelineResult."""
 
     def __init__(self, result: DiagnosticPipelineResult | None = None) -> None:

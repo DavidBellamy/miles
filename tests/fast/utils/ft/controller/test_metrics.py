@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import polars as pl
+import pytest
 
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.detectors.base import DetectorContext
@@ -58,7 +59,7 @@ class TestMiniWandbProtocolCompliance:
         assert isinstance(store, TrainingMetricStoreProtocol)
 
 
-class _QueryOnlyStore:
+class _QueryOnlyStore(MetricQueryProtocol):
     """Minimal implementation satisfying only MetricQueryProtocol."""
 
     def query_latest(
@@ -101,7 +102,7 @@ class _QueryOnlyStore:
         return pl.DataFrame()
 
 
-class _FakeMiniWandb:
+class _FakeMiniWandb(TrainingMetricStoreProtocol):
     def latest(self, metric_name: str, rank: int | None = None) -> float | None:
         return None
 
@@ -134,3 +135,26 @@ class TestQueryOnlyProtocol:
             job_status=JobStatus.RUNNING,
         )
         assert ctx.metric_store is store
+
+
+class TestIncompleteSubclassRaisesTypeError:
+    def test_incomplete_metric_query(self) -> None:
+        class _Incomplete(MetricQueryProtocol):
+            pass
+
+        with pytest.raises(TypeError):
+            _Incomplete()
+
+    def test_incomplete_metric_store_lifecycle(self) -> None:
+        class _Incomplete(MetricStoreLifecycle):
+            pass
+
+        with pytest.raises(TypeError):
+            _Incomplete()
+
+    def test_incomplete_training_metric_store(self) -> None:
+        class _Incomplete(TrainingMetricStoreProtocol):
+            pass
+
+        with pytest.raises(TypeError):
+            _Incomplete()

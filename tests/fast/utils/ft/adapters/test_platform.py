@@ -26,32 +26,20 @@ class TestJobStatus:
 
 
 class TestNodeManagerProtocol:
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _MissingGetBadNodes(NodeManagerProtocol):
             async def mark_node_bad(self, node_id: str, reason: str) -> None:
                 pass
 
             async def unmark_node_bad(self, node_id: str) -> None:
                 pass
 
-            async def get_bad_nodes(self) -> list[str]:
-                return []
-
-        assert isinstance(_Conforming(), NodeManagerProtocol)
-
-    def test_missing_method_fails_isinstance(self) -> None:
-        class _MissingGetBadNodes:
-            async def mark_node_bad(self, node_id: str, reason: str) -> None:
-                pass
-
-            async def unmark_node_bad(self, node_id: str) -> None:
-                pass
-
-        assert not isinstance(_MissingGetBadNodes(), NodeManagerProtocol)
+        with pytest.raises(TypeError):
+            _MissingGetBadNodes()
 
     @pytest.mark.anyio
     async def test_methods_callable_with_expected_signatures(self) -> None:
-        class _Impl:
+        class _Impl(NodeManagerProtocol):
             def __init__(self) -> None:
                 self._bad: dict[str, str] = {}
 
@@ -72,32 +60,20 @@ class TestNodeManagerProtocol:
 
 
 class TestTrainingJobProtocol:
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
-            async def stop_training(self, timeout_seconds: int = 300) -> None:
-                pass
-
-            async def submit_training(self) -> str:
-                return "run-123"
-
-            async def get_training_status(self) -> JobStatus:
-                return JobStatus.RUNNING
-
-        assert isinstance(_Conforming(), TrainingJobProtocol)
-
-    def test_missing_method_fails_isinstance(self) -> None:
-        class _MissingSubmit:
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _MissingSubmit(TrainingJobProtocol):
             async def stop_training(self, timeout_seconds: int = 300) -> None:
                 pass
 
             async def get_training_status(self) -> JobStatus:
                 return JobStatus.RUNNING
 
-        assert not isinstance(_MissingSubmit(), TrainingJobProtocol)
+        with pytest.raises(TypeError):
+            _MissingSubmit()
 
     @pytest.mark.anyio
     async def test_methods_callable_with_expected_signatures(self) -> None:
-        class _Impl:
+        class _Impl(TrainingJobProtocol):
             def __init__(self) -> None:
                 self._status = JobStatus.PENDING
 
@@ -120,26 +96,17 @@ class TestTrainingJobProtocol:
 
 
 class TestNotifierProtocol:
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
-            async def send(self, title: str, content: str, severity: str) -> None:
-                pass
-
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _MissingSend(NotifierProtocol):
             async def aclose(self) -> None:
                 pass
 
-        assert isinstance(_Conforming(), NotifierProtocol)
-
-    def test_missing_method_fails_isinstance(self) -> None:
-        class _MissingSend:
-            async def aclose(self) -> None:
-                pass
-
-        assert not isinstance(_MissingSend(), NotifierProtocol)
+        with pytest.raises(TypeError):
+            _MissingSend()
 
     @pytest.mark.anyio
     async def test_methods_callable_with_expected_signatures(self) -> None:
-        class _Impl:
+        class _Impl(NotifierProtocol):
             def __init__(self) -> None:
                 self.sent: list[tuple[str, str, str]] = []
                 self.closed = False
@@ -169,18 +136,9 @@ class TestStubProtocolCompliance:
 
 
 class TestDiagnosticOrchestratorProtocol:
-    def test_conforming_class_passes_isinstance(self) -> None:
-        class _Conforming:
-            async def run_diagnostic_pipeline(
-                self,
-                pre_executors: object = None,
-            ) -> object:
-                return None
-
-        assert isinstance(_Conforming(), DiagnosticOrchestratorProtocol)
-
-    def test_missing_method_fails_isinstance(self) -> None:
-        class _Empty:
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        class _Empty(DiagnosticOrchestratorProtocol):
             pass
 
-        assert not isinstance(_Empty(), DiagnosticOrchestratorProtocol)
+        with pytest.raises(TypeError):
+            _Empty()
