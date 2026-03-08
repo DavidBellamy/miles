@@ -71,10 +71,6 @@ class FtController:
     def _tick_count(self) -> int:
         return self._tick_loop.tick_count
 
-    @_tick_count.setter
-    def _tick_count(self, value: int) -> None:
-        self._tick_loop.tick_count = value
-
     def register_node_agent(
         self,
         node_id: str,
