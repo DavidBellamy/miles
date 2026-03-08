@@ -25,7 +25,7 @@ class PySpyFrame(FtBaseModel):
 class PySpyThread(FtBaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    thread_name: str
+    thread_name: str | None = None
     active: bool
     owns_gil: bool
     frames: list[PySpyFrame]
