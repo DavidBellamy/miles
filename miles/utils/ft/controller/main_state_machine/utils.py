@@ -87,9 +87,16 @@ async def notify_too_many_bad_nodes(
 
 
 def run_detectors(detectors: list[BaseFaultDetector], ctx: DetectorContext) -> Decision:
+    best: Decision | None = None
+
     for decision in _run_detectors_raw(detectors=detectors, ctx=ctx):
-        if decision.action != ActionType.NONE:
+        if decision.action == ActionType.ENTER_RECOVERY:
             return decision
+        if decision.action == ActionType.NOTIFY_HUMAN and best is None:
+            best = decision
+
+    if best is not None:
+        return best
     return Decision.no_fault(reason="all detectors passed")
 
 

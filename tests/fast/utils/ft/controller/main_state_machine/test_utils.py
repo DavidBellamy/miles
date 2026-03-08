@@ -84,6 +84,15 @@ class TestRunDetectorsCrashYieldsNotifyHuman:
 
         assert decision.action == ActionType.ENTER_RECOVERY
 
+    def test_crash_before_recovery_detector_still_returns_recovery(self) -> None:
+        ctx = _make_detector_context()
+        decision = run_detectors(
+            detectors=[_CrashingDetector(), _RecoveryDetector()],
+            ctx=ctx,
+        )
+
+        assert decision.action == ActionType.ENTER_RECOVERY
+
     def test_all_passing_returns_no_fault(self) -> None:
         ctx = _make_detector_context()
         decision = run_detectors(
