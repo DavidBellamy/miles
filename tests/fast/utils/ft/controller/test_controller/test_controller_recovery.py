@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from tests.fast.utils.ft.conftest import FixedDecisionDetector, make_test_controller
+from tests.fast.utils.ft.conftest import (
+    AlwaysEnterRecoveryDetector,
+    FixedDecisionDetector,
+    make_test_controller,
+)
 
 from miles.utils.ft.controller.main_state_machine import Recovering
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
@@ -49,3 +53,34 @@ class TestDynamicBadNodeInjection:
         # Step 2: verify both initial and injected nodes were evicted
         assert harness.node_manager.was_ever_marked_bad("node-A")
         assert harness.node_manager.was_ever_marked_bad("node-B")
+
+
+class TestRunIdUniqueness:
+    @pytest.mark.anyio
+    async def test_sequential_recoveries_produce_distinct_run_ids(self) -> None:
+        """After two sequential recoveries, the run_id changes each time and all are distinct."""
+        harness = make_test_controller(
+            detectors=[AlwaysEnterRecoveryDetector()],
+        )
+
+        recorded_run_ids: list[str] = []
+        original_submit = harness.training_job.submit_training
+
+        async def tracking_submit(excluded_node_ids: list[str] | None = None) -> str:
+            run_id = await original_submit(excluded_node_ids)
+            recorded_run_ids.append(run_id)
+            return run_id
+
+        harness.training_job.submit_training = tracking_submit  # type: ignore[assignment]
+
+        for _ in range(50):
+            await harness.controller._tick()
+            if len(recorded_run_ids) >= 2:
+                break
+
+        assert len(recorded_run_ids) >= 2, (
+            f"Expected at least 2 recoveries, got {len(recorded_run_ids)}"
+        )
+        assert len(set(recorded_run_ids)) == len(recorded_run_ids), (
+            f"Duplicate run_ids found: {recorded_run_ids}"
+        )
