@@ -20,6 +20,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullC
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
+from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
@@ -31,7 +32,6 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
     create_recovery_stepper,
 )
 from miles.utils.ft.controller.recovery.restart_stepper import RestartContext, create_restart_stepper
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
@@ -127,6 +127,7 @@ class FtController:
         monitoring_timeout_seconds: int = 600,
         recovery_timeout_seconds: int = RECOVERY_TIMEOUT_SECONDS,
     ) -> FtController:
+        from miles.utils.ft.controller.diagnostics.executors import GpuExecutor
         from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
         agents: dict[str, NodeAgentProtocol] = {}
@@ -134,7 +135,7 @@ class FtController:
 
         resolved_orchestrator: DiagnosticOrchestratorProtocol = diagnostic_orchestrator or DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
         )
 
         platform_deps = PlatformDeps(

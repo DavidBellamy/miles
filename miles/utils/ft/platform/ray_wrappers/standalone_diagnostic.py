@@ -17,7 +17,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
 from miles.utils.ft.agents.diagnostics.runner import DiagnosticRunner
-from miles.utils.ft.controller.diagnostics.nccl.orchestrator import InterMachineOrchestrator
+from miles.utils.ft.controller.diagnostics.executors import InterMachineExecutor
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.platform.ray_wrappers.node_discovery import build_node_address_map, get_alive_gpu_nodes
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
@@ -85,15 +85,12 @@ async def run_inter_machine_diagnostics(
 
     async with _managed_agents(nodes) as agents:
         node_addresses = build_node_address_map(nodes)
-        orchestrator = InterMachineOrchestrator(
-            node_agents=agents,
-            node_addresses=node_addresses,
-        )
-
-        return await orchestrator.run(
-            node_ids=sorted(agents.keys()),
+        executor = InterMachineExecutor(node_addresses=node_addresses)
+        bad_node_ids, _ = await executor.execute(
+            agents=agents,
             timeout_seconds=timeout_seconds,
         )
+        return bad_node_ids
 
 
 # ---------------------------------------------------------------------------
