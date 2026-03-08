@@ -113,9 +113,11 @@ class KmsgCollector(BaseCollector):
         *,
         xid_window_seconds: float = 300.0,
         kmsg_path: Path = Path("/dev/kmsg"),
+        since: datetime | None = None,
     ) -> None:
         self._xid_window_seconds = xid_window_seconds
         self._kmsg_path = kmsg_path
+        self._since = since
 
         self._xid_events: deque[tuple[datetime, int]] = deque()
         self._prev_xid_codes: set[int] = set()
@@ -155,5 +157,8 @@ class KmsgCollector(BaseCollector):
 
     def _read_lines(self) -> list[str]:
         if self._reader is None:
-            self._reader = _create_reader(self._kmsg_path)
+            if self._since is not None:
+                self._reader = DmesgSubprocessReader(since=self._since)
+            else:
+                self._reader = _create_reader(self._kmsg_path)
         return self._reader.read_new_lines()

@@ -58,8 +58,8 @@ class KmsgFileReader:
 class DmesgSubprocessReader:
     """Read kernel messages via dmesg --since subprocess."""
 
-    def __init__(self) -> None:
-        self._last_dmesg_time: datetime = datetime.now(timezone.utc)
+    def __init__(self, since: datetime | None = None) -> None:
+        self._last_dmesg_time: datetime = since or datetime.now(timezone.utc)
 
     @graceful_degrade(default=[], msg="dmesg read failed")
     def read_new_lines(self) -> list[str]:
