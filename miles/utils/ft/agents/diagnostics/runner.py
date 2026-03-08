@@ -26,6 +26,20 @@ class NodeExecutorRunner(NodeAgentProtocol):
         self._node_id = node_id
         self._diagnostics: dict[str, NodeExecutorProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
+    @property
+    def available_types(self) -> list[str]:
+        return sorted(self._diagnostics.keys())
+
+    async def run_selected(
+        self,
+        diagnostic_types: list[str],
+        timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
+    ) -> list[DiagnosticResult]:
+        return [
+            await self.run_diagnostic(dt, timeout_seconds=timeout_seconds)
+            for dt in diagnostic_types
+        ]
+
     async def run_diagnostic(
         self,
         diagnostic_type: str,
