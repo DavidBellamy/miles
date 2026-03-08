@@ -71,7 +71,7 @@ class ControllerClientProtocol(Protocol):
         node_id: str,
         exporter_address: str,
         pid: int,
-        timeout: float = REGISTER_TIMEOUT_SECONDS,
+        timeout_seconds: float = REGISTER_TIMEOUT_SECONDS,
     ) -> None: ...
 
     def log_step(

@@ -44,7 +44,7 @@ class RayControllerClient:
         node_id: str,
         exporter_address: str,
         pid: int,
-        timeout: float = REGISTER_TIMEOUT_SECONDS,
+        timeout_seconds: float = REGISTER_TIMEOUT_SECONDS,
     ) -> None:
         controller = self._get_handle()
         if controller is None:
@@ -60,7 +60,7 @@ class RayControllerClient:
                 exporter_address=exporter_address,
                 pid=pid,
             ),
-            timeout=timeout,
+            timeout=timeout_seconds,
         )
 
     def log_step(
