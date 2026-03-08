@@ -79,8 +79,8 @@ class TestStackTraceNodeExecutorReal:
     ) -> None:
         pid = blocked_process("sleep")
 
-        diagnostic = StackTraceNodeExecutor(pids=[pid])
-        result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
+        diagnostic = StackTraceNodeExecutor()
+        result = await diagnostic.run(node_id="test-node", timeout_seconds=10, pids=[pid])
 
         assert result.passed is True
         threads = _parse_threads(result.details)
@@ -93,8 +93,8 @@ class TestStackTraceNodeExecutorReal:
         ), f"Expected a frame containing 'step_communication', got: {all_frame_names}"
 
     async def test_nonexistent_pid_fails_gracefully(self) -> None:
-        diagnostic = StackTraceNodeExecutor(pids=[999999])
-        result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
+        diagnostic = StackTraceNodeExecutor()
+        result = await diagnostic.run(node_id="test-node", timeout_seconds=10, pids=[999999])
 
         assert result.passed is False
         assert json.loads(result.details) == []
@@ -110,13 +110,11 @@ class TestStackTraceAggregatorReal:
         pid_sleep_1 = blocked_process("sleep")
         pid_lock = blocked_process("lock")
 
-        diag_sleep_0 = StackTraceNodeExecutor(pids=[pid_sleep_0])
-        diag_sleep_1 = StackTraceNodeExecutor(pids=[pid_sleep_1])
-        diag_lock = StackTraceNodeExecutor(pids=[pid_lock])
+        diag = StackTraceNodeExecutor()
 
-        result_0 = await diag_sleep_0.run(node_id="node-0", timeout_seconds=10)
-        result_1 = await diag_sleep_1.run(node_id="node-1", timeout_seconds=10)
-        result_2 = await diag_lock.run(node_id="node-2", timeout_seconds=10)
+        result_0 = await diag.run(node_id="node-0", timeout_seconds=10, pids=[pid_sleep_0])
+        result_1 = await diag.run(node_id="node-1", timeout_seconds=10, pids=[pid_sleep_1])
+        result_2 = await diag.run(node_id="node-2", timeout_seconds=10, pids=[pid_lock])
 
         assert result_0.passed is True
         assert result_1.passed is True
@@ -144,13 +142,11 @@ class TestStackTraceAggregatorReal:
         pid_1 = blocked_process("sleep")
         pid_2 = blocked_process("sleep")
 
-        diag_0 = StackTraceNodeExecutor(pids=[pid_0])
-        diag_1 = StackTraceNodeExecutor(pids=[pid_1])
-        diag_2 = StackTraceNodeExecutor(pids=[pid_2])
+        diag = StackTraceNodeExecutor()
 
-        result_0 = await diag_0.run(node_id="node-0", timeout_seconds=10)
-        result_1 = await diag_1.run(node_id="node-1", timeout_seconds=10)
-        result_2 = await diag_2.run(node_id="node-2", timeout_seconds=10)
+        result_0 = await diag.run(node_id="node-0", timeout_seconds=10, pids=[pid_0])
+        result_1 = await diag.run(node_id="node-1", timeout_seconds=10, pids=[pid_1])
+        result_2 = await diag.run(node_id="node-2", timeout_seconds=10, pids=[pid_2])
 
         assert result_0.passed is True
         assert result_1.passed is True

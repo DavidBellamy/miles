@@ -27,15 +27,15 @@ SAMPLE_PYSPY_JSON = json.dumps(
 
 class TestStackTraceNodeExecutorEmptyPids:
     async def test_empty_pids_returns_failed(self) -> None:
-        diag = StackTraceNodeExecutor(pids=[])
-        result = await diag.run(node_id="node-0")
+        diag = StackTraceNodeExecutor()
+        result = await diag.run(node_id="node-0", pids=[])
 
         assert result.passed is False
         assert "no PIDs provided" in result.details
 
     async def test_none_pids_returns_failed(self) -> None:
-        diag = StackTraceNodeExecutor(pids=None)
-        result = await diag.run(node_id="node-0")
+        diag = StackTraceNodeExecutor()
+        result = await diag.run(node_id="node-0", pids=None)
 
         assert result.passed is False
         assert "no PIDs provided" in result.details
@@ -46,8 +46,8 @@ class TestStackTraceNodeExecutorSinglePid:
         mock_proc = make_mock_subprocess(stdout=SAMPLE_PYSPY_JSON)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceNodeExecutor(pids=[1234])
-            result = await diag.run(node_id="node-0")
+            diag = StackTraceNodeExecutor()
+            result = await diag.run(node_id="node-0", pids=[1234])
 
         assert result.passed is True
         threads = json.loads(result.details)
@@ -63,8 +63,8 @@ class TestStackTraceNodeExecutorSinglePid:
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceNodeExecutor(pids=[1234])
-            result = await diag.run(node_id="node-0")
+            diag = StackTraceNodeExecutor()
+            result = await diag.run(node_id="node-0", pids=[1234])
 
         assert result.passed is False
         assert json.loads(result.details) == []
@@ -87,8 +87,8 @@ class TestStackTraceNodeExecutorMultiplePids:
             return good_proc if call_count == 1 else bad_proc
 
         with patch("asyncio.create_subprocess_exec", side_effect=mock_subprocess):
-            diag = StackTraceNodeExecutor(pids=[100, 200])
-            result = await diag.run(node_id="node-0")
+            diag = StackTraceNodeExecutor()
+            result = await diag.run(node_id="node-0", pids=[100, 200])
 
         assert result.passed is True
         threads = json.loads(result.details)
@@ -102,8 +102,8 @@ class TestStackTraceNodeExecutorMultiplePids:
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=bad_proc):
-            diag = StackTraceNodeExecutor(pids=[100, 200, 300])
-            result = await diag.run(node_id="node-0")
+            diag = StackTraceNodeExecutor()
+            result = await diag.run(node_id="node-0", pids=[100, 200, 300])
 
         assert result.passed is False
         assert json.loads(result.details) == []
@@ -113,8 +113,8 @@ class TestStackTraceNodeExecutorMultiplePids:
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceNodeExecutor(pids=[1234])
-            result = await diag.run(node_id="node-0", timeout_seconds=10)
+            diag = StackTraceNodeExecutor()
+            result = await diag.run(node_id="node-0", timeout_seconds=10, pids=[1234])
 
         assert result.passed is False
         assert json.loads(result.details) == []

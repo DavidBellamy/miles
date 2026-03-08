@@ -54,8 +54,8 @@ class TestStackTraceNodeExecutorAgainstLiveProcess:
 
         pid: int = ray.get(worker.get_pid.remote(), timeout=5)
 
-        diagnostic = StackTraceNodeExecutor(pids=[pid])
-        result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
+        diagnostic = StackTraceNodeExecutor()
+        result = await diagnostic.run(node_id="test-node", timeout_seconds=10, pids=[pid])
 
         ray.kill(worker, no_restart=True)
 
@@ -68,8 +68,8 @@ class TestStackTraceNodeExecutorAgainstLiveProcess:
         self,
         local_ray: None,
     ) -> None:
-        diagnostic = StackTraceNodeExecutor(pids=[999999])
-        result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
+        diagnostic = StackTraceNodeExecutor()
+        result = await diagnostic.run(node_id="test-node", timeout_seconds=10, pids=[999999])
 
         assert result.passed is False
         assert json.loads(result.details) == []
@@ -85,8 +85,8 @@ class TestStackTraceNodeExecutorAgainstLiveProcess:
 
         pid: int = ray.get(worker.get_pid.remote(), timeout=5)
 
-        diagnostic = StackTraceNodeExecutor(pids=[pid, 999999])
-        result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
+        diagnostic = StackTraceNodeExecutor()
+        result = await diagnostic.run(node_id="test-node", timeout_seconds=10, pids=[pid, 999999])
 
         ray.kill(worker, no_restart=True)
 
@@ -112,11 +112,10 @@ class TestStackTraceAggregatorWithRealTraces:
         pid_a: int = ray.get(worker_a.get_pid.remote(), timeout=5)
         pid_b: int = ray.get(worker_b.get_pid.remote(), timeout=5)
 
-        diag_a = StackTraceNodeExecutor(pids=[pid_a])
-        diag_b = StackTraceNodeExecutor(pids=[pid_b])
+        diag = StackTraceNodeExecutor()
 
-        result_a = await diag_a.run(node_id="node-a", timeout_seconds=10)
-        result_b = await diag_b.run(node_id="node-b", timeout_seconds=10)
+        result_a = await diag.run(node_id="node-a", timeout_seconds=10, pids=[pid_a])
+        result_b = await diag.run(node_id="node-b", timeout_seconds=10, pids=[pid_b])
 
         ray.kill(worker_a, no_restart=True)
         ray.kill(worker_b, no_restart=True)
@@ -147,11 +146,10 @@ class TestStackTraceAggregatorWithRealTraces:
         pid_a: int = ray.get(worker_a.get_pid.remote(), timeout=5)
         pid_b: int = ray.get(worker_b.get_pid.remote(), timeout=5)
 
-        diag_a = StackTraceNodeExecutor(pids=[pid_a])
-        diag_b = StackTraceNodeExecutor(pids=[pid_b])
+        diag = StackTraceNodeExecutor()
 
-        result_a = await diag_a.run(node_id="node-a", timeout_seconds=10)
-        result_b = await diag_b.run(node_id="node-b", timeout_seconds=10)
+        result_a = await diag.run(node_id="node-a", timeout_seconds=10, pids=[pid_a])
+        result_b = await diag.run(node_id="node-b", timeout_seconds=10, pids=[pid_b])
 
         ray.kill(worker_a, no_restart=True)
         ray.kill(worker_b, no_restart=True)
