@@ -1,9 +1,14 @@
 import asyncio
 from abc import ABC, abstractmethod
 
-from miles.utils.ft.agents.types import CollectorOutput, MetricSample
+from miles.utils.ft.agents.types import MetricSample
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 _COLLECT_TIMEOUT_MULTIPLIER = 2.0
+
+
+class CollectorOutput(FtBaseModel):
+    metrics: list[MetricSample]
 
 
 class BaseCollector(ABC):

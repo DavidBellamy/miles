@@ -79,7 +79,3 @@ MetricSample = Annotated[
     GaugeSample | CounterSample,
     Field(discriminator="metric_type"),
 ]
-
-
-class CollectorOutput(FtBaseModel):
-    metrics: list[MetricSample]

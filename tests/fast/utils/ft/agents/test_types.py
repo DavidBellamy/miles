@@ -2,7 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from miles.utils.ft.adapters.types import ft_controller_actor_name
-from miles.utils.ft.agents.types import CollectorOutput, CounterSample, DiagnosticResult, GaugeSample
+from miles.utils.ft.agents.collectors.base import CollectorOutput
+from miles.utils.ft.agents.types import CounterSample, DiagnosticResult, GaugeSample
 from miles.utils.ft.controller.types import ActionType, Decision, NodeFault, TriggerType
 
 
