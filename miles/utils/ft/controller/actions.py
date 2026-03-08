@@ -9,10 +9,10 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
+from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
 from miles.utils.ft.protocols.platform import (
-    DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
-    NotifierProtocol,
+    NotificationProtocol,
     TrainingJobProtocol,
 )
 
@@ -27,7 +27,7 @@ class PlatformDeps:
     training_job: TrainingJobProtocol
     metric_store: MetricQueryProtocol
     mini_wandb: MiniWandb
-    notifier: NotifierProtocol | None
+    notifier: NotificationProtocol | None
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     controller_exporter: ControllerExporter | None
     on_new_run: Callable[[str], None] | None = field(default=None)
@@ -36,7 +36,7 @@ class PlatformDeps:
 
 async def handle_notify_human(
     decision: Decision,
-    notifier: NotifierProtocol | None,
+    notifier: NotificationProtocol | None,
 ) -> None:
     logger.warning(
         "decision_notify_human reason=%s",

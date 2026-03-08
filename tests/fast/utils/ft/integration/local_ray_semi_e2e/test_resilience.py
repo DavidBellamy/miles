@@ -22,7 +22,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from miles.utils.ft.protocols.controller import ft_controller_actor_name
 
 
 class TestAgentWithoutController:

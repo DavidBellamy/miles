@@ -11,7 +11,7 @@ from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
 
 if TYPE_CHECKING:
-    from miles.utils.ft.protocols.platform import ControllerClientProtocol
+    from miles.utils.ft.protocols.controller import ControllerClientProtocol
 
 logger = logging.getLogger(__name__)
 

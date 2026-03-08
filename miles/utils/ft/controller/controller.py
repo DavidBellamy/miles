@@ -37,11 +37,11 @@ from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
+from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
 from miles.utils.ft.protocols.platform import (
-    DiagnosticOrchestratorProtocol,
     JobStatus,
     NodeManagerProtocol,
-    NotifierProtocol,
+    NotificationProtocol,
     TrainingJobProtocol,
 )
 from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
@@ -69,7 +69,7 @@ class FtController:
         detectors: list[BaseFaultDetector],
         tick_interval: float,
         # deps for MainContext building
-        notifier: NotifierProtocol | None,
+        notifier: NotificationProtocol | None,
         cooldown: SlidingWindowThrottle,
         recovery_stepper: StateMachineStepper,
         on_recovery_duration: Callable[[float], None] | None,
@@ -118,7 +118,7 @@ class FtController:
         metric_store: MetricStoreProtocol,
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None = None,
-        notifier: NotifierProtocol | None = None,
+        notifier: NotificationProtocol | None = None,
         detectors: list[BaseFaultDetector] | None = None,
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,

@@ -12,7 +12,7 @@ from tests.fast.utils.ft.utils.controller_fakes import OneShotCrashDetector
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from miles.utils.ft.protocols.controller import ft_controller_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -191,7 +191,6 @@ class TestControllerKilledDuringRecovery:
 
         _poll_until(_in_recovery, timeout=15)
 
-        pre_kill_tick = get_status(handle).tick_count
         ray.kill(handle, no_restart=False)
 
         name = ft_controller_actor_name("")
@@ -200,11 +199,11 @@ class TestControllerKilledDuringRecovery:
             try:
                 restarted = ray.get_actor(name)
                 status = ray.get(restarted.get_status.remote(), timeout=2)
-                if status.tick_count < pre_kill_tick:
-                    break
+                break
             except Exception:
                 time.sleep(0.3)
         else:
             raise TimeoutError("Actor did not restart within 10s")
 
-        assert status.tick_count < pre_kill_tick, "Restarted actor should have fresh (lower) tick count"
+        assert status.mode == ControllerMode.MONITORING
+        assert status.recovery_in_progress is False

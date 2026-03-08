@@ -5,7 +5,7 @@ import logging
 
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, ClusterExecutorProtocol, NodeAgentProtocol
-from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol
+from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
 
 logger = logging.getLogger(__name__)
 
