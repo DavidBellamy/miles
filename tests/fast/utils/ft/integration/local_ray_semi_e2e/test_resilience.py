@@ -20,7 +20,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 )
 from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
 
-from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.adapters.types import NotifierProtocol, ft_controller_actor_name
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.types import ControllerMode
 
@@ -119,7 +119,7 @@ class TestRestartStepperException:
         assert_phase_path_contains(status, ["StopTimeDiagnostics", "NotifyHumans"])
 
 
-class _CrashingNotifier:
+class _CrashingNotifier(NotifierProtocol):
     """Notifier whose send() always raises. Serializable via cloudpickle."""
 
     async def send(self, title: str, content: str, severity: str) -> None:

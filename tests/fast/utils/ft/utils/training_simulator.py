@@ -20,7 +20,7 @@ from uuid import uuid4
 import ray
 
 from miles.utils.ft.adapters.impl.ray.controller_client import RayControllerClient
-from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.adapters.types import JobStatus, NotifierProtocol, TrainingJobProtocol
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.agents.types import MetricSample
@@ -89,7 +89,7 @@ class TrainingStateActor:
         return self._custom_log_metrics
 
 
-class RemoteControlledTrainingJob:
+class RemoteControlledTrainingJob(TrainingJobProtocol):
     """TrainingJobProtocol that delegates to a TrainingStateActor.
 
     Instances are serialized into the FtControllerActor via cloudpickle.
@@ -291,7 +291,7 @@ class NotifierStateActor:
         self._calls.clear()
 
 
-class RemoteControlledNotifier:
+class RemoteControlledNotifier(NotifierProtocol):
     """NotifierProtocol that delegates to a NotifierStateActor.
 
     Serialized into FtControllerActor via cloudpickle. All send() calls
