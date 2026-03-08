@@ -1,9 +1,12 @@
 """Unit tests for FtTrackingAgent."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
+from miles.utils.ft.utils.graceful_degrade import FaultInjectionError
 
 
 class TestFtTrackingAgentLog:
@@ -98,3 +101,50 @@ class TestTrackingUtilsIntegration:
             {"train/loss": 2.5, "train/step": 42},
             step_key="train/step",
         )
+
+
+class TestCheckExceptionInjection:
+    def test_raises_fault_injection_error_when_trigger_file_exists(self, tmp_path: Path) -> None:
+        trigger_file = tmp_path / "inject_fault"
+        trigger_file.touch()
+
+        env = {"MILES_FT_EXCEPTION_INJECT_PATH": str(trigger_file)}
+        with patch.dict("os.environ", env, clear=False):
+            agent = FtTrackingAgent(run_id="r1", controller_client=MagicMock())
+            with pytest.raises(FaultInjectionError):
+                agent.log(metrics={"loss": 1.0}, step=1)
+
+    def test_trigger_file_deleted_after_injection(self, tmp_path: Path) -> None:
+        trigger_file = tmp_path / "inject_fault"
+        trigger_file.touch()
+
+        env = {"MILES_FT_EXCEPTION_INJECT_PATH": str(trigger_file)}
+        with patch.dict("os.environ", env, clear=False):
+            agent = FtTrackingAgent(run_id="r1", controller_client=MagicMock())
+            with pytest.raises(FaultInjectionError):
+                agent.log(metrics={"loss": 1.0}, step=1)
+
+        assert not trigger_file.exists()
+
+    def test_noop_when_trigger_file_absent(self, tmp_path: Path) -> None:
+        trigger_file = tmp_path / "inject_fault"
+
+        env = {"MILES_FT_EXCEPTION_INJECT_PATH": str(trigger_file)}
+        with patch.dict("os.environ", env, clear=False):
+            mock_client = MagicMock()
+            agent = FtTrackingAgent(run_id="r1", controller_client=mock_client)
+            agent.log(metrics={"loss": 1.0}, step=1)
+
+        mock_client.log_step.assert_called_once()
+
+    def test_noop_when_env_var_not_set(self) -> None:
+        with patch.dict("os.environ", {}, clear=False):
+            # Ensure the env var is absent
+            import os
+            os.environ.pop("MILES_FT_EXCEPTION_INJECT_PATH", None)
+
+            mock_client = MagicMock()
+            agent = FtTrackingAgent(run_id="r1", controller_client=mock_client)
+            agent.log(metrics={"loss": 1.0}, step=1)
+
+        mock_client.log_step.assert_called_once()
