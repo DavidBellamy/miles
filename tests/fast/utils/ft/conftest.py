@@ -35,9 +35,11 @@ from tests.fast.utils.ft.utils.diagnostic_fakes import (  # noqa: F401
 from tests.fast.utils.ft.utils.metric_injectors import (  # noqa: F401
     get_sample_value,
     inject_disk_fault,
+    inject_heartbeat,
     inject_healthy_node,
     inject_nic_down,
     inject_nic_up,
+    inject_training_phase,
     make_detector_context,
     make_fake_metric_store,
     make_fake_mini_wandb,

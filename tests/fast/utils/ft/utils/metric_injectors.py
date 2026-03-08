@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from prometheus_client import CollectorRegistry
 
@@ -8,11 +8,13 @@ from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.agents.types import CounterSample, GaugeSample
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metric_names import (
+    AGENT_HEARTBEAT,
     DCGM_FI_DEV_GPU_TEMP,
     GPU_AVAILABLE,
     NODE_FILESYSTEM_AVAIL_BYTES,
     NODE_NETWORK_UP,
     TRAINING_JOB_STATUS,
+    TRAINING_PHASE,
     XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
 )
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
@@ -101,24 +103,28 @@ def inject_gpu_unavailable(
     store: MiniPrometheus,
     node_id: str = "node-0",
     gpu: str = "0",
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             GaugeSample(name=GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
         ],
+        timestamp=timestamp,
     )
 
 
 def inject_critical_xid(
     store: MiniPrometheus,
     node_id: str = "node-0",
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
         ],
+        timestamp=timestamp,
     )
 
 
@@ -127,12 +133,14 @@ def inject_disk_fault(
     node_id: str = "node-0",
     mountpoint: str = "/data",
     available_bytes: float = 0.0,
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
         ],
+        timestamp=timestamp,
     )
 
 
@@ -140,12 +148,14 @@ def inject_nic_down(
     store: MiniPrometheus,
     node_id: str = "node-0",
     device: str = "ib0",
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             GaugeSample(name=NODE_NETWORK_UP, labels={"device": device}, value=0.0),
         ],
+        timestamp=timestamp,
     )
 
 
@@ -153,21 +163,28 @@ def inject_nic_up(
     store: MiniPrometheus,
     node_id: str = "node-0",
     device: str = "ib0",
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             GaugeSample(name=NODE_NETWORK_UP, labels={"device": device}, value=1.0),
         ],
+        timestamp=timestamp,
     )
 
 
-def inject_training_job_status(store: MiniPrometheus, status_value: int) -> None:
+def inject_training_job_status(
+    store: MiniPrometheus,
+    status_value: int,
+    timestamp: datetime | None = None,
+) -> None:
     store.ingest_samples(
         target_id="controller",
         samples=[
             GaugeSample(name=TRAINING_JOB_STATUS, labels={}, value=float(status_value)),
         ],
+        timestamp=timestamp,
     )
 
 
@@ -176,12 +193,40 @@ def inject_gpu_temperature(
     node_id: str = "node-0",
     gpu: str = "0",
     celsius: float = 65.0,
+    timestamp: datetime | None = None,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
         samples=[
             GaugeSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": gpu}, value=celsius),
         ],
+        timestamp=timestamp,
+    )
+
+
+def inject_heartbeat(
+    store: MiniPrometheus,
+    value: float,
+    rank: str = "0",
+    timestamp: datetime | None = None,
+) -> None:
+    store.ingest_samples(
+        target_id=f"rank-{rank}",
+        samples=[GaugeSample(name=AGENT_HEARTBEAT, labels={"rank": rank}, value=value)],
+        timestamp=timestamp,
+    )
+
+
+def inject_training_phase(
+    store: MiniPrometheus,
+    phase: float,
+    rank: str = "0",
+    timestamp: datetime | None = None,
+) -> None:
+    store.ingest_samples(
+        target_id=f"rank-{rank}",
+        samples=[GaugeSample(name=TRAINING_PHASE, labels={"rank": rank}, value=phase)],
+        timestamp=timestamp,
     )
 
 
