@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FakeNotifier, FakeTrainingJob
+from tests.fast.utils.ft.utils.diagnostic_fakes import FakeDiagnosticOrchestrator
 
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.agents.types import DiagnosticPipelineResult
-from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.recovery import (
     EvictingAndRestarting,
@@ -36,21 +36,6 @@ from miles.utils.ft.utils.state_machine import StateMachineStepper
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-class FakeDiagOrchestrator(DiagnosticOrchestratorProtocol):
-    """Returns a programmable DiagnosticPipelineResult."""
-
-    def __init__(self, result: DiagnosticPipelineResult | None = None) -> None:
-        self._result = result or DiagnosticPipelineResult()
-        self.call_count: int = 0
-
-    async def run_diagnostic_pipeline(
-        self,
-        pre_executors: object = None,
-    ) -> DiagnosticPipelineResult:
-        self.call_count += 1
-        return self._result
 
 
 def _make_stepper(*, timeout_seconds: int = 1800) -> StateMachineStepper:
@@ -89,7 +74,7 @@ def _make_ctx(
     *,
     trigger: TriggerType = TriggerType.CRASH,
     recovery_start_time: datetime | None = None,
-    diagnostic_orchestrator: FakeDiagOrchestrator | None = None,
+    diagnostic_orchestrator: FakeDiagnosticOrchestrator | None = None,
     restart_stepper: object | None = None,
     restart_context: RestartContext | None = None,
     notifier: FakeNotifier | None = None,
@@ -108,7 +93,7 @@ def _make_ctx(
     return RecoveryContext(
         trigger=trigger,
         recovery_start_time=recovery_start_time or _now(),
-        diagnostic_orchestrator=diagnostic_orchestrator or FakeDiagOrchestrator(),
+        diagnostic_orchestrator=diagnostic_orchestrator or FakeDiagnosticOrchestrator(),
         restart_stepper=restart_stepper,
         restart_context=restart_context,
         notifier=notifier,
@@ -242,7 +227,7 @@ class TestEvictingAndRestarting:
 class TestStopTimeDiagnostics:
     @pytest.mark.asyncio
     async def test_bad_nodes_found_goes_to_evicting_with_notify_on_fail(self) -> None:
-        diag = FakeDiagOrchestrator(
+        diag = FakeDiagnosticOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=["node-B"], reason="gpu fail"),
         )
         stepper = _make_stepper()
@@ -253,7 +238,7 @@ class TestStopTimeDiagnostics:
 
     @pytest.mark.asyncio
     async def test_no_bad_nodes_goes_to_notify(self) -> None:
-        diag = FakeDiagOrchestrator(
+        diag = FakeDiagnosticOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=[], reason="all passed"),
         )
         stepper = _make_stepper()
@@ -453,7 +438,7 @@ class TestFullRecoveryFlow:
             mini_wandb=mini_wandb,
             node_manager=node_manager,
         )
-        diag = FakeDiagOrchestrator(
+        diag = FakeDiagnosticOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=["node-B"], reason="gpu fail"),
         )
         stepper = _make_stepper()
