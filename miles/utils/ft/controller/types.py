@@ -97,21 +97,21 @@ class Decision(FtBaseModel):
 
         return cls(
             action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=sorted(unique_node_ids(non_ephemeral)),
+            bad_node_ids=sorted(cls._unique_node_ids(non_ephemeral)),
             reason="; ".join(f.reason for f in faults),
             trigger=trigger,
         )
 
-
-def unique_node_ids(faults: list[NodeFault]) -> list[str]:
-    """Return deduplicated node IDs from faults, preserving first-seen order."""
-    seen: set[str] = set()
-    result: list[str] = []
-    for fault in faults:
-        if fault.node_id not in seen:
-            seen.add(fault.node_id)
-            result.append(fault.node_id)
-    return result
+    @staticmethod
+    def _unique_node_ids(faults: list[NodeFault]) -> list[str]:
+        """Return deduplicated node IDs from faults, preserving first-seen order."""
+        seen: set[str] = set()
+        result: list[str] = []
+        for fault in faults:
+            if fault.node_id not in seen:
+                seen.add(fault.node_id)
+                result.append(fault.node_id)
+        return result
 
 
 def filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) -> list[str]:
