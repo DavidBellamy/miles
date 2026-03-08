@@ -11,7 +11,7 @@ from miles.utils.ft.adapters.types import (
     JobStatus,
     NodeAgentProtocol,
     NodeManagerProtocol,
-    NotificationProtocol,
+    NotifierProtocol,
     TrainingJobProtocol,
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
@@ -63,7 +63,7 @@ class PlatformDeps:
     training_job: TrainingJobProtocol
     metric_store: MetricQueryProtocol
     mini_wandb: MiniWandb
-    notifier: NotificationProtocol | None
+    notifier: NotifierProtocol | None
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     controller_exporter: ControllerExporter | None
     on_new_run: Callable[[str], None] | None = field(default=None)
@@ -90,7 +90,7 @@ class FtController:
         detectors: list[BaseFaultDetector],
         tick_interval: float,
         # deps for MainContext building
-        notifier: NotificationProtocol | None,
+        notifier: NotifierProtocol | None,
         cooldown: SlidingWindowThrottle,
         recovery_stepper: StateMachineStepper,
         on_recovery_duration: Callable[[float], None] | None,
@@ -140,7 +140,7 @@ class FtController:
         metric_store: MetricStoreProtocol,
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None = None,
-        notifier: NotificationProtocol | None = None,
+        notifier: NotifierProtocol | None = None,
         detectors: list[BaseFaultDetector] | None = None,
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
