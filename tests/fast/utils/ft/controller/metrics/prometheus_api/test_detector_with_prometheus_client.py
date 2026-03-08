@@ -30,7 +30,7 @@ from miles.utils.ft.controller.metric_names import (
     TRAINING_PHASE,
 )
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.metrics.prometheus_api.client import PrometheusClient
 from miles.utils.ft.controller.types import ActionType
 
 

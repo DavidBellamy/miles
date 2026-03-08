@@ -17,7 +17,7 @@ import miles.utils.ft.controller.metric_names as mn
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.metrics.prometheus_api.client import PrometheusClient
 
 
 def _make_prom_response(

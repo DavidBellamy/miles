@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
-from miles.utils.ft.controller.metrics.prometheus_api.store import (
+from miles.utils.ft.controller.metrics.prometheus_api.client import (
     PrometheusClient,
     _build_selector,
     _escape_promql_label_value,

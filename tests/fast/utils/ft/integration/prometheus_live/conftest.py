@@ -23,7 +23,7 @@ import pytest
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
 
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.metrics.prometheus_api.client import PrometheusClient
 from miles.utils.ft.controller.types import MetricQueryProtocol
 
 logger = logging.getLogger(__name__)
