@@ -1,6 +1,19 @@
 from __future__ import annotations
 
+import logging
+
 from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread
+from miles.utils.ft.models.base import FtBaseModel
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_FRAMES = 8
+
+
+class AggregationResult(FtBaseModel):
+    suspect_node_ids: list[str]
+    fingerprint_groups: dict[str, list[str]]
+    raw_traces: dict[str, list[PySpyThread]]
 
 
 class StackTraceAggregator:
@@ -8,11 +21,24 @@ class StackTraceAggregator:
 
     Uses majority/minority fingerprint grouping: nodes whose stack trace
     fingerprint differs from the majority group are considered suspects.
+
+    The fingerprint is built from the top-N innermost frames (function names
+    only, no filenames or line numbers) of each thread, which captures the
+    meaningful call path while truncating noisy outermost entry-point frames.
     """
 
-    def aggregate(self, traces: dict[str, list[PySpyThread]]) -> list[str]:
+    def __init__(self, max_frames: int = _DEFAULT_MAX_FRAMES) -> None:
+        self._max_frames = max_frames
+
+    def aggregate(self, traces: dict[str, list[PySpyThread]]) -> AggregationResult:
         if len(traces) <= 1:
-            return []
+            result = AggregationResult(
+                suspect_node_ids=[],
+                fingerprint_groups={},
+                raw_traces=traces,
+            )
+            logger.info("stack_trace_aggregation result=%s", result.model_dump_json())
+            return result
 
         fp_to_nodes: dict[str, list[str]] = {}
         for node_id, threads in traces.items():
@@ -20,19 +46,32 @@ class StackTraceAggregator:
             fp_to_nodes.setdefault(fp, []).append(node_id)
 
         if len(fp_to_nodes) <= 1:
-            return []
+            suspects: list[str] = []
+        else:
+            majority_size = max(len(nodes) for nodes in fp_to_nodes.values())
+            suspects = sorted(
+                nid
+                for nodes in fp_to_nodes.values()
+                if len(nodes) < majority_size
+                for nid in nodes
+            )
 
-        majority_size = max(len(nodes) for nodes in fp_to_nodes.values())
-        return sorted(nid for nodes in fp_to_nodes.values() if len(nodes) < majority_size for nid in nodes)
+        result = AggregationResult(
+            suspect_node_ids=suspects,
+            fingerprint_groups=fp_to_nodes,
+            raw_traces=traces,
+        )
+        logger.info("stack_trace_aggregation result=%s", result.model_dump_json())
+        return result
 
-    @staticmethod
-    def _extract_fingerprint(threads: list[PySpyThread]) -> str:
-        """Build a stable fingerprint from the innermost frame of each thread."""
-        top_frames: list[str] = []
+    def _extract_fingerprint(self, threads: list[PySpyThread]) -> str:
+        """Build a stable fingerprint from the top-N innermost frames of each thread."""
+        thread_fps: list[str] = []
         for thread in threads:
             if thread.frames:
-                frame = thread.frames[0]
-                top_frames.append(f"{frame.name} ({frame.filename})")
+                top_n = thread.frames[: self._max_frames]
+                chain = " > ".join(f.name for f in top_n)
+                thread_fps.append(chain)
 
-        top_frames.sort()
-        return "|".join(top_frames)
+        thread_fps.sort()
+        return "|".join(thread_fps)

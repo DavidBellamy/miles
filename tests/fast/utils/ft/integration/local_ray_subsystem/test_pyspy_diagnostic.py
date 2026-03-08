@@ -129,9 +129,9 @@ class TestStackTraceAggregatorWithRealTraces:
             "node-a": _parse_threads(result_a.details),
             "node-b": _parse_threads(result_b.details),
         }
-        suspects = aggregator.aggregate(traces)
+        agg_result = aggregator.aggregate(traces)
 
-        assert isinstance(suspects, list)
+        assert isinstance(agg_result.suspect_node_ids, list)
 
     async def test_aggregator_returns_empty_for_identical_traces(
         self,
@@ -161,9 +161,9 @@ class TestStackTraceAggregatorWithRealTraces:
             "node-a": _parse_threads(result_a.details),
             "node-b": _parse_threads(result_b.details),
         }
-        suspects = aggregator.aggregate(traces)
+        agg_result = aggregator.aggregate(traces)
 
-        assert suspects == []
+        assert agg_result.suspect_node_ids == []
 
 
 class TestOrchestratorHangTraceFullChain:

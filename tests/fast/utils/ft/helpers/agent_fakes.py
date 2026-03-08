@@ -201,6 +201,21 @@ SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK: list[PySpyThread] = [
     _WORKER_THREAD,
 ]
 
+SAMPLE_PYSPY_THREADS_STUCK_FROM_BACKWARD: list[PySpyThread] = [
+    PySpyThread(
+        thread_name="MainThread",
+        active=True,
+        owns_gil=False,
+        frames=[
+            PySpyFrame(name="nccl_allreduce", filename="nccl_ops.py", line=42),
+            PySpyFrame(name="all_reduce", filename="torch/distributed/distributed_c10d.py", line=1234),
+            PySpyFrame(name="backward", filename="model.py", line=200),
+            PySpyFrame(name="train_step", filename="train.py", line=55),
+        ],
+    ),
+    _WORKER_THREAD,
+]
+
 
 def serialize_pyspy_threads(threads: list[PySpyThread]) -> str:
     return json.dumps([t.model_dump() for t in threads])
@@ -209,6 +224,7 @@ def serialize_pyspy_threads(threads: list[PySpyThread]) -> str:
 SAMPLE_PYSPY_JSON_NORMAL = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_NORMAL)
 SAMPLE_PYSPY_JSON_STUCK = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_STUCK)
 SAMPLE_PYSPY_JSON_DIFFERENT_STUCK = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK)
+SAMPLE_PYSPY_JSON_STUCK_FROM_BACKWARD = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_STUCK_FROM_BACKWARD)
 
 
 def make_rank_pids_provider(

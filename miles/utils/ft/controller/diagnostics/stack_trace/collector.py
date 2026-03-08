@@ -63,13 +63,13 @@ async def collect_stack_trace_suspects(
 
     await asyncio.gather(*(_collect_node(nid) for nid in agents))
 
-    suspect_from_aggregation = StackTraceAggregator().aggregate(traces=traces)
-    all_suspects = sorted(set(suspect_from_failures) | set(suspect_from_aggregation))
+    aggregation_result = StackTraceAggregator().aggregate(traces=traces)
+    all_suspects = sorted(set(suspect_from_failures) | set(aggregation_result.suspect_node_ids))
 
     logger.info(
         "collect_stack_trace_suspects_done traces_collected=%d suspect_from_failures=%s suspect_from_aggregation=%s",
         len(traces),
         suspect_from_failures,
-        suspect_from_aggregation,
+        aggregation_result.suspect_node_ids,
     )
     return all_suspects
