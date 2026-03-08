@@ -18,6 +18,7 @@ from tests.fast.utils.ft.utils import (
     mock_stack_trace_diagnostic,
 )
 
+from miles.utils.ft.controller.diagnostics.executors import GpuExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
 
@@ -49,7 +50,7 @@ class TestHangWithStackTraceSuspect:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -84,7 +85,7 @@ class TestHangWithStackTraceSuspect:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -116,7 +117,7 @@ class TestCrashSkipsStackTrace:
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
@@ -156,7 +157,7 @@ class TestHangWithCollectionFailure:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",

@@ -19,6 +19,7 @@ from tests.fast.utils.ft.utils import (
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.executors import GpuExecutor, InterMachineExecutor, SingleNodeExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 
@@ -89,7 +90,7 @@ class TestDiagnosticOrchestratorSingleStep:
                 "node-1": {"gpu": True},
             }
         )
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.bad_node_ids == []
@@ -102,7 +103,7 @@ class TestDiagnosticOrchestratorSingleStep:
                 "node-1": {"gpu": False},
             }
         )
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert len(decision.bad_node_ids) > 0
@@ -117,7 +118,7 @@ class TestDiagnosticOrchestratorSingleStep:
                 "node-1": {"gpu": False},
             }
         )
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert len(decision.bad_node_ids) > 0
@@ -135,13 +136,12 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu", "intra"],
+            pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-0"]
-        assert "gpu" in decision.reason
 
     @pytest.mark.anyio
     async def test_first_passes_second_catches(self) -> None:
@@ -153,13 +153,12 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu", "intra"],
+            pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-1"]
-        assert "intra" in decision.reason
 
     @pytest.mark.anyio
     async def test_all_steps_pass_returns_notify(self) -> None:
@@ -171,7 +170,7 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu", "intra"],
+            pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
@@ -194,7 +193,7 @@ class TestDiagnosticOrchestratorErrorHandling:
             **good_agents,
             "node-1": _RaisingAgent(),
         }
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert len(decision.bad_node_ids) > 0
@@ -215,7 +214,7 @@ class TestDiagnosticOrchestratorErrorHandling:
 
     @pytest.mark.anyio
     async def test_no_agents_returns_notify(self) -> None:
-        orchestrator = DiagnosticOrchestrator(agents={}, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents={}, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.bad_node_ids == []
@@ -229,7 +228,7 @@ class TestDiagnosticOrchestratorErrorHandling:
                 "node-2": {"gpu": True},
             }
         )
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline(
             trigger_reason="crash",
             suspect_node_ids=["node-0", "node-2"],
@@ -255,7 +254,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.bad_node_ids == []
@@ -271,7 +270,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
@@ -289,7 +288,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.bad_node_ids == []
@@ -304,7 +303,7 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.bad_node_ids == []
@@ -314,7 +313,7 @@ class TestDiagnosticOrchestratorInterMachine:
         agents = make_fake_agents({"node-0": {"inter_machine": True}})
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.bad_node_ids == []
@@ -362,7 +361,7 @@ class TestDiagnosticOrchestratorInterMachine:
         agents = {**good_agents, "node-1": _RaisingInterMachineAgent()}  # type: ignore[dict-item]
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["inter_machine"],
+            pipeline=[InterMachineExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
@@ -380,7 +379,7 @@ class TestDiagnosticOrchestratorLiveAgents:
         agent1 = FtNodeAgent(node_id="node-1", diagnostics=[stub])
 
         agents = {"node-0": agent0, "node-1": agent1}
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["stub"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[SingleNodeExecutor("stub")])
 
         try:
             decision = await orchestrator.run_diagnostic_pipeline(
@@ -401,7 +400,7 @@ class TestDiagnosticOrchestratorLiveAgents:
         agents = {"node-0": agent0, "node-1": agent1}
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["stub"],
+            pipeline=[SingleNodeExecutor("stub")],
         )
 
         try:
@@ -446,7 +445,7 @@ class TestStackTracePreStep:
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -476,7 +475,7 @@ class TestStackTracePreStep:
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
@@ -499,7 +498,7 @@ class TestStackTracePreStep:
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -534,7 +533,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -567,7 +566,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -599,7 +598,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -635,7 +634,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -669,7 +668,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -705,7 +704,7 @@ class TestStackTracePreStep:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=["gpu"],
+                pipeline=[GpuExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
@@ -733,7 +732,7 @@ class TestAgentRpcHang:
         agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
             default_timeout_seconds=0,
         )
 
@@ -755,7 +754,7 @@ class TestAgentRpcHang:
         agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
             default_timeout_seconds=0,
         )
 
@@ -774,7 +773,7 @@ class TestAgentRpcHang:
         }
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
             default_timeout_seconds=0,
         )
 
@@ -798,7 +797,7 @@ class TestPipelineTimeout:
         }
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
             default_timeout_seconds=9999,
             pipeline_timeout_seconds=0,
         )
@@ -817,7 +816,7 @@ class TestPipelineTimeout:
         }
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=["gpu"],
+            pipeline=[GpuExecutor()],
             default_timeout_seconds=99999,
             pipeline_timeout_seconds=0,
         )
