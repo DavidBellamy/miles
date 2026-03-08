@@ -393,8 +393,8 @@ class TestBadNodeCountSafeguard:
         assert set(result.recovery.pre_identified_bad_nodes) == {"node-1", "node-2"}
 
     @pytest.mark.asyncio
-    async def test_too_many_dynamic_bad_nodes_aborts_recovery(self) -> None:
-        """Critical detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN."""
+    async def test_too_many_dynamic_bad_nodes_continues_recovery(self) -> None:
+        """Critical detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN but keep recovering."""
         from miles.utils.ft.controller.recovery.recovery_stepper import (
             EvictingAndRestarting,
             StopTimeDiagnostics,
@@ -430,7 +430,7 @@ class TestBadNodeCountSafeguard:
                 max_simultaneous_bad_nodes=3,
             ),
         )
-        assert isinstance(result, DetectingAnomaly)
+        assert result is None
         assert len(notifier.calls) == 1
         assert "likely false positive" in notifier.calls[0][1]
 

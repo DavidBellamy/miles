@@ -40,7 +40,7 @@ class RecoveringHandler:
                 context_str="Critical detectors reported during recovery",
                 notifier=ctx.notifier,
             )
-            return DetectingAnomaly()
+            return None
 
         known_bad = set(get_known_bad_nodes(state.recovery))
         truly_new = new_bad_nodes - known_bad
