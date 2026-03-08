@@ -21,7 +21,8 @@ class BaseNodeExecutor(NodeExecutorProtocol):
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         if not getattr(cls, "__abstractmethods__", None):
-            if "diagnostic_type" not in cls.__dict__:
+            own_annotations = cls.__dict__.get("__annotations__", {})
+            if "diagnostic_type" not in cls.__dict__ and "diagnostic_type" not in own_annotations:
                 raise TypeError(f"{cls.__name__} must define a 'diagnostic_type' class attribute")
 
     def _fail(
