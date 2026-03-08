@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
+from tests.fast.utils.ft.adapters.impl.notifiers.conftest import make_error_response, make_ok_response
 
 from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
 
