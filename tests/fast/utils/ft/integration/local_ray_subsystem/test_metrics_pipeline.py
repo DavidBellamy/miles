@@ -17,7 +17,7 @@ from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
 from miles.utils.ft.platform.stubs import StubTrainingJob
 from miles.utils.ft.protocols.controller import ft_controller_actor_name
 

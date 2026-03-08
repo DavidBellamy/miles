@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.platform.ray_wrappers.node_discovery import resolve_to_ray_node_ids
+from miles.utils.ft.platform.ray.node_discovery import resolve_to_ray_node_ids
 from miles.utils.ft.protocols.platform import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus, TrainingJobProtocol
 from miles.utils.ft.utils.polling import poll_until
 

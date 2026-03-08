@@ -17,10 +17,10 @@ from miles.utils.ft.platform.embedded_agents import build_tracking_agent, build_
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
-    "FtControllerActor": ("miles.utils.ft.platform.ray_wrappers.controller_actor", "FtControllerActor"),
-    "FtNodeAgentActor": ("miles.utils.ft.platform.ray_wrappers.node_agent_actor", "FtNodeAgentActor"),
-    "RayControllerClient": ("miles.utils.ft.platform.ray_wrappers.controller_client", "RayControllerClient"),
-    "RayTrainingJob": ("miles.utils.ft.platform.ray_wrappers.training_job", "RayTrainingJob"),
+    "FtControllerActor": ("miles.utils.ft.platform.ray.controller_actor", "FtControllerActor"),
+    "FtNodeAgentActor": ("miles.utils.ft.platform.ray.node_agent_actor", "FtNodeAgentActor"),
+    "RayControllerClient": ("miles.utils.ft.platform.ray.controller_client", "RayControllerClient"),
+    "RayTrainingJob": ("miles.utils.ft.platform.ray.training_job", "RayTrainingJob"),
     "K8sNodeManager": ("miles.utils.ft.platform.k8s_node_manager", "K8sNodeManager"),
 }
 

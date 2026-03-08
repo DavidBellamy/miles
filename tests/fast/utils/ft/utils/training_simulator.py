@@ -22,7 +22,7 @@ import ray
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.models.metrics import MetricSample
-from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
+from miles.utils.ft.platform.ray.controller_client import RayControllerClient
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)

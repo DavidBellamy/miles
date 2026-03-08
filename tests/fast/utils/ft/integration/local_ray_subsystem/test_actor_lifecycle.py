@@ -10,7 +10,7 @@ from tests.fast.utils.ft.integration.conftest import _kill_named_actor, poll_for
 
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.controller import ft_controller_actor_name
 
 pytestmark = [

@@ -4,7 +4,7 @@ import ray
 
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.controller_factory import build_ft_controller
-from miles.utils.ft.platform.ray_wrappers.node_agent_proxy import RayNodeAgentProxy
+from miles.utils.ft.platform.ray.node_agent_proxy import RayNodeAgentProxy
 
 
 class _FtControllerActorCls:

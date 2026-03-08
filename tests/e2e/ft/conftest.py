@@ -27,7 +27,7 @@ from miles.utils.external_utils.command_utils import get_bool_env_var
 from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-from miles.utils.ft.platform.ray_wrappers.training_job import stop_all_active_jobs
+from miles.utils.ft.platform.ray.training_job import stop_all_active_jobs
 from miles.utils.ft.protocols.controller import ft_controller_actor_name
 from miles.utils.ft.utils.polling import poll_until
 

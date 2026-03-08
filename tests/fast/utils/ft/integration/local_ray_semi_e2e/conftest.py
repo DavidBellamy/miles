@@ -29,8 +29,8 @@ from miles.utils.ft.controller.detectors.core.training_crash import TrainingCras
 from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
-from miles.utils.ft.platform.ray_wrappers.node_agent_actor import FtNodeAgentActor
+from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray.node_agent_actor import FtNodeAgentActor
 from miles.utils.ft.protocols.controller import ft_controller_actor_name, ft_node_agent_actor_name
 from miles.utils.ft.protocols.platform import JobStatus
 

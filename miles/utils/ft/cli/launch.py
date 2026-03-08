@@ -12,7 +12,7 @@ import typer
 
 from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
 from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.controller import ft_controller_actor_name
 from miles.utils.logging_utils import configure_logger
 
