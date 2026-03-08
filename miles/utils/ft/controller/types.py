@@ -114,11 +114,6 @@ class Decision(FtBaseModel):
         return result
 
 
-def filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) -> list[str]:
-    """Keep only node IDs that are in the active training placement."""
-    return [n for n in node_ids if n in active_node_ids]
-
-
 # ---------------------------------------------------------------------------
 # Training metric types
 # ---------------------------------------------------------------------------

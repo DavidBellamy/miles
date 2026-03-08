@@ -10,10 +10,14 @@ from miles.utils.ft.controller.types import (
     Decision,
     MetricQueryProtocol,
     TrainingMetricStoreProtocol,
-    filter_node_ids_by_active,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) -> list[str]:
+    """Keep only node IDs that are in the active training placement."""
+    return [n for n in node_ids if n in active_node_ids]
 
 
 @dataclass
@@ -42,7 +46,7 @@ class BaseFaultDetector(ABC):
         decision = self._evaluate_raw(ctx)
         if decision.bad_node_ids:
             active_node_ids = set(ctx.rank_placement.values())
-            filtered = filter_node_ids_by_active(decision.bad_node_ids, active_node_ids)
+            filtered = _filter_node_ids_by_active(decision.bad_node_ids, active_node_ids)
             if not filtered:
                 logger.info(
                     "detector_bad_nodes_not_active detector=%s bad=%s active=%s",
