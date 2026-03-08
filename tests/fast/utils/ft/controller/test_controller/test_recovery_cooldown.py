@@ -41,7 +41,7 @@ class TestRecoveryCooldown:
         assert len(harness.notifier.calls) == 1
         title, content, severity = harness.notifier.calls[0]
         assert "Recovery cooldown" in content
-        assert TriggerType.CRASH.value in content
+        assert "CRASH" in content
 
     @pytest.mark.anyio
     async def test_all_triggers_counted_globally(self) -> None:
