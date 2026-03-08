@@ -26,7 +26,7 @@ from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor

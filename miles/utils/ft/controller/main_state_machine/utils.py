@@ -8,7 +8,6 @@ from pydantic import ConfigDict
 
 from miles.utils.ft.controller.actions import handle_notify_human
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper.handlers import RecoveryContext
 from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     EvictingAndRestarting,
@@ -18,56 +17,9 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import JobStatus, NotificationProtocol
+from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Crash tracker
-# ---------------------------------------------------------------------------
-
-
-class DetectorCrashTracker:
-    """Sliding-window tracker for detector crashes.
-
-    Records crashes and fires a one-shot notification when >=threshold
-    crashes occur within window_seconds.  Resets after the window clears.
-    """
-
-    def __init__(self, *, window_seconds: float = 1800, threshold: int = 5) -> None:
-        self._window_seconds = window_seconds
-        self._threshold = threshold
-        self._crashes: list[tuple[float, str]] = []
-        self._notified = False
-
-    def record(self, detector_name: str, *, _now: float | None = None) -> None:
-        """Record a detector crash."""
-        import time
-
-        now = _now if _now is not None else time.monotonic()
-        self._crashes.append((now, detector_name))
-        self._prune(now)
-
-    @property
-    def should_notify(self) -> bool:
-        """True once when threshold is first reached; resets after window clears."""
-        if len(self._crashes) >= self._threshold and not self._notified:
-            self._notified = True
-            return True
-        return False
-
-    def summary(self) -> str:
-        counts: dict[str, int] = {}
-        for _, name in self._crashes:
-            counts[name] = counts.get(name, 0) + 1
-        parts = [f"{name}={count}" for name, count in sorted(counts.items())]
-        return f"{len(self._crashes)} detector crashes in {self._window_seconds}s window: {', '.join(parts)}"
-
-    def _prune(self, now: float) -> None:
-        cutoff = now - self._window_seconds
-        self._crashes = [(t, n) for t, n in self._crashes if t >= cutoff]
-        if len(self._crashes) < self._threshold:
-            self._notified = False
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +40,7 @@ class MainContext(FtBaseModel):
     notifier: NotificationProtocol | None
     detectors: list[BaseFaultDetector]
     cooldown: SlidingWindowThrottle
-    detector_crash_tracker: DetectorCrashTracker
+    detector_crash_tracker: SlidingWindowCounter
     recovery_stepper: Callable[..., Awaitable[RecoveryState | None]]
     recovery_context_factory: Callable[[TriggerType, datetime], RecoveryContext]
     on_recovery_duration: Callable[[float], None] | None
@@ -138,7 +90,7 @@ async def notify_too_many_bad_nodes(
 def run_detectors(
     detectors: list[BaseFaultDetector],
     ctx: DetectorContext,
-    crash_tracker: DetectorCrashTracker | None = None,
+    crash_tracker: SlidingWindowCounter | None = None,
 ) -> Decision:
     for decision in _run_detectors_raw(detectors=detectors, ctx=ctx, crash_tracker=crash_tracker):
         if decision.action != ActionType.NONE:
@@ -149,7 +101,7 @@ def run_detectors(
 def collect_evictable_bad_nodes(
     detectors: list[BaseFaultDetector],
     tick_detector_context: DetectorContext | None,
-    crash_tracker: DetectorCrashTracker | None = None,
+    crash_tracker: SlidingWindowCounter | None = None,
 ) -> set[str]:
     if tick_detector_context is None:
         return set()
@@ -164,7 +116,7 @@ def _run_detectors_raw(
     *,
     detectors: list[BaseFaultDetector],
     ctx: DetectorContext,
-    crash_tracker: DetectorCrashTracker | None = None,
+    crash_tracker: SlidingWindowCounter | None = None,
 ) -> Iterator[Decision]:
     for detector in detectors:
         try:

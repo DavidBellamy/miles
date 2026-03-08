@@ -135,7 +135,7 @@ class TestNotifierResilience:
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Notifier raises on send() → safe_notify catches → recovery completes."""
-        from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+        from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 
         env = make_e2e_env(
             ft_id="e2enr",
@@ -174,7 +174,7 @@ class TestDetectorResilience:
         env = make_e2e_env(
             ft_id="e2edr",
             nodes=[NodeSpec(node_id="e2edr-node-0")],
-            detectors=[TrainingCrashDetector(), CrashingDetector()],
+            detectors=[CrashingDetector(), TrainingCrashDetector()],
         )
 
         # Step 1: let training run for a while with CrashingDetector throwing every tick

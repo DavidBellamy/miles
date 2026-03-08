@@ -249,7 +249,7 @@ class TestCrossFaultTypeThrottle:
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Crash recovery + NaN recovery share the same cooldown window."""
-        from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+        from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 
         env = make_e2e_env(
             ft_id="e2ecft",

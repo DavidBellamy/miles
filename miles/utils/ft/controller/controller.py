@@ -16,12 +16,11 @@ from miles.utils.ft.controller.main_state_machine import (
     create_main_stepper,
     get_known_bad_nodes,
 )
-from miles.utils.ft.controller.main_state_machine.utils import DetectorCrashTracker
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
@@ -104,7 +103,7 @@ class FtController:
         self._recovery_timeout_seconds = recovery_timeout_seconds
 
         self._restart_context: RestartContext | None = None
-        self._detector_crash_tracker = DetectorCrashTracker()
+        self._detector_crash_tracker = SlidingWindowCounter(window_seconds=1800, threshold=5)
 
         self._shutting_down: bool = False
         self._tick_count: int = 0

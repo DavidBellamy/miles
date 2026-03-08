@@ -11,7 +11,7 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.protocols.platform import JobStatus
@@ -254,8 +254,6 @@ def make_test_controller(
         diagnostic_orchestrator=diagnostic_orchestrator,
         recovery_cooldown=recovery_cooldown,
         registration_grace_ticks=registration_grace_ticks,
-        monitoring_success_iterations=monitoring_success_iterations,
-        monitoring_timeout_seconds=monitoring_timeout_seconds,
     )
 
     if register_dummy_rank:

@@ -1,13 +1,14 @@
-"""Tests for DetectorCrashTracker and run_detectors crash handling."""
+"""Tests for detector crash tracking via SlidingWindowCounter and run_detectors."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.main_state_machine.utils import DetectorCrashTracker, run_detectors
+from miles.utils.ft.controller.main_state_machine.utils import run_detectors
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.utils.sliding_window import SlidingWindowCounter
 
 
 def _make_detector_context() -> DetectorContext:
@@ -39,15 +40,15 @@ class _RecoveryDetector(BaseFaultDetector):
         )
 
 
-class TestDetectorCrashTracker:
+class TestDetectorCrashTracking:
     def test_below_threshold_does_not_notify(self) -> None:
-        tracker = DetectorCrashTracker(window_seconds=60, threshold=3)
+        tracker = SlidingWindowCounter(window_seconds=60, threshold=3)
         tracker.record("DetA", _now=0.0)
         tracker.record("DetB", _now=1.0)
         assert not tracker.should_notify
 
     def test_reaching_threshold_notifies_once(self) -> None:
-        tracker = DetectorCrashTracker(window_seconds=60, threshold=3)
+        tracker = SlidingWindowCounter(window_seconds=60, threshold=3)
         tracker.record("DetA", _now=0.0)
         tracker.record("DetA", _now=1.0)
         tracker.record("DetB", _now=2.0)
@@ -55,7 +56,7 @@ class TestDetectorCrashTracker:
         assert not tracker.should_notify
 
     def test_window_expiry_resets_notification(self) -> None:
-        tracker = DetectorCrashTracker(window_seconds=10, threshold=2)
+        tracker = SlidingWindowCounter(window_seconds=10, threshold=2)
         tracker.record("DetA", _now=0.0)
         tracker.record("DetA", _now=1.0)
         assert tracker.should_notify
@@ -67,7 +68,7 @@ class TestDetectorCrashTracker:
         assert tracker.should_notify
 
     def test_summary_includes_crash_counts(self) -> None:
-        tracker = DetectorCrashTracker(window_seconds=60, threshold=5)
+        tracker = SlidingWindowCounter(window_seconds=60, threshold=5)
         tracker.record("DetA", _now=0.0)
         tracker.record("DetB", _now=1.0)
         tracker.record("DetA", _now=2.0)
@@ -85,7 +86,7 @@ class TestRunDetectorsCrashHandling:
 
     def test_crash_records_in_tracker(self) -> None:
         ctx = _make_detector_context()
-        tracker = DetectorCrashTracker(window_seconds=60, threshold=2)
+        tracker = SlidingWindowCounter(window_seconds=60, threshold=2)
         run_detectors(detectors=[_CrashingDetector()], ctx=ctx, crash_tracker=tracker)
         assert not tracker.should_notify
 

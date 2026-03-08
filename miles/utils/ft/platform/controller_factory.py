@@ -19,7 +19,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
+from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.notifiers.factory import build_notifier
 from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
-from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 logger = logging.getLogger(__name__)
@@ -50,7 +48,6 @@ async def stop_and_submit(
     return True
 
 
-# Should not gracefully degrade here - let callers handle
 async def get_already_bad_nodes(node_manager: NodeManagerProtocol) -> set[str]:
     return set(await node_manager.get_bad_nodes())
 
@@ -66,7 +63,6 @@ async def retry_mark_node_bad(
     )
 
 
-@graceful_degrade()
 async def safe_notify(
     notifier: NotificationProtocol | None,
     title: str,
@@ -75,26 +71,7 @@ async def safe_notify(
 ) -> None:
     if notifier is None:
         return
-    await notifier.send(title=title, content=content, severity=severity)
-
-
-class SlidingWindowThrottle:
-    """Tracks total recovery frequency and throttles when a limit is exceeded.
-
-    Within a sliding window of ``window_minutes``, if ``max_count`` or more
-    recoveries have been recorded, ``is_throttled`` returns True — regardless
-    of fault type.
-    """
-
-    def __init__(self, window_minutes: float, max_count: int) -> None:
-        self._window_minutes = window_minutes
-        self._max_count = max_count
-        self._history: list[datetime] = []
-
-    def record(self) -> None:
-        self._history.append(datetime.now(timezone.utc))
-
-    def is_throttled(self) -> bool:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._window_minutes)
-        recent_count = sum(1 for ts in self._history if ts >= cutoff)
-        return recent_count >= self._max_count
+    try:
+        await notifier.send(title=title, content=content, severity=severity)
+    except Exception:
+        logger.error("safe_notify_failed title=%s", title, exc_info=True)
