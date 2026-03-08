@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-    from miles.utils.ft.protocols.agents import DiagnosticExecutor
+    from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 
 
 class JobStatus(str, Enum):
@@ -51,7 +51,7 @@ class NotificationProtocol(Protocol):
 class DiagnosticOrchestratorProtocol(Protocol):
     async def run_diagnostic_pipeline(
         self,
-        pre_executors: list[DiagnosticExecutor] | None = None,
+        pre_executors: list[ClusterExecutorProtocol] | None = None,
     ) -> DiagnosticPipelineResult: ...
 
 

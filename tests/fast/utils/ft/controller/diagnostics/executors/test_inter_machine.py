@@ -1,4 +1,4 @@
-"""Tests for InterMachineExecutor and _cross_compare."""
+"""Tests for InterMachineClusterExecutor and _cross_compare."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pytest
 from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
 from miles.utils.ft.controller.diagnostics.executors.inter_machine import (
-    InterMachineExecutor,
+    InterMachineClusterExecutor,
     _cross_compare,
     _PairResult,
 )
@@ -94,19 +94,19 @@ class TestCrossCompare:
 
 class TestResolveAddress:
     def test_with_custom_addresses(self) -> None:
-        executor = InterMachineExecutor(
+        executor = InterMachineClusterExecutor(
             node_addresses={"n1": "10.0.0.1", "n2": "10.0.0.2"},
         )
 
         assert executor._resolve_address("n1") == "10.0.0.1"
 
     def test_fallback_to_node_id(self) -> None:
-        executor = InterMachineExecutor(node_addresses=None)
+        executor = InterMachineClusterExecutor(node_addresses=None)
 
         assert executor._resolve_address("n1") == "n1"
 
     def test_missing_node_in_addresses_falls_back(self) -> None:
-        executor = InterMachineExecutor(
+        executor = InterMachineClusterExecutor(
             node_addresses={"n1": "10.0.0.1"},
         )
 
@@ -122,7 +122,7 @@ class TestRunSinglePairMissingAgent:
     @pytest.mark.anyio
     async def test_missing_master_agent_returns_failed(self) -> None:
         agents = {"worker": _make_inter_machine_agent("worker")}
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents=agents,
@@ -139,7 +139,7 @@ class TestRunSinglePairMissingAgent:
     @pytest.mark.anyio
     async def test_missing_worker_agent_returns_failed(self) -> None:
         agents = {"master": _make_inter_machine_agent("master")}
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents=agents,
@@ -154,7 +154,7 @@ class TestRunSinglePairMissingAgent:
 
     @pytest.mark.anyio
     async def test_both_agents_missing_returns_failed(self) -> None:
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents={},
@@ -177,7 +177,7 @@ class TestExecuteEdgeCases:
     @pytest.mark.anyio
     async def test_single_node_returns_empty(self) -> None:
         agents = {"A": _make_inter_machine_agent("A")}
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         bad = await executor.execute(agents=agents, timeout_seconds=30)
 
@@ -185,7 +185,7 @@ class TestExecuteEdgeCases:
 
     @pytest.mark.anyio
     async def test_empty_nodes_returns_empty(self) -> None:
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         bad = await executor.execute(agents={}, timeout_seconds=30)
 
@@ -197,7 +197,7 @@ class TestExecuteEdgeCases:
             "A": _make_inter_machine_agent("A"),
             "B": _make_inter_machine_agent("B"),
         }
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         bad = await executor.execute(agents=agents, timeout_seconds=30)
 
@@ -217,7 +217,7 @@ class TestRunSinglePairAgentHang:
             "master": HangingNodeAgent(node_id="master"),
             "worker": _make_inter_machine_agent("worker"),
         }
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents=agents,
@@ -238,7 +238,7 @@ class TestRunSinglePairAgentHang:
             "master": _make_inter_machine_agent("master"),
             "worker": HangingNodeAgent(node_id="worker"),
         }
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents=agents,
@@ -257,7 +257,7 @@ class TestRunSinglePairAgentHang:
             "A": HangingNodeAgent(node_id="A"),
             "B": HangingNodeAgent(node_id="B"),
         }
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         result = await executor._run_single_pair(
             agents=agents,
@@ -278,7 +278,7 @@ class TestRunSinglePairAgentHang:
             "B": HangingNodeAgent(node_id="B"),
             "C": _make_inter_machine_agent("C"),
         }
-        executor = InterMachineExecutor()
+        executor = InterMachineClusterExecutor()
 
         bad = await executor.execute(agents=agents, timeout_seconds=0)
 

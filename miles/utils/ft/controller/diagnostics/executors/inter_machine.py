@@ -11,7 +11,7 @@ import asyncio
 import logging
 from typing import NamedTuple
 
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import DEFAULT_NCCL_MASTER_PORT
+from miles.utils.ft.agents.diagnostics.executors.inter_machine import DEFAULT_NCCL_MASTER_PORT
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ class _PairResult(NamedTuple):
     passed: bool
 
 
-class InterMachineExecutor:
+class InterMachineClusterExecutor:
     """Pair-based inter-machine NCCL diagnostic.
 
-    Implements the DiagnosticExecutor protocol.
+    Implements the ClusterExecutorProtocol protocol.
     """
 
     def __init__(

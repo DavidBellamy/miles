@@ -1,6 +1,6 @@
 """Integration tests for the stack trace diagnostic pipeline.
 
-Tests the full flow: DiagnosticOrchestrator with StackTraceExecutor as pre_executor
+Tests the full flow: DiagnosticOrchestrator with StackTraceClusterExecutor as pre_executor
 -> StackTraceDiagnostic -> StackTraceAggregator, with FakeNodeAgent instances
 providing configurable stack trace results.
 """
@@ -16,12 +16,12 @@ from tests.fast.utils.ft.utils import (
     mock_stack_trace_diagnostic,
 )
 
-from miles.utils.ft.controller.diagnostics.executors import GpuExecutor, StackTraceExecutor
+from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, StackTraceClusterExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
 
 class TestHangWithStackTraceSuspect:
-    """Full pipeline: StackTraceExecutor identifies outlier -> evicted immediately."""
+    """Full pipeline: StackTraceClusterExecutor identifies outlier -> evicted immediately."""
 
     async def test_hang_suspects_from_trace_evicted_directly(self) -> None:
         agents = make_fake_agents(
@@ -48,10 +48,10 @@ class TestHangWithStackTraceSuspect:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=[GpuExecutor()],
+                pipeline=[GpuClusterExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
-                pre_executors=[StackTraceExecutor(rank_pids_provider=pids_provider)],
+                pre_executors=[StackTraceClusterExecutor(rank_pids_provider=pids_provider)],
             )
 
             assert len(decision.bad_node_ids) > 0
@@ -82,17 +82,17 @@ class TestHangWithStackTraceSuspect:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=[GpuExecutor()],
+                pipeline=[GpuClusterExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
-                pre_executors=[StackTraceExecutor(rank_pids_provider=pids_provider)],
+                pre_executors=[StackTraceClusterExecutor(rank_pids_provider=pids_provider)],
             )
 
             assert decision.bad_node_ids == []
 
 
 class TestCrashSkipsStackTrace:
-    """Without StackTraceExecutor in pre_executors, no stack trace analysis runs."""
+    """Without StackTraceClusterExecutor in pre_executors, no stack trace analysis runs."""
 
     async def test_crash_trigger_no_stack_trace(self) -> None:
         agents = make_fake_agents(
@@ -103,7 +103,7 @@ class TestCrashSkipsStackTrace:
         )
         orchestrator = DiagnosticOrchestrator(
             agents=agents,
-            pipeline=[GpuExecutor()],
+            pipeline=[GpuClusterExecutor()],
         )
         decision = await orchestrator.run_diagnostic_pipeline()
 
@@ -139,10 +139,10 @@ class TestHangWithCollectionFailure:
         ):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
-                pipeline=[GpuExecutor()],
+                pipeline=[GpuClusterExecutor()],
             )
             decision = await orchestrator.run_diagnostic_pipeline(
-                pre_executors=[StackTraceExecutor(rank_pids_provider=pids_provider)],
+                pre_executors=[StackTraceClusterExecutor(rank_pids_provider=pids_provider)],
             )
 
             assert len(decision.bad_node_ids) > 0

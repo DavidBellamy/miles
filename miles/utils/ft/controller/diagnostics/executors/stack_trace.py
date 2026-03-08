@@ -9,7 +9,7 @@ from miles.utils.ft.protocols.agents import NodeAgentProtocol
 logger = logging.getLogger(__name__)
 
 
-class StackTraceExecutor:
+class StackTraceClusterExecutor:
     """Identifies outlier nodes via stack trace aggregation and evicts them.
 
     Used as the first executor in the pipeline when the trigger is HANG.

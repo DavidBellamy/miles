@@ -14,10 +14,10 @@ from typing import Any
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
-from miles.utils.ft.agents.diagnostics.runner import DiagnosticRunner
-from miles.utils.ft.controller.diagnostics.executors import InterMachineExecutor
+from miles.utils.ft.agents.diagnostics.executors.inter_machine import InterMachineNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.intra_machine import IntraMachineNodeExecutor
+from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+from miles.utils.ft.controller.diagnostics.executors import InterMachineClusterExecutor
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.platform.ray_wrappers.node_discovery import build_node_address_map, get_alive_gpu_nodes
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
@@ -85,7 +85,7 @@ async def run_inter_machine_diagnostics(
 
     async with _managed_agents(nodes) as agents:
         node_addresses = build_node_address_map(nodes)
-        executor = InterMachineExecutor(node_addresses=node_addresses)
+        executor = InterMachineClusterExecutor(node_addresses=node_addresses)
         return await executor.execute(
             agents=agents,
             timeout_seconds=timeout_seconds,
@@ -102,11 +102,11 @@ class _StandaloneDiagnosticAgent:
     """Lightweight Ray actor pinned to a node for running NCCL diagnostics."""
 
     def __init__(self, node_id: str, num_gpus: int) -> None:
-        self._runner = DiagnosticRunner(
+        self._runner = NodeExecutorRunner(
             node_id=node_id,
             diagnostics=[
-                IntraMachineCommDiagnostic(num_gpus=num_gpus),
-                InterMachineCommDiagnostic(num_gpus=num_gpus),
+                IntraMachineNodeExecutor(num_gpus=num_gpus),
+                InterMachineNodeExecutor(num_gpus=num_gpus),
             ],
         )
 

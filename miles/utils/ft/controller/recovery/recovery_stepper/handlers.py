@@ -17,10 +17,10 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
 )
 from miles.utils.ft.controller.recovery.restart_stepper.handlers import RestartContext
 from miles.utils.ft.controller.recovery.restart_stepper.states import RestartDone, RestartFailed, RestartState
-from miles.utils.ft.controller.diagnostics.executors import StackTraceExecutor
+from miles.utils.ft.controller.diagnostics.executors import StackTraceClusterExecutor
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.protocols.agents import DiagnosticExecutor
+from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol, NotificationProtocol
 
 logger = logging.getLogger(__name__)
@@ -103,9 +103,9 @@ class StopTimeDiagnosticsHandler:
         state: StopTimeDiagnostics,
         ctx: RecoveryContext,
     ) -> RecoveryState:
-        pre_executors: list[DiagnosticExecutor] = []
+        pre_executors: list[ClusterExecutorProtocol] = []
         if ctx.trigger == TriggerType.HANG and ctx.rank_pids_provider is not None:
-            pre_executors.append(StackTraceExecutor(rank_pids_provider=ctx.rank_pids_provider))
+            pre_executors.append(StackTraceClusterExecutor(rank_pids_provider=ctx.rank_pids_provider))
 
         result = await ctx.diagnostic_orchestrator.run_diagnostic_pipeline(
             pre_executors=pre_executors or None,

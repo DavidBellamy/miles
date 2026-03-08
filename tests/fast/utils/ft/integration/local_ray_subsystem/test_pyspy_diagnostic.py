@@ -15,7 +15,7 @@ import shutil
 import pytest
 import ray
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread, StackTraceDiagnostic
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread, StackTraceNodeExecutor
 from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 _HAS_PYSPY = shutil.which("py-spy") is not None
@@ -173,7 +173,7 @@ class TestOrchestratorHangTraceFullChain:
         self,
         local_ray: None,
     ) -> None:
-        from miles.utils.ft.controller.diagnostics.executors import StackTraceExecutor
+        from miles.utils.ft.controller.diagnostics.executors import StackTraceClusterExecutor
         from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
         worker_a = _BusyWorker.remote()
@@ -199,7 +199,7 @@ class TestOrchestratorHangTraceFullChain:
         )
 
         decision = await orchestrator.run_diagnostic_pipeline(
-            pre_executors=[StackTraceExecutor(rank_pids_provider=pids_provider)],
+            pre_executors=[StackTraceClusterExecutor(rank_pids_provider=pids_provider)],
         )
 
         ray.kill(worker_a, no_restart=True)

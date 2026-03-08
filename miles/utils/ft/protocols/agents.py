@@ -18,7 +18,7 @@ class NodeAgentProtocol(Protocol):
 
 
 @runtime_checkable
-class DiagnosticProtocol(Protocol):
+class NodeExecutorProtocol(Protocol):
     diagnostic_type: str
 
     async def run(
@@ -29,7 +29,7 @@ class DiagnosticProtocol(Protocol):
 
 
 @runtime_checkable
-class DiagnosticExecutor(Protocol):
+class ClusterExecutorProtocol(Protocol):
     """Strategy for executing one diagnostic step within the pipeline.
 
     Returns bad_node_ids (empty if all healthy).

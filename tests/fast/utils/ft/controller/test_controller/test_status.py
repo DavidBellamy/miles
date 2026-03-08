@@ -213,11 +213,11 @@ class TestDefaultDiagnosticOrchestratorWiring:
 
 class TestDefaultDiagnosticPipeline:
     def test_default_orchestrator_has_gpu_pipeline(self) -> None:
-        from miles.utils.ft.controller.diagnostics.executors import GpuExecutor
+        from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor
 
         harness = make_test_controller()
         orchestrator = harness.controller._platform_deps.diagnostic_orchestrator
-        assert any(isinstance(e, GpuExecutor) for e in orchestrator._pipeline)
+        assert any(isinstance(e, GpuClusterExecutor) for e in orchestrator._pipeline)
 
 
 class TestShutdown:

@@ -79,7 +79,7 @@ def find_gpu_hash_outlier_nodes(
     return sorted(outlier_nodes)
 
 
-class GpuExecutor:
+class GpuClusterExecutor:
     """GPU diagnostic with cross-node compute hash comparison.
 
     First partitions by local pass/fail (nvml + compute errors).

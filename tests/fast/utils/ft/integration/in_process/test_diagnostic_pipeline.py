@@ -11,21 +11,21 @@ from datetime import datetime, timezone
 import pytest
 from tests.fast.utils.ft.conftest import ControllerTestHarness, make_fake_agents, make_test_controller
 
-from miles.utils.ft.controller.diagnostics.executors import GpuExecutor, InterMachineExecutor, SingleNodeExecutor
+from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, InterMachineClusterExecutor, SingleNodeClusterExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.main_state_machine import Recovering
 from miles.utils.ft.controller.recovery.recovery_stepper import StopTimeDiagnostics
-from miles.utils.ft.protocols.agents import DiagnosticExecutor
+from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 from miles.utils.ft.protocols.platform import JobStatus
 
-_TYPE_TO_EXECUTOR: dict[str, DiagnosticExecutor] = {
-    "gpu": GpuExecutor(),
-    "inter_machine": InterMachineExecutor(),
+_TYPE_TO_EXECUTOR: dict[str, ClusterExecutorProtocol] = {
+    "gpu": GpuClusterExecutor(),
+    "inter_machine": InterMachineClusterExecutor(),
 }
 
 
-def _build_pipeline(type_names: list[str]) -> list[DiagnosticExecutor]:
-    return [_TYPE_TO_EXECUTOR.get(name, SingleNodeExecutor(name)) for name in type_names]
+def _build_pipeline(type_names: list[str]) -> list[ClusterExecutorProtocol]:
+    return [_TYPE_TO_EXECUTOR.get(name, SingleNodeClusterExecutor(name)) for name in type_names]
 
 
 def _make_diagnostic_test_env(

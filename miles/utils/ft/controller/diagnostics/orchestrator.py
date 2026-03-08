@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticExecutor, NodeAgentProtocol
+from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, ClusterExecutorProtocol, NodeAgentProtocol
 from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
     def __init__(
         self,
         agents: dict[str, NodeAgentProtocol],
-        pipeline: list[DiagnosticExecutor] | None = None,
+        pipeline: list[ClusterExecutorProtocol] | None = None,
         default_timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
         pipeline_timeout_seconds: int = 900,
     ) -> None:
@@ -32,7 +32,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
 
     async def run_diagnostic_pipeline(
         self,
-        pre_executors: list[DiagnosticExecutor] | None = None,
+        pre_executors: list[ClusterExecutorProtocol] | None = None,
     ) -> DiagnosticPipelineResult:
         logger.info(
             "diagnostic_pipeline_start pipeline_steps=%d pre_executors=%d",
@@ -57,7 +57,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
 
     async def _run_diagnostic_pipeline_inner(
         self,
-        pre_executors: list[DiagnosticExecutor] | None = None,
+        pre_executors: list[ClusterExecutorProtocol] | None = None,
     ) -> DiagnosticPipelineResult:
         all_executors = (pre_executors or []) + self._pipeline
 
