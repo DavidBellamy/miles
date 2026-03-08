@@ -13,11 +13,12 @@ from miles.utils.ft.controller.state_machines.main.utils import (
 )
 from miles.utils.ft.controller.state_machines.recovery.models import NotifyHumans, RealtimeChecks, RecoveryDone
 from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.utils.state_machine import StateHandler
 
 logger = logging.getLogger(__name__)
 
 
-class DetectingAnomalyHandler:
+class DetectingAnomalyHandler(StateHandler[DetectingAnomaly, MainContext]):
     async def step(self, state: DetectingAnomaly, ctx: MainContext) -> MainState | None:
         decision = await self._get_actionable_decision(ctx=ctx)
         if decision is None:
@@ -84,7 +85,7 @@ class DetectingAnomalyHandler:
         return decision
 
 
-class RecoveringHandler:
+class RecoveringHandler(StateHandler[Recovering, MainContext]):
     async def step(self, state: Recovering, ctx: MainContext) -> MainState | None:
         ret = await self._check_new_bad_nodes(state=state, ctx=ctx)
         if ret is not None:

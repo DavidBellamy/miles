@@ -17,6 +17,7 @@ from miles.utils.ft.controller.state_machines.recovery.models import (
 from miles.utils.ft.controller.state_machines.restart.models import RestartDone, RestartFailed
 from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.types import TriggerType
+from miles.utils.ft.utils.state_machine import StateHandler
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ async def recovery_timeout_check(
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChecksHandler:
+class RealtimeChecksHandler(StateHandler[RealtimeChecks, RecoveryContext]):
     async def step(self, state: RealtimeChecks, ctx: RecoveryContext) -> RecoveryState:
         if state.pre_identified_bad_nodes:
             return EvictingAndRestarting.evict_and_restart(
@@ -47,7 +48,7 @@ class RealtimeChecksHandler:
         return EvictingAndRestarting.direct_restart()
 
 
-class EvictingAndRestartingHandler:
+class EvictingAndRestartingHandler(StateHandler[EvictingAndRestarting, RecoveryContext]):
     async def step(
         self,
         state: EvictingAndRestarting,
@@ -66,7 +67,7 @@ class EvictingAndRestartingHandler:
         )
 
 
-class StopTimeDiagnosticsHandler:
+class StopTimeDiagnosticsHandler(StateHandler[StopTimeDiagnostics, RecoveryContext]):
     async def step(
         self,
         state: StopTimeDiagnostics,
@@ -90,7 +91,7 @@ class StopTimeDiagnosticsHandler:
         return NotifyHumans(state_before="StopTimeDiagnostics")
 
 
-class NotifyHumansHandler:
+class NotifyHumansHandler(StateHandler[NotifyHumans, RecoveryContext]):
     async def step(self, state: NotifyHumans, ctx: RecoveryContext) -> RecoveryState:
         message = (
             f"Recovery requires human intervention. " f"trigger={ctx.trigger} " f"state_before={state.state_before}"

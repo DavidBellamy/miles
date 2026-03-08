@@ -21,6 +21,7 @@ from miles.utils.ft.controller.state_machines.restart.utils import (
     stop_and_submit,
 )
 from miles.utils.ft.controller.state_machines.utils import safe_notify
+from miles.utils.ft.utils.state_machine import StateHandler
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def iteration_progress(state: MonitoringProgress, mini_wandb: MiniWandb) -> int:
 # ---------------------------------------------------------------------------
 
 
-class EvictingHandler:
+class EvictingHandler(StateHandler[Evicting, RestartContext]):
     async def step(self, state: Evicting, ctx: RestartContext) -> RestartState:
         try:
             already_bad = await get_already_bad_nodes(ctx.node_manager)
@@ -77,7 +78,7 @@ class EvictingHandler:
         return StoppingAndRestarting(bad_node_ids=state.bad_node_ids)
 
 
-class StoppingAndRestartingHandler:
+class StoppingAndRestartingHandler(StateHandler[StoppingAndRestarting, RestartContext]):
     async def step(
         self,
         state: StoppingAndRestarting,
@@ -138,7 +139,7 @@ class StoppingAndRestartingHandler:
         return None
 
 
-class MonitoringProgressHandler:
+class MonitoringProgressHandler(StateHandler[MonitoringProgress, RestartContext]):
     async def step(
         self,
         state: MonitoringProgress,
