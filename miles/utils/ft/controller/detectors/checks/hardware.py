@@ -84,7 +84,6 @@ def check_nic_down_in_window(
         NodeFault(
             node_id=row["node_id"],
             reason=f"NIC went down {row['count']} time(s) on {row['node_id']} in {window}",
-            ephemeral=True,
         )
         for row in node_counts.iter_rows(named=True)
         if row["count"] >= threshold
