@@ -1,7 +1,7 @@
 from miles.utils.ft.controller.main_state_machine.detecting_handler import (
     DetectingAnomalyHandler,
 )
-from miles.utils.ft.controller.main_state_machine.helpers import (
+from miles.utils.ft.controller.main_state_machine.utils import (
     MainContext,
     get_known_bad_nodes,
 )

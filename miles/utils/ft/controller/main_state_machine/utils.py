@@ -8,7 +8,7 @@ from pydantic import ConfigDict
 
 from miles.utils.ft.controller.actions import handle_notify_human
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper.handlers import RecoveryContext
 from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     EvictingAndRestarting,

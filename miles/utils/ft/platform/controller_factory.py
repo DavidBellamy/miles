@@ -16,10 +16,10 @@ from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.notifiers.factory import build_notifier
 from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob

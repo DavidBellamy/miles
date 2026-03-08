@@ -12,7 +12,7 @@ from miles.utils.ft.agents.collectors.gpu import GpuCollector
 from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
 from miles.utils.ft.agents.collectors.network import NetworkCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 
 
 def _create_sysfs(tmp_path: Path) -> Path:

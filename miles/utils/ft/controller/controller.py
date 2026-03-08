@@ -21,7 +21,7 @@ from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task,
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,

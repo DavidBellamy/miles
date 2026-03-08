@@ -22,7 +22,7 @@ import httpx
 import pytest
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
 
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 

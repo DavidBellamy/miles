@@ -7,7 +7,7 @@ Submodules:
 - agent_fakes: collector fakes, HW-collector mocks, stack trace helpers
 """
 
-from tests.fast.utils.ft.helpers.agent_fakes import (
+from tests.fast.utils.ft.utils.agent_fakes import (
     SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
     SAMPLE_PYSPY_JSON_NORMAL,
     SAMPLE_PYSPY_JSON_STUCK,
@@ -26,7 +26,7 @@ from tests.fast.utils.ft.helpers.agent_fakes import (
     make_trace_result,
     serialize_pyspy_threads,
 )
-from tests.fast.utils.ft.helpers.controller_fakes import (
+from tests.fast.utils.ft.utils.controller_fakes import (
     AlwaysEnterRecoveryDetector,
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
@@ -46,7 +46,7 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     make_test_controller,
     run_controller_briefly,
 )
-from tests.fast.utils.ft.helpers.diagnostic_fakes import (
+from tests.fast.utils.ft.utils.diagnostic_fakes import (
     FakeDiagnosticOrchestrator,
     FakeNodeAgent,
     HangingDiagnosticOrchestrator,
@@ -58,7 +58,7 @@ from tests.fast.utils.ft.helpers.diagnostic_fakes import (
     mock_inter_machine_run,
     mock_stack_trace_diagnostic,
 )
-from tests.fast.utils.ft.helpers.metric_injectors import (
+from tests.fast.utils.ft.utils.metric_injectors import (
     EMPTY_RANK_PLACEMENT,
     get_sample_value,
     inject_critical_xid,

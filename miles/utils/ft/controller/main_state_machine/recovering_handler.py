@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from miles.utils.ft.controller.main_state_machine.helpers import (
+from miles.utils.ft.controller.main_state_machine.utils import (
     MainContext,
     collect_critical_bad_nodes,
     get_known_bad_nodes,
@@ -28,13 +28,13 @@ class RecoveringHandler:
         state: Recovering,
         ctx: MainContext,
     ) -> MainState | None:
-        curr_bad_nodes = collect_critical_bad_nodes(
+        new_bad_nodes = collect_critical_bad_nodes(
             detectors=ctx.detectors,
             tick_detector_context=ctx.detector_context,
         )
-        if len(curr_bad_nodes) >= ctx.max_simultaneous_bad_nodes:
+        if len(new_bad_nodes) >= ctx.max_simultaneous_bad_nodes:
             await notify_too_many_bad_nodes(
-                bad_node_count=len(curr_bad_nodes),
+                bad_node_count=len(new_bad_nodes),
                 max_simultaneous_bad_nodes=ctx.max_simultaneous_bad_nodes,
                 trigger=state.trigger,
                 context_str="Critical detectors reported during recovery",
@@ -43,9 +43,9 @@ class RecoveringHandler:
             return None
 
         known_bad = set(get_known_bad_nodes(state.recovery))
-        truly_new = curr_bad_nodes - known_bad
+        truly_new = new_bad_nodes - known_bad
         if truly_new:
-            all_bad = sorted(known_bad | curr_bad_nodes)
+            all_bad = sorted(known_bad | new_bad_nodes)
             return Recovering(
                 recovery=RealtimeChecks(pre_identified_bad_nodes=all_bad),
                 trigger=state.trigger,

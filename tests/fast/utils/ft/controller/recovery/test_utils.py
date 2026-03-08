@@ -1,4 +1,4 @@
-"""Tests for recovery_orchestrator/helpers.py (retry_async, stop_and_submit, SlidingWindowThrottle)."""
+"""Tests for recovery/utils.py (retry_async, stop_and_submit, SlidingWindowThrottle)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from tests.fast.utils.ft.conftest import FakeTrainingJob, make_failing_training_job
 
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle, stop_and_submit
+from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle, stop_and_submit
 from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
@@ -251,7 +251,7 @@ class TestSlidingWindowThrottle:
 
         old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
         with patch(
-            "miles.utils.ft.controller.recovery.helpers.datetime",
+            "miles.utils.ft.controller.recovery.utils.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = old_time
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)

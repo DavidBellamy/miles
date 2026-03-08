@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from pydantic import ConfigDict
 
-from miles.utils.ft.controller.recovery.helpers import safe_notify
+from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     EvictingAndRestarting,
     NotifyHumans,

@@ -33,7 +33,7 @@ def _make_stepper() -> StateMachineStepper:
 
 
 def _make_detector_context() -> DetectorContext:
-    from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
+    from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 
     return DetectorContext(
         metric_store=MiniPrometheus(config=MiniPrometheusConfig()),

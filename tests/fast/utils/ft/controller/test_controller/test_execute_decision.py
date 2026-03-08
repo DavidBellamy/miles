@@ -14,7 +14,7 @@ from tests.fast.utils.ft.conftest import (
 )
 
 from miles.utils.ft.controller.main_state_machine import Recovering
-from miles.utils.ft.controller.main_state_machine.helpers import run_detectors
+from miles.utils.ft.controller.main_state_machine.utils import run_detectors
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 

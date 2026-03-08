@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from tests.fast.utils.ft.conftest import StubDiagnostic, make_test_controller
 
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 
 
 class TestRegisterNodeAgentScrapeTarget:

@@ -7,7 +7,7 @@ from datetime import timedelta
 import polars as pl
 
 from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.protocols.metrics import (
