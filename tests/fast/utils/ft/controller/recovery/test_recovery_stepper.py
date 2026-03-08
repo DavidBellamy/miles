@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -28,23 +29,13 @@ from miles.utils.ft.controller.recovery.restart_stepper import (
     create_restart_stepper,
 )
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-from miles.utils.ft.models.fault import NodeFault, TriggerType
+from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-class FakeAlertChecker:
-    """Programmable AlertChecker replacement."""
-
-    def __init__(self, faults: list[NodeFault] | None = None) -> None:
-        self._faults = faults or []
-
-    def check_alerts(self) -> list[NodeFault]:
-        return self._faults
 
 
 class FakeDiagOrchestrator:
@@ -96,11 +87,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _no_evictable_faults() -> set[str]:
+    return set()
+
+
 def _make_ctx(
     *,
     trigger: TriggerType = TriggerType.CRASH,
     recovery_start_time: datetime | None = None,
-    alert_checker: FakeAlertChecker | None = None,
+    check_evictable_faults: Callable[[], set[str]] | None = None,
     diagnostic_orchestrator: FakeDiagOrchestrator | None = None,
     restart_stepper: object | None = None,
     restart_context: RestartContext | None = None,
@@ -120,7 +115,7 @@ def _make_ctx(
     return RecoveryContext(
         trigger=trigger,
         recovery_start_time=recovery_start_time or _now(),
-        alert_checker=alert_checker or FakeAlertChecker(),
+        check_evictable_faults=check_evictable_faults or _no_evictable_faults,
         diagnostic_orchestrator=diagnostic_orchestrator or FakeDiagOrchestrator(),
         restart_stepper=restart_stepper,
         restart_context=restart_context,
@@ -157,31 +152,24 @@ class TestRealtimeChecks:
     @pytest.mark.asyncio
     async def test_no_faults_goes_to_restarting(self) -> None:
         stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=[]))
+        result = await _step(stepper, RealtimeChecks(), check_evictable_faults=lambda: set())
         assert isinstance(result, EvictingAndRestarting)
         assert isinstance(result.restart, StoppingAndRestarting)
         assert isinstance(result.failed_next_state, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
-    async def test_non_ephemeral_faults_go_to_evicting_and_restarting(self) -> None:
-        faults = [NodeFault(node_id="node-A", reason="gpu error", ephemeral=False)]
+    async def test_evictable_faults_go_to_evicting_and_restarting(self) -> None:
         stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=faults))
+        result = await _step(
+            stepper, RealtimeChecks(), check_evictable_faults=lambda: {"node-A"},
+        )
         assert isinstance(result, EvictingAndRestarting)
         assert isinstance(result.restart, Evicting)
         assert result.restart.bad_node_ids == ["node-A"]
         assert isinstance(result.failed_next_state, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
-    async def test_ephemeral_only_goes_to_restarting(self) -> None:
-        faults = [NodeFault(node_id="node-A", reason="temporary", ephemeral=True)]
-        stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=faults))
-        assert isinstance(result, EvictingAndRestarting)
-        assert isinstance(result.restart, StoppingAndRestarting)
-
-    @pytest.mark.asyncio
-    async def test_pre_identified_bad_nodes_skip_alert_check(self) -> None:
+    async def test_pre_identified_bad_nodes_skip_check(self) -> None:
         stepper = _make_stepper()
         result = await _step(stepper, RealtimeChecks(pre_identified_bad_nodes=["node-X"]))
         assert isinstance(result, EvictingAndRestarting)
@@ -189,44 +177,13 @@ class TestRealtimeChecks:
 
     @pytest.mark.asyncio
     async def test_multiple_bad_nodes_all_evicted(self) -> None:
-        """Multiple non-ephemeral faults -> all bad nodes included in Evicting."""
-        faults = [
-            NodeFault(node_id="node-A", reason="gpu error", ephemeral=False),
-            NodeFault(node_id="node-B", reason="network error", ephemeral=False),
-            NodeFault(node_id="node-C", reason="cpu error", ephemeral=False),
-        ]
         stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=faults))
-
+        result = await _step(
+            stepper, RealtimeChecks(),
+            check_evictable_faults=lambda: {"node-A", "node-B", "node-C"},
+        )
         assert isinstance(result, EvictingAndRestarting)
         assert result.restart.bad_node_ids == ["node-A", "node-B", "node-C"]
-
-    @pytest.mark.asyncio
-    async def test_ephemeral_faults_skip_eviction(self) -> None:
-        """Only ephemeral faults -> EvictingAndRestarting with StoppingAndRestarting (no Evicting)."""
-        faults = [
-            NodeFault(node_id="node-A", reason="temp glitch", ephemeral=True),
-            NodeFault(node_id="node-B", reason="transient", ephemeral=True),
-        ]
-        stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=faults))
-
-        assert isinstance(result, EvictingAndRestarting)
-        assert isinstance(result.restart, StoppingAndRestarting)
-
-    @pytest.mark.asyncio
-    async def test_duplicate_bad_nodes_deduplicated(self) -> None:
-        """Duplicate node IDs across faults are deduplicated via unique_node_ids."""
-        faults = [
-            NodeFault(node_id="node-A", reason="err1", ephemeral=False),
-            NodeFault(node_id="node-A", reason="err2", ephemeral=False),
-            NodeFault(node_id="node-B", reason="err3", ephemeral=False),
-        ]
-        stepper = _make_stepper()
-        result = await _step(stepper, RealtimeChecks(), alert_checker=FakeAlertChecker(faults=faults))
-
-        assert isinstance(result, EvictingAndRestarting)
-        assert result.restart.bad_node_ids == ["node-A", "node-B"]
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +379,7 @@ class TestFullRecoveryFlow:
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
-            alert_checker=FakeAlertChecker(faults=[]),
+            check_evictable_faults=lambda: set(),
             restart_stepper=restart_stepper,
             restart_context=restart_ctx,
         )
@@ -520,7 +477,7 @@ class TestFullRecoveryFlow:
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
-            alert_checker=FakeAlertChecker(faults=[]),
+            check_evictable_faults=lambda: set(),
             restart_stepper=restart_stepper,
             restart_context=restart_ctx,
             diagnostic_orchestrator=diag,

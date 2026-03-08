@@ -33,5 +33,5 @@ class TestDiskSpaceLowDetector:
 
         assert decision.action == ActionType.NONE
 
-    def test_is_not_critical(self) -> None:
-        assert DiskSpaceLowDetector.is_critical is False
+    def test_has_no_is_critical_attribute(self) -> None:
+        assert not hasattr(DiskSpaceLowDetector, "is_critical")

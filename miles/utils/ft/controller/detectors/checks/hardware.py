@@ -1,7 +1,6 @@
 """Shared hardware fault detection logic.
 
-Used by both HighConfidenceHardwareDetector (detector chain) and
-AlertChecker (recovery orchestrator) to avoid duplicating the same
+Used by HighConfidenceHardwareDetector and NetworkAlertDetector for
 metric queries and threshold constants.
 """
 

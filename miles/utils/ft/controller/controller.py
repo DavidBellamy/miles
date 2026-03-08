@@ -20,7 +20,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullC
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
-from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
+from miles.utils.ft.controller.main_state_machine.utils import collect_evictable_bad_nodes
 from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
@@ -75,7 +75,6 @@ class FtController:
         on_recovery_duration: Callable[[float], None] | None,
         max_simultaneous_bad_nodes: int,
         # deps for RecoveryContext building
-        alert_checker: AlertChecker,
         diagnostic_orchestrator: DiagnosticOrchestratorProtocol,
         restart_stepper: StateMachineStepper,
         recovery_timeout_seconds: int,
@@ -100,7 +99,6 @@ class FtController:
         self._recovery_stepper = recovery_stepper
         self._on_recovery_duration = on_recovery_duration
         self._max_simultaneous_bad_nodes = max_simultaneous_bad_nodes
-        self._alert_checker = alert_checker
         self._diagnostic_orchestrator = diagnostic_orchestrator
         self._restart_stepper = restart_stepper
         self._recovery_timeout_seconds = recovery_timeout_seconds
@@ -154,7 +152,6 @@ class FtController:
         resolved_exporter = controller_exporter or NullControllerExporter()
         duration_cb = resolved_exporter.observe_recovery_duration
         cooldown = recovery_cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3)
-        alert_checker = AlertChecker(metric_store=metric_store)
 
         restart_stepper = create_restart_stepper()
         recovery_stepper = create_recovery_stepper()
@@ -180,7 +177,6 @@ class FtController:
             recovery_stepper=recovery_stepper,
             on_recovery_duration=duration_cb,
             max_simultaneous_bad_nodes=max_simultaneous_bad_nodes,
-            alert_checker=alert_checker,
             diagnostic_orchestrator=resolved_orchestrator,
             restart_stepper=restart_stepper,
             recovery_timeout_seconds=recovery_timeout_seconds,
@@ -212,10 +208,22 @@ class FtController:
         trigger: TriggerType,
         recovery_start_time: datetime,
     ) -> RecoveryContext:
+        def _check_evictable_faults() -> set[str]:
+            detector_ctx = DetectorContext(
+                metric_store=self._metric_store,
+                mini_wandb=self._mini_wandb,
+                rank_placement=dict(self._rank_roster.rank_placement),
+                job_status=JobStatus.RUNNING,
+            )
+            return collect_evictable_bad_nodes(
+                detectors=self._detectors,
+                tick_detector_context=detector_ctx,
+            )
+
         return RecoveryContext(
             trigger=trigger,
             recovery_start_time=recovery_start_time,
-            alert_checker=self._alert_checker,
+            check_evictable_faults=_check_evictable_faults,
             diagnostic_orchestrator=self._diagnostic_orchestrator,
             restart_stepper=self._restart_stepper,
             restart_context=self._restart_context,

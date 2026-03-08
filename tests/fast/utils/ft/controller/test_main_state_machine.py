@@ -9,7 +9,6 @@ import pytest
 from tests.fast.utils.ft.utils.controller_fakes import (
     AlwaysEnterRecoveryDetector,
     AlwaysNoneDetector,
-    CriticalFixedDecisionDetector,
     FakeNotifier,
     FixedDecisionDetector,
 )
@@ -32,13 +31,15 @@ def _make_stepper() -> StateMachineStepper:
     return create_main_stepper()
 
 
-def _make_detector_context() -> DetectorContext:
+def _make_detector_context(
+    rank_placement: dict[int, str] | None = None,
+) -> DetectorContext:
     from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 
     return DetectorContext(
         metric_store=MiniPrometheus(config=MiniPrometheusConfig()),
         mini_wandb=MiniWandb(),
-        rank_placement={0: "node-0"},
+        rank_placement=rank_placement if rank_placement is not None else {0: "node-0"},
         job_status=JobStatus.RUNNING,
     )
 
@@ -52,6 +53,7 @@ def _make_main_context(
     *,
     should_run_detectors: bool = True,
     detector_context: DetectorContext | None = None,
+    rank_placement: dict[int, str] | None = None,
     detectors: list | None = None,
     cooldown: SlidingWindowThrottle | None = None,
     recovery_stepper: object | None = None,
@@ -67,7 +69,7 @@ def _make_main_context(
         detector_context=(
             detector_context
             if detector_context is not None
-            else (_make_detector_context() if should_run_detectors else None)
+            else (_make_detector_context(rank_placement=rank_placement) if should_run_detectors else None)
         ),
         notifier=notifier,
         detectors=detectors or [],
@@ -296,14 +298,14 @@ class TestRecovering:
 
     @pytest.mark.asyncio
     async def test_dynamic_bad_nodes_resets_recovery(self) -> None:
-        """Critical detector finds new bad nodes -> restart recovery with merged bad_node_ids."""
+        """Detector finds new bad nodes during recovery -> restart recovery with merged bad_node_ids."""
         from miles.utils.ft.controller.recovery.recovery_stepper import (
             EvictingAndRestarting,
             StopTimeDiagnostics,
         )
         from miles.utils.ft.controller.recovery.restart_stepper import Evicting
 
-        critical_detector = CriticalFixedDecisionDetector(
+        detector = FixedDecisionDetector(
             Decision(
                 action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=["node-new"],
@@ -324,8 +326,9 @@ class TestRecovering:
         result = await stepper(
             state,
             _make_main_context(
-                detectors=[critical_detector],
+                detectors=[detector],
                 recovery_stepper=AsyncMock(return_value=None),
+                rank_placement={0: "node-old", 1: "node-new"},
             ),
         )
         assert isinstance(result, Recovering)
@@ -363,6 +366,7 @@ class TestBadNodeCountSafeguard:
                 detectors=[detector],
                 notifier=notifier,
                 max_simultaneous_bad_nodes=3,
+                rank_placement={0: "node-1", 1: "node-2", 2: "node-3"},
             ),
         )
         assert result is None
@@ -386,6 +390,7 @@ class TestBadNodeCountSafeguard:
             _make_main_context(
                 detectors=[detector],
                 max_simultaneous_bad_nodes=3,
+                rank_placement={0: "node-1", 1: "node-2"},
             ),
         )
         assert isinstance(result, Recovering)
@@ -394,7 +399,7 @@ class TestBadNodeCountSafeguard:
 
     @pytest.mark.asyncio
     async def test_too_many_dynamic_bad_nodes_continues_recovery(self) -> None:
-        """Critical detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN but keep recovering."""
+        """Detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN but keep recovering."""
         from miles.utils.ft.controller.recovery.recovery_stepper import (
             EvictingAndRestarting,
             StopTimeDiagnostics,
@@ -403,7 +408,7 @@ class TestBadNodeCountSafeguard:
 
         notifier = FakeNotifier()
 
-        critical_detector = CriticalFixedDecisionDetector(
+        detector = FixedDecisionDetector(
             Decision(
                 action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=["node-a", "node-b", "node-c"],
@@ -424,10 +429,11 @@ class TestBadNodeCountSafeguard:
         result = await stepper(
             state,
             _make_main_context(
-                detectors=[critical_detector],
+                detectors=[detector],
                 recovery_stepper=AsyncMock(return_value=None),
                 notifier=notifier,
                 max_simultaneous_bad_nodes=3,
+                rank_placement={0: "node-old", 1: "node-a", 2: "node-b", 3: "node-c"},
             ),
         )
         assert result is None
@@ -436,7 +442,7 @@ class TestBadNodeCountSafeguard:
 
     @pytest.mark.asyncio
     async def test_already_known_bad_nodes_do_not_restart_recovery(self) -> None:
-        """Critical detector re-reports nodes already being handled -> no recovery restart."""
+        """Detector re-reports nodes already being handled -> no recovery restart."""
         from miles.utils.ft.controller.recovery.recovery_stepper import (
             EvictingAndRestarting,
             StopTimeDiagnostics,
@@ -445,7 +451,7 @@ class TestBadNodeCountSafeguard:
 
         recovery_stepper = AsyncMock(return_value=None)
 
-        critical_detector = CriticalFixedDecisionDetector(
+        detector = FixedDecisionDetector(
             Decision(
                 action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=["node-old"],
@@ -466,9 +472,10 @@ class TestBadNodeCountSafeguard:
         result = await stepper(
             state,
             _make_main_context(
-                detectors=[critical_detector],
+                detectors=[detector],
                 recovery_stepper=recovery_stepper,
                 max_simultaneous_bad_nodes=3,
+                rank_placement={0: "node-old"},
             ),
         )
         assert result is None
@@ -485,8 +492,7 @@ class TestBadNodeCountSafeguard:
 
         recovery_stepper = AsyncMock(return_value=None)
 
-        # hi
-        critical_detector = CriticalFixedDecisionDetector(
+        detector = FixedDecisionDetector(
             Decision(
                 action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=["node-new"],
@@ -507,9 +513,10 @@ class TestBadNodeCountSafeguard:
         result = await stepper(
             state,
             _make_main_context(
-                detectors=[critical_detector],
+                detectors=[detector],
                 recovery_stepper=recovery_stepper,
                 max_simultaneous_bad_nodes=3,
+                rank_placement={0: "node-old-1", 1: "node-old-2", 2: "node-new"},
             ),
         )
         assert isinstance(result, Recovering)

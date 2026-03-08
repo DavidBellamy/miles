@@ -1,11 +1,11 @@
-"""Tests for FtController: submit_initial_training and critical detector edge cases."""
+"""Tests for FtController: submit_initial_training and detector edge cases."""
 
 from __future__ import annotations
 
 import pytest
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
-    CriticalFixedDecisionDetector,
+    FixedDecisionDetector,
     get_sample_value,
     make_test_controller,
     make_test_exporter,
@@ -35,57 +35,55 @@ class TestSubmitInitialTraining:
 
 
 # ===================================================================
-# _collect_critical_bad_nodes — exception isolation
+# collect_evictable_bad_nodes — exception isolation
 # ===================================================================
 
 
-class _CrashingCriticalDetector(BaseFaultDetector):
-    """A critical detector that raises on evaluate()."""
-
-    is_critical = True
+class _CrashingDetector(BaseFaultDetector):
+    """A detector that raises on _evaluate_raw()."""
 
     def __init__(self) -> None:
         self.call_count = 0
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         self.call_count += 1
-        raise RuntimeError("critical detector internal error")
+        raise RuntimeError("detector internal error")
 
 
-class TestCriticalDetectorExceptionIsolation:
+class TestDetectorExceptionIsolation:
     @pytest.mark.anyio
-    async def test_crashing_critical_detector_does_not_break_recovery(self) -> None:
+    async def test_crashing_detector_does_not_break_recovery(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
-        crashing_critical = _CrashingCriticalDetector()
-        harness = make_test_controller(detectors=[enter_recovery, crashing_critical])
+        crashing = _CrashingDetector()
+        harness = make_test_controller(detectors=[enter_recovery, crashing])
 
         await harness.controller._tick()
         assert isinstance(harness.controller._state_machine.state, Recovering)
-        assert crashing_critical.call_count > 0
+        assert crashing.call_count > 0
 
     @pytest.mark.anyio
-    async def test_critical_detector_non_mark_bad_action_is_ignored(self) -> None:
-        """A critical detector returning NOTIFY_HUMAN should be silently ignored
+    async def test_detector_non_mark_bad_action_is_ignored_during_recovery(self) -> None:
+        """A detector returning NOTIFY_HUMAN should be silently ignored
         during recovery — only ENTER_RECOVERY with bad_node_ids is acted upon."""
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
-        critical_notify = CriticalFixedDecisionDetector(
+        notify_detector = FixedDecisionDetector(
             decision=Decision(
                 action=ActionType.NOTIFY_HUMAN,
                 reason="should be ignored during recovery",
                 trigger=TriggerType.MISC,
             )
         )
-        harness = make_test_controller(detectors=[enter_recovery, critical_notify])
+        harness = make_test_controller(detectors=[enter_recovery, notify_detector])
 
         await harness.controller._tick()
         state = harness.controller._state_machine.state
         assert isinstance(state, Recovering)
-        assert critical_notify.call_count > 0
+        assert notify_detector.call_count > 0
 
     @pytest.mark.anyio
-    async def test_critical_detector_empty_bad_nodes_is_ignored(self) -> None:
+    async def test_detector_empty_bad_nodes_is_ignored_during_recovery(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
-        critical_empty = CriticalFixedDecisionDetector(
+        empty_detector = FixedDecisionDetector(
             decision=Decision(
                 action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=[],
@@ -93,11 +91,11 @@ class TestCriticalDetectorExceptionIsolation:
                 trigger=TriggerType.CRASH,
             )
         )
-        harness = make_test_controller(detectors=[enter_recovery, critical_empty])
+        harness = make_test_controller(detectors=[enter_recovery, empty_detector])
 
         await harness.controller._tick()
         assert isinstance(harness.controller._state_machine.state, Recovering)
-        assert critical_empty.call_count > 0
+        assert empty_detector.call_count > 0
 
 
 # ===================================================================

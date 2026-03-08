@@ -18,9 +18,8 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
 from miles.utils.ft.controller.recovery.restart_stepper.handlers import RestartContext
 from miles.utils.ft.controller.recovery.restart_stepper.states import RestartDone, RestartFailed, RestartState
 from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.models.fault import TriggerType, unique_node_ids
+from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.platform import (
-    AlertCheckerProtocol,
     DiagnosticOrchestratorProtocol,
     NotificationProtocol,
 )
@@ -41,7 +40,7 @@ class RecoveryContext(FtBaseModel):
     recovery_start_time: datetime
 
     # deps
-    alert_checker: AlertCheckerProtocol
+    check_evictable_faults: Callable[[], set[str]]
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     restart_stepper: Callable[[RestartState, RestartContext], Awaitable[RestartState | None]]
     restart_context: RestartContext
@@ -77,18 +76,12 @@ class RealtimeChecksHandler:
                 bad_node_ids=state.pre_identified_bad_nodes,
             )
 
-        node_faults = ctx.alert_checker.check_alerts()
-        if not node_faults:
-            logger.info("check_alerts_clean trigger=%s", ctx.trigger)
-            return EvictingAndRestarting.direct_restart()
+        bad_node_ids = ctx.check_evictable_faults()
+        if bad_node_ids:
+            logger.info("realtime_checks_found bad_nodes=%s", sorted(bad_node_ids))
+            return EvictingAndRestarting.evict_and_restart(bad_node_ids=sorted(bad_node_ids))
 
-        non_ephemeral = [f for f in node_faults if not f.ephemeral]
-        if non_ephemeral:
-            bad_ids = sorted(unique_node_ids(non_ephemeral))
-            logger.info("check_alerts_found bad_nodes=%s", bad_ids)
-            return EvictingAndRestarting.evict_and_restart(bad_node_ids=bad_ids)
-
-        logger.info("check_alerts_ephemeral_only trigger=%s", ctx.trigger)
+        logger.info("realtime_checks_clean trigger=%s", ctx.trigger)
         return EvictingAndRestarting.direct_restart()
 
 

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-    from miles.utils.ft.models.fault import NodeFault, TriggerType
+    from miles.utils.ft.models.fault import TriggerType
 
 
 class JobStatus(str, Enum):
@@ -46,11 +46,6 @@ class NotificationProtocol(Protocol):
     async def send(self, title: str, content: str, severity: str) -> None: ...
 
     async def aclose(self) -> None: ...
-
-
-@runtime_checkable
-class AlertCheckerProtocol(Protocol):
-    def check_alerts(self) -> list[NodeFault]: ...
 
 
 @runtime_checkable

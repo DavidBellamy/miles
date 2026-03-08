@@ -98,7 +98,7 @@ class FixedDecisionDetector(BaseFaultDetector):
         self.call_count = 0
         self._decision = decision
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         self.call_count += 1
         return self._decision
 
@@ -139,23 +139,9 @@ class CrashingDetector(BaseFaultDetector):
     def __init__(self) -> None:
         self.call_count = 0
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         self.call_count += 1
         raise RuntimeError("detector internal error")
-
-
-class CriticalFixedDecisionDetector(BaseFaultDetector):
-    """A detector marked as critical that returns a fixed Decision."""
-
-    is_critical = True
-
-    def __init__(self, decision: Decision) -> None:
-        self.call_count = 0
-        self._decision = decision
-
-    def evaluate(self, ctx: DetectorContext) -> Decision:
-        self.call_count += 1
-        return self._decision
 
 
 # ---------------------------------------------------------------------------
