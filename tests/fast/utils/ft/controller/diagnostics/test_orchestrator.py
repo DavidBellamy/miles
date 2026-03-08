@@ -387,8 +387,8 @@ class TestPreExecutors:
                 self,
                 agents: dict[str, FakeNodeAgent],
                 timeout_seconds: int,
-            ) -> tuple[list[str], dict[str, FakeNodeAgent]]:
-                return list(agents.keys()), {}
+            ) -> list[str]:
+                return list(agents.keys())
 
         agents = make_fake_agents({"node-0": {"gpu": True}, "node-1": {"gpu": True}})
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
@@ -407,8 +407,8 @@ class TestPreExecutors:
                 self,
                 agents: dict[str, FakeNodeAgent],
                 timeout_seconds: int,
-            ) -> tuple[list[str], dict[str, FakeNodeAgent]]:
-                return [], dict(agents)
+            ) -> list[str]:
+                return []
 
         agents = make_fake_agents({"node-0": {"gpu": False}})
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])

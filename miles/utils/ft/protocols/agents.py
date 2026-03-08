@@ -32,11 +32,11 @@ class DiagnosticProtocol(Protocol):
 class DiagnosticExecutor(Protocol):
     """Strategy for executing one diagnostic step within the pipeline.
 
-    Returns (bad_node_ids, remaining_agents_without_bad_nodes).
+    Returns bad_node_ids (empty if all healthy).
     """
 
     async def execute(
         self,
         agents: dict[str, NodeAgentProtocol],
         timeout_seconds: int,
-    ) -> tuple[list[str], dict[str, NodeAgentProtocol]]: ...
+    ) -> list[str]: ...

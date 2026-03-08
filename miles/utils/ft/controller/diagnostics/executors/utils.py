@@ -96,17 +96,13 @@ async def gather_diagnostic_results(
 
 def partition_results(
     results: dict[str, DiagnosticResult],
-    agents: dict[str, NodeAgentProtocol],
     diagnostic_type: str,
-) -> tuple[list[str], dict[str, NodeAgentProtocol]]:
-    """Split results into (bad_node_ids, remaining_agents)."""
+) -> list[str]:
+    """Return node IDs that failed the diagnostic."""
     bad_node_ids: list[str] = []
-    remaining: dict[str, NodeAgentProtocol] = {}
 
     for node_id, result in results.items():
-        if result.passed:
-            remaining[node_id] = agents[node_id]
-        else:
+        if not result.passed:
             bad_node_ids.append(node_id)
             logger.info(
                 "diagnostic_node_failed type=%s node=%s details=%s",
@@ -115,4 +111,4 @@ def partition_results(
                 result.details,
             )
 
-    return bad_node_ids, remaining
+    return bad_node_ids

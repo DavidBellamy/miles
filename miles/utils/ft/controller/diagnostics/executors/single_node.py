@@ -17,7 +17,7 @@ class SingleNodeExecutor:
         self,
         agents: dict[str, NodeAgentProtocol],
         timeout_seconds: int,
-    ) -> tuple[list[str], dict[str, NodeAgentProtocol]]:
+    ) -> list[str]:
         results = await gather_diagnostic_results(
             diagnostic_type=self._diagnostic_type,
             agents=agents,
@@ -25,6 +25,5 @@ class SingleNodeExecutor:
         )
         return partition_results(
             results=results,
-            agents=agents,
             diagnostic_type=self._diagnostic_type,
         )

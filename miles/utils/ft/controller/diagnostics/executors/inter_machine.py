@@ -43,12 +43,12 @@ class InterMachineExecutor:
         self,
         agents: dict[str, NodeAgentProtocol],
         timeout_seconds: int,
-    ) -> tuple[list[str], dict[str, NodeAgentProtocol]]:
+    ) -> list[str]:
         sorted_ids = sorted(agents.keys())
 
         if len(sorted_ids) < 2:
             logger.info("inter_machine_skip — fewer than 2 nodes")
-            return [], dict(agents)
+            return []
 
         pairs = [
             (sorted_ids[i], sorted_ids[(i + 1) % len(sorted_ids)])
@@ -72,10 +72,7 @@ class InterMachineExecutor:
             )
 
         results = await asyncio.gather(*tasks)
-        bad_node_ids = _cross_compare(node_ids=sorted_ids, pair_results=list(results))
-
-        remaining = {nid: a for nid, a in agents.items() if nid not in set(bad_node_ids)}
-        return bad_node_ids, remaining
+        return _cross_compare(node_ids=sorted_ids, pair_results=list(results))
 
     async def _run_single_pair(
         self,

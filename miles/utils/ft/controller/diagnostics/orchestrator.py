@@ -69,7 +69,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             )
 
         for executor in all_executors:
-            bad_node_ids, _ = await executor.execute(
+            bad_node_ids = await executor.execute(
                 agents=dict(self._agents),
                 timeout_seconds=self._default_timeout_seconds,
             )

@@ -24,16 +24,10 @@ class StackTraceExecutor:
         self,
         agents: dict[str, NodeAgentProtocol],
         timeout_seconds: int,
-    ) -> tuple[list[str], dict[str, NodeAgentProtocol]]:
+    ) -> list[str]:
         suspects = await collect_stack_trace_suspects(
             agents=agents,
             rank_pids_provider=self._rank_pids_provider,
             default_timeout_seconds=timeout_seconds,
         )
-
-        if suspects:
-            suspect_set = set(suspects)
-            remaining = {nid: a for nid, a in agents.items() if nid not in suspect_set}
-            return suspects, remaining
-
-        return [], dict(agents)
+        return suspects if suspects else []

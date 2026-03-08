@@ -86,11 +86,10 @@ async def run_inter_machine_diagnostics(
     async with _managed_agents(nodes) as agents:
         node_addresses = build_node_address_map(nodes)
         executor = InterMachineExecutor(node_addresses=node_addresses)
-        bad_node_ids, _ = await executor.execute(
+        return await executor.execute(
             agents=agents,
             timeout_seconds=timeout_seconds,
         )
-        return bad_node_ids
 
 
 # ---------------------------------------------------------------------------

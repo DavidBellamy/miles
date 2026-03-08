@@ -40,11 +40,10 @@ class TestStackTraceExecutorBasic:
             ]
         ) as mock_diag_cls:
             executor = StackTraceExecutor(rank_pids_provider=pids_provider)
-            bad_nodes, remaining = await executor.execute(agents=agents, timeout_seconds=120)
+            bad_nodes = await executor.execute(agents=agents, timeout_seconds=120)
 
             assert mock_diag_cls.call_count == 2
             assert bad_nodes == []
-            assert set(remaining.keys()) == {"node-0", "node-1"}
 
     @pytest.mark.anyio
     async def test_outlier_detected_returns_as_bad_node(self) -> None:
@@ -71,11 +70,9 @@ class TestStackTraceExecutorBasic:
             ]
         ):
             executor = StackTraceExecutor(rank_pids_provider=pids_provider)
-            bad_nodes, remaining = await executor.execute(agents=agents, timeout_seconds=120)
+            bad_nodes = await executor.execute(agents=agents, timeout_seconds=120)
 
             assert bad_nodes == ["node-2"]
-            assert "node-2" not in remaining
-            assert set(remaining.keys()) == {"node-0", "node-1"}
 
 
 class TestStackTraceExecutorFailures:
@@ -101,10 +98,9 @@ class TestStackTraceExecutorFailures:
             ]
         ):
             executor = StackTraceExecutor(rank_pids_provider=pids_provider)
-            bad_nodes, remaining = await executor.execute(agents=agents, timeout_seconds=120)
+            bad_nodes = await executor.execute(agents=agents, timeout_seconds=120)
 
             assert "node-1" in bad_nodes
-            assert "node-1" not in remaining
 
     @pytest.mark.anyio
     async def test_exception_during_collection_makes_node_bad(self) -> None:
@@ -131,7 +127,7 @@ class TestStackTraceExecutorFailures:
             ]
         ):
             executor = StackTraceExecutor(rank_pids_provider=pids_provider)
-            bad_nodes, remaining = await executor.execute(agents=agents, timeout_seconds=120)
+            bad_nodes = await executor.execute(agents=agents, timeout_seconds=120)
 
             assert "node-1" in bad_nodes
             assert "node-0" not in bad_nodes
@@ -158,10 +154,9 @@ class TestStackTraceExecutorFailures:
             ]
         ):
             executor = StackTraceExecutor(rank_pids_provider=raising_provider)
-            bad_nodes, remaining = await executor.execute(agents=agents, timeout_seconds=120)
+            bad_nodes = await executor.execute(agents=agents, timeout_seconds=120)
 
         assert "node-0" in bad_nodes
-        assert "node-0" not in remaining
 
 
 class TestStackTraceExecutorIntegrationWithPipeline:

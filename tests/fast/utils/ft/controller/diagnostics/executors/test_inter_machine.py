@@ -179,19 +179,17 @@ class TestExecuteEdgeCases:
         agents = {"A": _make_inter_machine_agent("A")}
         executor = InterMachineExecutor()
 
-        bad, remaining = await executor.execute(agents=agents, timeout_seconds=30)
+        bad = await executor.execute(agents=agents, timeout_seconds=30)
 
         assert bad == []
-        assert "A" in remaining
 
     @pytest.mark.anyio
     async def test_empty_nodes_returns_empty(self) -> None:
         executor = InterMachineExecutor()
 
-        bad, remaining = await executor.execute(agents={}, timeout_seconds=30)
+        bad = await executor.execute(agents={}, timeout_seconds=30)
 
         assert bad == []
-        assert remaining == {}
 
     @pytest.mark.anyio
     async def test_two_nodes_all_pass(self) -> None:
@@ -201,10 +199,9 @@ class TestExecuteEdgeCases:
         }
         executor = InterMachineExecutor()
 
-        bad, remaining = await executor.execute(agents=agents, timeout_seconds=30)
+        bad = await executor.execute(agents=agents, timeout_seconds=30)
 
         assert bad == []
-        assert set(remaining.keys()) == {"A", "B"}
 
 
 # ===================================================================
@@ -283,7 +280,6 @@ class TestRunSinglePairAgentHang:
         }
         executor = InterMachineExecutor()
 
-        bad, remaining = await executor.execute(agents=agents, timeout_seconds=0)
+        bad = await executor.execute(agents=agents, timeout_seconds=0)
 
         assert "B" in bad
-        assert "B" not in remaining
