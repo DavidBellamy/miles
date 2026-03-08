@@ -2,7 +2,7 @@
 
 External callers (tracking_utils, megatron_utils, test helpers) use these
 factories instead of constructing agents + RayControllerClient themselves.
-All Ray wiring is encapsulated here in the platform layer.
+All Ray wiring is encapsulated here in the factories layer.
 """
 
 from __future__ import annotations
@@ -13,11 +13,12 @@ from typing import Any
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from miles.utils.ft.adapters.impl.ray.controller_client import RayControllerClient
+from miles.utils.ft.adapters.impl.ray.node_agent_actor import FtNodeAgentActor
+from miles.utils.ft.adapters.types import ft_node_agent_actor_name
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.platform.ray.controller_client import RayControllerClient
-from miles.utils.ft.platform.ray.node_agent_actor import FtNodeAgentActor
-from miles.utils.ft.protocols.controller import ft_node_agent_actor_name
+from miles.utils.ft.factories.node_agent import build_node_agent
 from miles.utils.ft.utils.env import get_ft_id
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
@@ -98,5 +99,9 @@ def ensure_node_agent(ft_id: str = "") -> None:
         actor_cls=FtNodeAgentActor,
         name=name,
         node_id=node_id,
-        actor_kwargs={"node_id": node_id, "ft_id": resolved_ft_id},
+        actor_kwargs={
+            "builder": build_node_agent,
+            "node_id": node_id,
+            "ft_id": resolved_ft_id,
+        },
     )

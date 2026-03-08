@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import ray
 
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.controller_factory import build_ft_controller
-from miles.utils.ft.platform.ray.node_agent_proxy import RayNodeAgentProxy
+from miles.utils.ft.adapters.impl.ray.node_agent_proxy import RayNodeAgentProxy
 
 
 class _FtControllerActorCls:
@@ -18,8 +19,14 @@ class _FtControllerActorCls:
     route to the appropriate component on FtController.
     """
 
-    def __init__(self, config: FtControllerConfig | None = None, **kwargs: object) -> None:
-        self._ctrl = build_ft_controller(config=config, **kwargs)
+    def __init__(
+        self,
+        *,
+        builder: Callable[..., Any],
+        config: Any = None,
+        **kwargs: object,
+    ) -> None:
+        self._ctrl = builder(config=config, **kwargs)
 
     async def run(self) -> None:
         await self._ctrl.run()

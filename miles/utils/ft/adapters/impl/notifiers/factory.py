@@ -7,10 +7,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from miles.utils.ft.platform.stubs import StubNotifier
+from miles.utils.ft.adapters.stubs import StubNotifier
 
 if TYPE_CHECKING:
-    from miles.utils.ft.platform.notifiers.webhook_notifier import BaseWebhookNotifier
+    from miles.utils.ft.adapters.impl.notifiers.webhook_notifier import BaseWebhookNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +40,14 @@ def build_notifier(
 
 
 def _get_notifier_class(notify_platform: str) -> type[BaseWebhookNotifier]:
-    from miles.utils.ft.platform.notifiers.discord_notifier import DiscordBaseWebhookNotifier
-    from miles.utils.ft.platform.notifiers.lark_notifier import LarkBaseWebhookNotifier
-    from miles.utils.ft.platform.notifiers.slack_notifier import SlackBaseWebhookNotifier
+    from miles.utils.ft.adapters.impl.notifiers.discord_notifier import DiscordWebhookNotifier
+    from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
+    from miles.utils.ft.adapters.impl.notifiers.slack_notifier import SlackWebhookNotifier
 
     registry: dict[str, type[BaseWebhookNotifier]] = {
-        "lark": LarkBaseWebhookNotifier,
-        "slack": SlackBaseWebhookNotifier,
-        "discord": DiscordBaseWebhookNotifier,
+        "lark": LarkWebhookNotifier,
+        "slack": SlackWebhookNotifier,
+        "discord": DiscordWebhookNotifier,
     }
     cls = registry.get(notify_platform)
     if cls is None:

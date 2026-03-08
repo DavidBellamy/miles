@@ -6,7 +6,7 @@ import time
 from kubernetes_asyncio import config as k8s_config
 from kubernetes_asyncio.client import ApiClient, CoreV1Api
 
-from miles.utils.ft.protocols.platform import NodeManagerProtocol
+from miles.utils.ft.adapters.types import NodeManagerProtocol
 from miles.utils.ft.utils.retry import retry_async_or_raise
 
 logger = logging.getLogger(__name__)

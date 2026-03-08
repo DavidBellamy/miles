@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 import ray
 
-from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.platform.node_agent_factory import (
-    DEFAULT_COLLECT_INTERVAL_SECONDS,
-    DEFAULT_NUM_GPUS,
-    build_node_agent,
-)
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
-from miles.utils.ft.protocols.controller import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, REGISTER_TIMEOUT_SECONDS
+from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
 
@@ -33,21 +29,14 @@ class _FtNodeAgentActorCls:
 
     def __init__(
         self,
+        *,
+        builder: Callable[..., Any],
         node_id: str = "",
         ft_id: str = "",
-        num_gpus: int = DEFAULT_NUM_GPUS,
-        collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
-        collectors_override: list[BaseCollector] | None = None,
-        diagnostics_override: list[NodeExecutorProtocol] | None = None,
+        **kwargs: object,
     ) -> None:
         self._ft_id = ft_id
-        self._agent = build_node_agent(
-            node_id=node_id,
-            num_gpus=num_gpus,
-            collect_interval_seconds=collect_interval_seconds,
-            collectors_override=collectors_override,
-            diagnostics_override=diagnostics_override,
-        )
+        self._agent = builder(node_id=node_id, **kwargs)
 
     async def start(self) -> None:
         await self._agent.start()

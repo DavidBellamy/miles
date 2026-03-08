@@ -8,8 +8,8 @@ from uuid import uuid4
 
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.platform.ray.node_discovery import resolve_to_ray_node_ids
-from miles.utils.ft.protocols.platform import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus, TrainingJobProtocol
+from miles.utils.ft.adapters.impl.ray.node_discovery import resolve_to_ray_node_ids
+from miles.utils.ft.adapters.types import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus, TrainingJobProtocol
 from miles.utils.ft.utils.polling import poll_until
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,6 @@ _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
     "SUCCEEDED": JobStatus.STOPPED,
     "FAILED": JobStatus.FAILED,
 }
-
 _TERMINAL_STATUSES = frozenset(("STOPPED", "FAILED", "SUCCEEDED"))
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 5.0
@@ -88,7 +87,8 @@ class RayTrainingJob(TrainingJobProtocol):
     ) -> str:
         if self._job_id is not None:
             raise RuntimeError(
-                f"Cannot submit: previous job {self._job_id} still tracked. " "Call stop_training() first."
+                f"Cannot submit: previous job {self._job_id} still tracked. "
+                "Call stop_training() first."
             )
 
         run_id = uuid4().hex[:8]

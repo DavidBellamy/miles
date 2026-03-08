@@ -9,7 +9,9 @@ from __future__ import annotations
 import socket
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
+from miles.utils.ft.adapters.types import NodeExecutorProtocol
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 from miles.utils.ft.agents.collectors.gpu import GpuCollector
@@ -22,7 +24,6 @@ from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwi
 from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
 from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
 from miles.utils.ft.controller.detectors.checks.hardware import _check_disk_fault, _check_majority_nic_down
-from miles.utils.ft.protocols.agents import NodeExecutorProtocol
 
 DEFAULT_NUM_GPUS: int = 8
 DEFAULT_COLLECT_INTERVAL_SECONDS: float = 10.0
@@ -70,6 +71,7 @@ def build_node_agent(
     collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
     collectors_override: list[BaseCollector] | None = None,
     diagnostics_override: list[NodeExecutorProtocol] | None = None,
+    **kwargs: Any,
 ) -> FtNodeAgent:
     resolved_node_id = node_id or socket.gethostname()
     collectors = collectors_override if collectors_override is not None else build_default_collectors()
@@ -81,4 +83,21 @@ def build_node_agent(
         collectors=collectors,
         collect_interval_seconds=collect_interval_seconds,
         diagnostics=diagnostics,
+    )
+
+
+def launch_node_agent_actor(
+    node_id: str,
+    ft_id: str = "",
+    actor_name: str = "",
+    **kwargs: Any,
+) -> Any:
+    """Create and return a named FtNodeAgentActor with builder injection."""
+    from miles.utils.ft.adapters.impl.ray.node_agent_actor import FtNodeAgentActor
+
+    return FtNodeAgentActor.options(name=actor_name).remote(
+        builder=build_node_agent,
+        node_id=node_id,
+        ft_id=ft_id,
+        **kwargs,
     )

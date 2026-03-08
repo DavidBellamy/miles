@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 
-from miles.utils.ft.protocols.platform import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus
+from miles.utils.ft.adapters.types import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus
 
 logger = logging.getLogger(__name__)
 

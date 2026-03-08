@@ -1,6 +1,6 @@
 from typing import Any
 
-from miles.utils.ft.platform.notifiers.webhook_notifier import BaseWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.webhook_notifier import BaseWebhookNotifier
 
 _SEVERITY_EMOJI = {
     "critical": ":red_circle:",

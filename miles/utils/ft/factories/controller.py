@@ -2,7 +2,7 @@
 
 Assembles the controller with all concrete implementations (K8sNodeManager,
 RayTrainingJob, notifiers, metric stores, detectors). Analogous to
-node_agent_factory.py for the node agent side.
+node_agent.py for the node agent side.
 """
 
 from __future__ import annotations
@@ -12,6 +12,14 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.adapters.impl.notifiers.factory import build_notifier
+from miles.utils.ft.adapters.stubs import StubNodeManager, StubTrainingJob
+from miles.utils.ft.adapters.types import (
+    NodeManagerProtocol,
+    NotifierProtocol,
+    TrainingJobProtocol,
+)
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
@@ -19,20 +27,12 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.notifiers.factory import build_notifier
-from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob
-from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
-from miles.utils.ft.protocols.platform import (
-    NodeManagerProtocol,
-    NotifierProtocol,
-    TrainingJobProtocol,
-)
 
 if TYPE_CHECKING:
-    from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-    from miles.utils.ft.platform.ray.training_job import RayTrainingJob
+    from miles.utils.ft.adapters.impl.k8s_node_manager import K8sNodeManager
+    from miles.utils.ft.adapters.impl.ray.training_job import RayTrainingJob
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,19 @@ def build_ft_controller(
     return FtController.create(**create_kwargs)
 
 
+def launch_ft_controller_actor(
+    config: FtControllerConfig,
+    actor_name: str,
+) -> Any:
+    """Create and return a named FtControllerActor with builder injection."""
+    from miles.utils.ft.adapters.impl.ray.controller_actor import FtControllerActor
+
+    return FtControllerActor.options(name=actor_name).remote(
+        builder=build_ft_controller,
+        config=config,
+    )
+
+
 def _build_platform_components(
     platform: str,
     ray_address: str,
@@ -164,8 +177,8 @@ def _build_platform_components(
     if platform == "k8s-ray":
         from ray.job_submission import JobSubmissionClient
 
-        from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-        from miles.utils.ft.platform.ray.training_job import RayTrainingJob
+        from miles.utils.ft.adapters.impl.k8s_node_manager import K8sNodeManager
+        from miles.utils.ft.adapters.impl.ray.training_job import RayTrainingJob
 
         node_manager = K8sNodeManager(label_prefix=k8s_label_prefix)
         training_job = RayTrainingJob(

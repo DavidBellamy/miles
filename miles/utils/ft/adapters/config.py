@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field
 
 from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class FtControllerConfig(FtBaseModel):
