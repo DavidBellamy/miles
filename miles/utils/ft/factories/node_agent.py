@@ -21,6 +21,7 @@ from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.executors.collector_based import CollectorBasedNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
 from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
 from miles.utils.ft.controller.detectors.checks.hardware import _check_disk_fault, _check_majority_nic_down
 
@@ -43,6 +44,7 @@ def build_all_diagnostics(
     which subset to actually run (e.g. local CLI excludes nccl_pairwise).
     """
     return [
+        StackTraceNodeExecutor(),
         GpuNodeExecutor(),
         NcclNodeExecutor(diagnostic_type="nccl_simple", expected_bandwidth_gbps=350.0, num_gpus=num_gpus),
         NcclNodeExecutor(
