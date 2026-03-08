@@ -235,3 +235,76 @@ class TestGetRankPidsForNode:
         registry = _make_registry()
 
         assert registry.get_rank_pids_for_node("node-X") == {}
+
+
+# ===================================================================
+# warn_if_incomplete
+# ===================================================================
+
+
+class TestWarnIfIncomplete:
+    def test_warns_when_registered_less_than_expected(self, caplog: pytest.LogCaptureFixture) -> None:
+        registry = _make_registry()
+        registry.register_training_rank(
+            run_id="run-1",
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="addr",
+            pid=10,
+        )
+        registry.register_training_rank(
+            run_id="run-1",
+            rank=1,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="addr",
+            pid=20,
+        )
+
+        with caplog.at_level("WARNING"):
+            registry.warn_if_incomplete()
+
+        assert "incomplete_rank_registration" in caplog.text
+        assert "registered=2" in caplog.text
+        assert "expected=4" in caplog.text
+
+    def test_no_warn_when_expected_world_size_is_none(self, caplog: pytest.LogCaptureFixture) -> None:
+        registry = _make_registry()
+
+        with caplog.at_level("WARNING"):
+            registry.warn_if_incomplete()
+
+        assert "incomplete_rank_registration" not in caplog.text
+
+    def test_no_warn_when_all_ranks_registered(self, caplog: pytest.LogCaptureFixture) -> None:
+        registry = _make_registry()
+        registry.register_training_rank(
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="addr",
+            pid=10,
+        )
+        registry.register_training_rank(
+            run_id="run-1",
+            rank=1,
+            world_size=2,
+            node_id="node-1",
+            exporter_address="addr",
+            pid=20,
+        )
+
+        with caplog.at_level("WARNING"):
+            registry.warn_if_incomplete()
+
+        assert "incomplete_rank_registration" not in caplog.text
+
+    def test_no_warn_when_empty_roster(self, caplog: pytest.LogCaptureFixture) -> None:
+        registry = _make_registry(run_id=None)
+
+        with caplog.at_level("WARNING"):
+            registry.warn_if_incomplete()
+
+        assert "incomplete_rank_registration" not in caplog.text
