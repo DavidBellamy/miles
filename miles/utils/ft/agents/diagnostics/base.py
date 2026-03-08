@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any
 
 from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
 from miles.utils.ft.agents.types import DiagnosticResult
 
 
-class BaseNodeExecutor(NodeExecutorProtocol, ABC):
+class BaseNodeExecutor(NodeExecutorProtocol):
     """Base class for all on-demand diagnostics.
 
     Subclasses implement run() to execute a diagnostic on a single node.
