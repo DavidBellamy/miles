@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 
 
 def print_results(

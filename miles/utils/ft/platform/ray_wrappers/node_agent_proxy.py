@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol
 
 logger = logging.getLogger(__name__)

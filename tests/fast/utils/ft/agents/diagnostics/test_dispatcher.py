@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
-from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.models.diagnostic import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.protocols.agents import NodeExecutorProtocol
 
 

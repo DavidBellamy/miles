@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.agents.diagnostics.utils.nccl_utils import build_nccl_test_cmd, run_nccl_test
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 
 _DEFAULT_NUM_GPUS: int = 8
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS

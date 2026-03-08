@@ -10,7 +10,7 @@ from tests.fast.utils.ft.utils import FailingCloseCollector, FailingCollector
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.models.diagnostic import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.models.metrics import CollectorOutput, GaugeSample
 
 

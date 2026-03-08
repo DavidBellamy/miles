@@ -9,7 +9,7 @@ from typing import Annotated, Any
 import typer
 
 from miles.utils.ft.cli.diag.output import exit_with_results, print_results
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def _deploy_agents(
     from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
     from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
-    from miles.utils.ft.models.diagnostics import DiagnosticResult
+    from miles.utils.ft.models.diagnostic import DiagnosticResult
     from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
     from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 

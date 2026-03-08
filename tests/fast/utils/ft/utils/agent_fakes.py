@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyFrame, PySpyThread
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.models.metrics import MetricSample
 
 

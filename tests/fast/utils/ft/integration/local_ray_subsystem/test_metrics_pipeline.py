@@ -13,7 +13,7 @@ from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig

@@ -5,7 +5,7 @@ from collections.abc import Callable
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.models.fault import NodeFault
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
