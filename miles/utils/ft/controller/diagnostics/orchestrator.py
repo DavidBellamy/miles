@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
 
-from miles.utils.ft.controller.diagnostics.stack_trace import collect_stack_trace_suspects
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticExecutor, NodeAgentProtocol
 from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol
 
@@ -34,31 +31,23 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
 
     async def run_diagnostic_pipeline(
         self,
-        trigger_reason: TriggerType,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
+        pre_executors: list[DiagnosticExecutor] | None = None,
     ) -> DiagnosticPipelineResult:
         logger.info(
-            "diagnostic_pipeline_start trigger=%s suspect_nodes=%s pipeline_steps=%d",
-            trigger_reason,
-            suspect_node_ids,
+            "diagnostic_pipeline_start pipeline_steps=%d pre_executors=%d",
             len(self._pipeline),
+            len(pre_executors) if pre_executors else 0,
         )
 
         try:
             return await asyncio.wait_for(
-                self._run_diagnostic_pipeline_inner(
-                    trigger_reason=trigger_reason,
-                    suspect_node_ids=suspect_node_ids,
-                    rank_pids_provider=rank_pids_provider,
-                ),
+                self._run_diagnostic_pipeline_inner(pre_executors=pre_executors),
                 timeout=self._pipeline_timeout_seconds,
             )
         except asyncio.TimeoutError:
             logger.warning(
-                "diagnostic_pipeline_timeout timeout=%d trigger=%s",
+                "diagnostic_pipeline_timeout timeout=%d",
                 self._pipeline_timeout_seconds,
-                trigger_reason,
             )
             return DiagnosticPipelineResult(
                 bad_node_ids=[],
@@ -67,38 +56,20 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
 
     async def _run_diagnostic_pipeline_inner(
         self,
-        trigger_reason: TriggerType,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
+        pre_executors: list[DiagnosticExecutor] | None = None,
     ) -> DiagnosticPipelineResult:
-        if trigger_reason == TriggerType.HANG and rank_pids_provider is not None:
-            suspect_from_trace = await collect_stack_trace_suspects(
-                agents=self._agents,
-                rank_pids_provider=rank_pids_provider,
-                default_timeout_seconds=self._default_timeout_seconds,
-            )
-            if suspect_from_trace:
-                if suspect_node_ids is not None:
-                    suspect_node_ids = sorted(set(suspect_node_ids) | set(suspect_from_trace))
-                else:
-                    suspect_node_ids = suspect_from_trace
+        all_executors = (pre_executors or []) + self._pipeline
 
-        if not self._pipeline:
+        if not all_executors:
             logger.info("diagnostic_pipeline_empty — no diagnostics configured")
             return DiagnosticPipelineResult(
                 bad_node_ids=[],
                 reason="no diagnostics configured (empty pipeline)",
             )
 
-        if suspect_node_ids is not None:
-            suspect_set = set(suspect_node_ids)
-            remaining_agents: dict[str, NodeAgentProtocol] = {
-                nid: agent for nid, agent in self._agents.items() if nid in suspect_set
-            }
-        else:
-            remaining_agents = dict(self._agents)
+        remaining_agents: dict[str, NodeAgentProtocol] = dict(self._agents)
 
-        for executor in self._pipeline:
+        for executor in all_executors:
             if not remaining_agents:
                 break
 
@@ -117,7 +88,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                     reason=f"diagnostic failed on nodes: {bad_node_ids}",
                 )
 
-        logger.info("diagnostic_pipeline_all_passed trigger=%s", trigger_reason)
+        logger.info("diagnostic_pipeline_all_passed")
         return DiagnosticPipelineResult(
             bad_node_ids=[],
             reason="all diagnostics passed — no bad nodes found",

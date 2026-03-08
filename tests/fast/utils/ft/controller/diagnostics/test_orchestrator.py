@@ -1,20 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-from unittest.mock import patch
 
 import pytest
 from tests.fast.utils.ft.utils import (
-    SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
-    SAMPLE_PYSPY_JSON_STUCK,
     FakeNodeAgent,
     HangingNodeAgent,
     StubDiagnostic,
     make_fake_agents,
-    make_rank_pids_provider,
-    make_trace_result,
-    mock_stack_trace_diagnostic,
 )
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
@@ -69,14 +62,14 @@ class TestDiagnosticOrchestratorEmptyPipeline:
     async def test_empty_pipeline_returns_notify_human(self) -> None:
         agents = make_fake_agents({"node-0": {}})
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
     async def test_no_pipeline_arg_returns_notify_human(self) -> None:
         orchestrator = DiagnosticOrchestrator(agents={})
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="hang")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
 
@@ -91,7 +84,7 @@ class TestDiagnosticOrchestratorSingleStep:
             }
         )
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
 
@@ -104,7 +97,7 @@ class TestDiagnosticOrchestratorSingleStep:
             }
         )
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
@@ -119,7 +112,7 @@ class TestDiagnosticOrchestratorSingleStep:
             }
         )
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
@@ -138,7 +131,7 @@ class TestDiagnosticOrchestratorMultiStep:
             agents=agents,
             pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-0"]
@@ -155,7 +148,7 @@ class TestDiagnosticOrchestratorMultiStep:
             agents=agents,
             pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-1"]
@@ -172,7 +165,7 @@ class TestDiagnosticOrchestratorMultiStep:
             agents=agents,
             pipeline=[GpuExecutor(), SingleNodeExecutor("intra")],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
 
@@ -194,50 +187,17 @@ class TestDiagnosticOrchestratorErrorHandling:
             "node-1": _RaisingAgent(),
         }
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
 
     @pytest.mark.anyio
-    async def test_trigger_reason_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        agents: dict[str, FakeNodeAgent] = {}
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[])
-
-        with caplog.at_level(logging.INFO):
-            await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                suspect_node_ids=["node-0"],
-            )
-
-        assert "hang" in caplog.text
-
-    @pytest.mark.anyio
     async def test_no_agents_returns_notify(self) -> None:
         orchestrator = DiagnosticOrchestrator(agents={}, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
-
-    @pytest.mark.anyio
-    async def test_suspect_node_ids_limits_scope(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": False},
-                "node-1": {"gpu": False},
-                "node-2": {"gpu": True},
-            }
-        )
-        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
-        decision = await orchestrator.run_diagnostic_pipeline(
-            trigger_reason="crash",
-            suspect_node_ids=["node-0", "node-2"],
-        )
-
-        assert len(decision.bad_node_ids) > 0
-        assert "node-0" in decision.bad_node_ids
-        assert "node-1" not in decision.bad_node_ids
-        assert "node-2" not in decision.bad_node_ids
 
 
 class TestDiagnosticOrchestratorInterMachine:
@@ -256,7 +216,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
         assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
@@ -272,7 +232,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-0" in decision.bad_node_ids
@@ -290,7 +250,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
         assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
@@ -305,7 +265,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
         assert decision.bad_node_ids == []
 
     @pytest.mark.anyio
@@ -315,7 +275,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
         assert decision.bad_node_ids == []
 
     def test_inter_machine_pairing_is_round_robin(self) -> None:
@@ -363,7 +323,7 @@ class TestDiagnosticOrchestratorInterMachine:
             agents=agents,
             pipeline=[InterMachineExecutor()],
         )
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
@@ -382,9 +342,7 @@ class TestDiagnosticOrchestratorLiveAgents:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[SingleNodeExecutor("stub")])
 
         try:
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="crash",
-            )
+            decision = await orchestrator.run_diagnostic_pipeline()
             assert decision.bad_node_ids == []
         finally:
             await agent0.stop()
@@ -404,9 +362,7 @@ class TestDiagnosticOrchestratorLiveAgents:
         )
 
         try:
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="crash",
-            )
+            decision = await orchestrator.run_diagnostic_pipeline()
             # node-1 has diagnostic_type="failing", not "stub",
             # so it gets "unknown diagnostic type" → treated as fail
             assert len(decision.bad_node_ids) > 0
@@ -417,305 +373,50 @@ class TestDiagnosticOrchestratorLiveAgents:
 
 
 # ---------------------------------------------------------------------------
-# Stack trace pre-step tests
+# Pre-executor tests (verifying the pre_executors parameter)
 # ---------------------------------------------------------------------------
 
 
-class TestStackTracePreStep:
+class TestPreExecutors:
     @pytest.mark.anyio
-    async def test_hang_trigger_runs_stack_trace(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": True},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-            }
+    async def test_pre_executor_runs_before_pipeline(self) -> None:
+        """A pre_executor that returns bad_node_ids short-circuits the pipeline."""
+
+        class _EvictAllExecutor:
+            async def execute(
+                self,
+                agents: dict[str, FakeNodeAgent],
+                timeout_seconds: int,
+            ) -> tuple[list[str], dict[str, FakeNodeAgent]]:
+                return list(agents.keys()), {}
+
+        agents = make_fake_agents({"node-0": {"gpu": True}, "node-1": {"gpu": True}})
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
+        decision = await orchestrator.run_diagnostic_pipeline(
+            pre_executors=[_EvictAllExecutor()],
         )
 
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-            ]
-        ) as mock_diag_cls:
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=pids_provider,
-            )
-
-            assert mock_diag_cls.call_count == 2
-            assert decision.bad_node_ids == []
+        assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
     @pytest.mark.anyio
-    async def test_crash_trigger_skips_stack_trace(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": True},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-            }
-        )
+    async def test_pre_executor_passes_through_to_pipeline(self) -> None:
+        """A pre_executor that returns no bad nodes allows the pipeline to continue."""
 
-        with patch(
-            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
-        ) as mock_diag_cls:
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="crash",
-                rank_pids_provider=pids_provider,
-            )
+        class _PassThroughExecutor:
+            async def execute(
+                self,
+                agents: dict[str, FakeNodeAgent],
+                timeout_seconds: int,
+            ) -> tuple[list[str], dict[str, FakeNodeAgent]]:
+                return [], dict(agents)
 
-            mock_diag_cls.assert_not_called()
-            assert decision.bad_node_ids == []
-
-    @pytest.mark.anyio
-    async def test_no_rank_pids_provider_skips_stack_trace(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-            }
+        agents = make_fake_agents({"node-0": {"gpu": False}})
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuExecutor()])
+        decision = await orchestrator.run_diagnostic_pipeline(
+            pre_executors=[_PassThroughExecutor()],
         )
 
-        with patch(
-            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
-        ) as mock_diag_cls:
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-            )
-
-            mock_diag_cls.assert_not_called()
-            assert decision.bad_node_ids == []
-
-    @pytest.mark.anyio
-    async def test_stack_trace_suspect_limits_pipeline_scope(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": False},
-                "node-1": {"gpu": False},
-                "node-2": {"gpu": False},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-                "node-2": {2: 300},
-            }
-        )
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_DIFFERENT_STUCK),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=pids_provider,
-            )
-
-            assert len(decision.bad_node_ids) > 0
-            assert decision.bad_node_ids == ["node-2"]
-
-    @pytest.mark.anyio
-    async def test_stack_trace_no_suspect_runs_on_all(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": True},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-            }
-        )
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=pids_provider,
-            )
-
-            assert decision.bad_node_ids == []
-
-    @pytest.mark.anyio
-    async def test_collection_failure_makes_node_suspect(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": False},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-            }
-        )
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-1", passed=False, details="failed to collect"),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=pids_provider,
-            )
-
-            assert len(decision.bad_node_ids) > 0
-            assert "node-1" in decision.bad_node_ids
-
-    @pytest.mark.anyio
-    async def test_stack_trace_exception_makes_node_suspect(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": False},
-                "node-2": {"gpu": True},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-                "node-2": {2: 300},
-            }
-        )
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                RuntimeError("py-spy crashed"),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=pids_provider,
-            )
-
-            assert len(decision.bad_node_ids) > 0
-            assert "node-1" in decision.bad_node_ids
-            assert "node-0" not in decision.bad_node_ids
-
-    @pytest.mark.anyio
-    async def test_rank_pids_provider_exception_isolates_to_one_node(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": False},
-                "node-1": {"gpu": True},
-                "node-2": {"gpu": True},
-            }
-        )
-
-        def raising_provider(node_id: str) -> dict[int, int]:
-            if node_id == "node-0":
-                raise RuntimeError("cannot query pids for node-0")
-            return {0: 100}
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                rank_pids_provider=raising_provider,
-            )
-
-        assert len(decision.bad_node_ids) > 0
-        assert "node-0" in decision.bad_node_ids
-
-    @pytest.mark.anyio
-    async def test_hang_merges_trace_suspects_with_existing(self) -> None:
-        agents = make_fake_agents(
-            {
-                "node-0": {"gpu": True},
-                "node-1": {"gpu": False},
-                "node-2": {"gpu": False},
-            }
-        )
-        pids_provider = make_rank_pids_provider(
-            {
-                "node-0": {0: 100},
-                "node-1": {1: 200},
-                "node-2": {2: 300},
-            }
-        )
-
-        with mock_stack_trace_diagnostic(
-            [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_DIFFERENT_STUCK),
-            ]
-        ):
-            orchestrator = DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=[GpuExecutor()],
-            )
-            decision = await orchestrator.run_diagnostic_pipeline(
-                trigger_reason="hang",
-                suspect_node_ids=["node-1"],
-                rank_pids_provider=pids_provider,
-            )
-
-            assert len(decision.bad_node_ids) > 0
-            assert "node-1" in decision.bad_node_ids
-            assert "node-2" in decision.bad_node_ids
-            assert "node-0" not in decision.bad_node_ids
+        assert decision.bad_node_ids == ["node-0"]
 
 
 # ---------------------------------------------------------------------------
@@ -736,7 +437,7 @@ class TestAgentRpcHang:
             default_timeout_seconds=0,
         )
 
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
@@ -758,7 +459,7 @@ class TestAgentRpcHang:
             default_timeout_seconds=0,
         )
 
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
@@ -777,7 +478,7 @@ class TestAgentRpcHang:
             default_timeout_seconds=0,
         )
 
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
@@ -802,7 +503,7 @@ class TestPipelineTimeout:
             pipeline_timeout_seconds=0,
         )
 
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
         assert "timed out" in decision.reason
@@ -821,7 +522,7 @@ class TestPipelineTimeout:
             pipeline_timeout_seconds=0,
         )
 
-        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline()
 
         assert decision.bad_node_ids == []
         assert "timed out" in decision.reason

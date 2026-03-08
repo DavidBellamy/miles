@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-    from miles.utils.ft.models.fault import TriggerType
+    from miles.utils.ft.protocols.agents import DiagnosticExecutor
 
 
 class JobStatus(str, Enum):
@@ -52,9 +51,7 @@ class NotificationProtocol(Protocol):
 class DiagnosticOrchestratorProtocol(Protocol):
     async def run_diagnostic_pipeline(
         self,
-        trigger_reason: TriggerType,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
+        pre_executors: list[DiagnosticExecutor] | None = None,
     ) -> DiagnosticPipelineResult: ...
 
 

@@ -46,9 +46,7 @@ class FakeDiagOrchestrator:
 
     async def run_diagnostic_pipeline(
         self,
-        trigger_reason: TriggerType,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: object = None,
+        pre_executors: object = None,
     ) -> DiagnosticPipelineResult:
         self.call_count += 1
         return self._result

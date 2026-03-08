@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from pydantic import ConfigDict
 
+from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     EvictingAndRestarting,
     NotifyHumans,
@@ -16,9 +17,10 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
 )
 from miles.utils.ft.controller.recovery.restart_stepper.handlers import RestartContext
 from miles.utils.ft.controller.recovery.restart_stepper.states import RestartDone, RestartFailed, RestartState
-from miles.utils.ft.controller.recovery.utils import safe_notify
+from miles.utils.ft.controller.diagnostics.executors import StackTraceExecutor
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import TriggerType
+from miles.utils.ft.protocols.agents import DiagnosticExecutor
 from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol, NotificationProtocol
 
 logger = logging.getLogger(__name__)
@@ -101,9 +103,12 @@ class StopTimeDiagnosticsHandler:
         state: StopTimeDiagnostics,
         ctx: RecoveryContext,
     ) -> RecoveryState:
+        pre_executors: list[DiagnosticExecutor] = []
+        if ctx.trigger == TriggerType.HANG and ctx.rank_pids_provider is not None:
+            pre_executors.append(StackTraceExecutor(rank_pids_provider=ctx.rank_pids_provider))
+
         result = await ctx.diagnostic_orchestrator.run_diagnostic_pipeline(
-            trigger_reason=ctx.trigger,
-            rank_pids_provider=ctx.rank_pids_provider,
+            pre_executors=pre_executors or None,
         )
 
         if result.bad_node_ids:
@@ -124,3 +129,5 @@ class NotifyHumansHandler:
         logger.warning("recovery_notify reason=%s", message)
         await safe_notify(ctx.notifier, title="Recovery Alert", content=message)
         return RecoveryDone()
+
+

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
@@ -79,18 +79,12 @@ class FakeDiagnosticOrchestrator:
             reason="fake diagnostic — all passed",
         )
         self.call_count: int = 0
-        self.last_trigger_reason: str | None = None
-        self.last_suspect_node_ids: list[str] | None = None
 
     async def run_diagnostic_pipeline(
         self,
-        trigger_reason: str,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
+        pre_executors: object = None,
     ) -> DiagnosticPipelineResult:
         self.call_count += 1
-        self.last_trigger_reason = trigger_reason
-        self.last_suspect_node_ids = suspect_node_ids
         return self._result
 
 
@@ -99,9 +93,7 @@ class HangingDiagnosticOrchestrator:
 
     async def run_diagnostic_pipeline(
         self,
-        trigger_reason: str,
-        suspect_node_ids: list[str] | None = None,
-        rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
+        pre_executors: object = None,
     ) -> DiagnosticPipelineResult:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
