@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
-from miles.utils.ft.cli.diag.output import exit_with_results, print_results, validate_check_names
+from miles.utils.ft.cli.diagnostics.output import exit_with_results, print_results, validate_check_names
 from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
 
 _LOCAL_EXCLUDED = {"nccl_pairwise"}

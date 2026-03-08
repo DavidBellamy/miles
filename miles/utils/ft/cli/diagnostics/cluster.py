@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 import typer
 
-from miles.utils.ft.cli.diag.output import exit_with_results, print_results, validate_check_names
+from miles.utils.ft.cli.diagnostics.output import exit_with_results, print_results, validate_check_names
 from miles.utils.ft.models.diagnostic import DiagnosticResult
 from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 
