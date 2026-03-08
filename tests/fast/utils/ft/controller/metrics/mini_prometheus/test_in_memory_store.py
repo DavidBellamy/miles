@@ -1,0 +1,164 @@
+"""Tests for InMemoryMetricStore: ingest, query_latest, query_range, aggregations."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import polars as pl
+import pytest
+
+from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
+from miles.utils.ft.models.metrics import CounterSample, GaugeSample
+
+
+def _ts(seconds: int) -> datetime:
+    return datetime(2026, 1, 1, 0, 0, seconds, tzinfo=timezone.utc)
+
+
+class TestIngestSamples:
+    def test_gauge_sample_stores_value(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[GaugeSample(name="temp", labels={"gpu": "0"}, value=75.0)],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("temp")
+        assert len(df) == 1
+        assert df["value"][0] == 75.0
+
+    def test_counter_sample_stores_delta(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[CounterSample(name="errors", labels={"gpu": "0"}, delta=3.0)],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("errors")
+        assert len(df) == 1
+        assert df["value"][0] == 3.0
+
+    def test_node_id_label_injected_by_default(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="node-42",
+            samples=[GaugeSample(name="temp", labels={}, value=1.0)],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("temp")
+        assert df["node_id"][0] == "node-42"
+
+    def test_existing_node_id_label_not_overwritten(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="node-42",
+            samples=[GaugeSample(name="temp", labels={"node_id": "custom"}, value=1.0)],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("temp")
+        assert df["node_id"][0] == "custom"
+
+    def test_multiple_series_distinguished_by_labels(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                GaugeSample(name="temp", labels={"gpu": "0"}, value=70.0),
+                GaugeSample(name="temp", labels={"gpu": "1"}, value=80.0),
+            ],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("temp")
+        assert len(df) == 2
+        values = sorted(df["value"].to_list())
+        assert values == [70.0, 80.0]
+
+
+class TestQueryLatest:
+    def test_returns_most_recent_value(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="n",
+            samples=[GaugeSample(name="m", labels={}, value=1.0)],
+            timestamp=_ts(1),
+        )
+        store.ingest_samples(
+            target_id="n",
+            samples=[GaugeSample(name="m", labels={}, value=9.0)],
+            timestamp=_ts(2),
+        )
+        df = store.query_latest("m")
+        assert df["value"][0] == 9.0
+
+    def test_nonexistent_metric_returns_empty(self) -> None:
+        store = InMemoryMetricStore()
+        df = store.query_latest("does_not_exist")
+        assert len(df) == 0
+
+    def test_label_filter_narrows_results(self) -> None:
+        store = InMemoryMetricStore()
+        store.ingest_samples(
+            target_id="n",
+            samples=[
+                GaugeSample(name="m", labels={"gpu": "0"}, value=1.0),
+                GaugeSample(name="m", labels={"gpu": "1"}, value=2.0),
+            ],
+            timestamp=_ts(10),
+        )
+        df = store.query_latest("m", label_filters={"gpu": "1"})
+        assert len(df) == 1
+        assert df["value"][0] == 2.0
+
+
+class TestQueryRange:
+    def test_returns_samples_within_window(self) -> None:
+        store = InMemoryMetricStore()
+        now = datetime.now(timezone.utc)
+        store.ingest_samples(
+            target_id="n",
+            samples=[GaugeSample(name="m", labels={}, value=10.0)],
+            timestamp=now - timedelta(seconds=5),
+        )
+        store.ingest_samples(
+            target_id="n",
+            samples=[GaugeSample(name="m", labels={}, value=20.0)],
+            timestamp=now - timedelta(seconds=1),
+        )
+        df = store.query_range("m", window=timedelta(seconds=30))
+        assert len(df) == 2
+
+    def test_empty_store_returns_empty_dataframe(self) -> None:
+        store = InMemoryMetricStore()
+        df = store.query_range("m", window=timedelta(seconds=30))
+        assert len(df) == 0
+
+
+class TestRangeAggregations:
+    def _make_store_with_series(self) -> InMemoryMetricStore:
+        store = InMemoryMetricStore()
+        now = datetime.now(timezone.utc)
+        for i, v in enumerate([1.0, 2.0, 2.0, 5.0]):
+            store.ingest_samples(
+                target_id="n",
+                samples=[GaugeSample(name="m", labels={}, value=v)],
+                timestamp=now - timedelta(seconds=10 - i),
+            )
+        return store
+
+    def test_count_over_time(self) -> None:
+        store = self._make_store_with_series()
+        df = store.count_over_time("m", window=timedelta(seconds=30))
+        assert len(df) == 1
+        assert df["value"][0] == 4.0
+
+    def test_avg_over_time(self) -> None:
+        store = self._make_store_with_series()
+        df = store.avg_over_time("m", window=timedelta(seconds=30))
+        assert len(df) == 1
+        assert df["value"][0] == pytest.approx(2.5)
+
+    def test_changes(self) -> None:
+        store = self._make_store_with_series()
+        df = store.changes("m", window=timedelta(seconds=30))
+        assert len(df) == 1
+        assert df["value"][0] == 2.0  # 1->2 and 2->5 are changes; 2->2 is not
