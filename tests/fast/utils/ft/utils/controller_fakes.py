@@ -254,6 +254,8 @@ def make_test_controller(
         diagnostic_orchestrator=diagnostic_orchestrator,
         recovery_cooldown=recovery_cooldown,
         registration_grace_ticks=registration_grace_ticks,
+        monitoring_success_iterations=monitoring_success_iterations,
+        monitoring_timeout_seconds=monitoring_timeout_seconds,
     )
 
     if register_dummy_rank:

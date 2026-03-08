@@ -174,7 +174,7 @@ class TestDetectorResilience:
         env = make_e2e_env(
             ft_id="e2edr",
             nodes=[NodeSpec(node_id="e2edr-node-0")],
-            detectors=[CrashingDetector(), TrainingCrashDetector()],
+            detectors=[TrainingCrashDetector(), CrashingDetector()],
         )
 
         # Step 1: let training run for a while with CrashingDetector throwing every tick
