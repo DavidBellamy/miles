@@ -16,7 +16,7 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
 )
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus, NotificationProtocol
+from miles.utils.ft.protocols.platform import JobStatus, NotifierProtocol
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class MainContext(FtBaseModel):
     detector_context: DetectorContext | None
 
     # deps
-    notifier: NotificationProtocol | None
+    notifier: NotifierProtocol | None
     detectors: list[BaseFaultDetector]
     cooldown: SlidingWindowThrottle
     detector_crash_tracker: SlidingWindowCounter
@@ -66,7 +66,7 @@ async def notify_too_many_bad_nodes(
     max_simultaneous_bad_nodes: int,
     trigger: TriggerType | None,
     context_str: str,
-    notifier: NotificationProtocol | None,
+    notifier: NotifierProtocol | None,
 ) -> None:
     logger.warning(
         "too_many_bad_nodes count=%d threshold=%d context=%s, likely false positive",

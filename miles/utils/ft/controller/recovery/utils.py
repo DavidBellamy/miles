@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
+from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ async def retry_mark_node_bad(
 
 
 async def safe_notify(
-    notifier: NotificationProtocol | None,
+    notifier: NotifierProtocol | None,
     title: str,
     content: str,
     severity: str = "critical",

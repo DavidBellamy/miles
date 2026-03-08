@@ -41,7 +41,7 @@ class TrainingJobProtocol(Protocol):
 
 
 @runtime_checkable
-class NotificationProtocol(Protocol):
+class NotifierProtocol(Protocol):
     async def send(self, title: str, content: str, severity: str) -> None: ...
 
     async def aclose(self) -> None: ...

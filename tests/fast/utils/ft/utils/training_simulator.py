@@ -292,7 +292,7 @@ class NotifierStateActor:
 
 
 class RemoteControlledNotifier:
-    """NotificationProtocol that delegates to a NotifierStateActor.
+    """NotifierProtocol that delegates to a NotifierStateActor.
 
     Serialized into FtControllerActor via cloudpickle. All send() calls
     are forwarded to the shared actor so the test driver can read them back.

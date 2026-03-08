@@ -21,7 +21,7 @@ from miles.utils.ft.controller.diagnostics.executors import StackTraceClusterExe
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
-from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol, NotificationProtocol
+from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol, NotifierProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class RecoveryContext(FtBaseModel):
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     restart_stepper: Callable[[RestartState, RestartContext], Awaitable[RestartState | None]]
     restart_context: RestartContext
-    notifier: NotificationProtocol | None
+    notifier: NotifierProtocol | None
     timeout_seconds: int
     rank_pids_provider: Callable[[str], dict[int, int]] | None
 

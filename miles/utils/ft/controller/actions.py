@@ -12,7 +12,7 @@ from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
-    NotificationProtocol,
+    NotifierProtocol,
     TrainingJobProtocol,
 )
 
@@ -27,7 +27,7 @@ class PlatformDeps:
     training_job: TrainingJobProtocol
     metric_store: MetricQueryProtocol
     mini_wandb: MiniWandb
-    notifier: NotificationProtocol | None
+    notifier: NotifierProtocol | None
     diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     controller_exporter: ControllerExporter | None
     on_new_run: Callable[[str], None] | None = field(default=None)
@@ -36,7 +36,7 @@ class PlatformDeps:
 
 async def handle_notify_human(
     decision: Decision,
-    notifier: NotificationProtocol | None,
+    notifier: NotifierProtocol | None,
 ) -> None:
     logger.warning(
         "decision_notify_human reason=%s",

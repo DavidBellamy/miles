@@ -23,7 +23,7 @@ from miles.utils.ft.controller.recovery.restart_stepper.states import (
     StoppingAndRestarting,
 )
 from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
+from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class RestartContext(FtBaseModel):
     node_manager: NodeManagerProtocol
     training_job: TrainingJobProtocol
     mini_wandb: MiniWandb
-    notifier: NotificationProtocol | None
+    notifier: NotifierProtocol | None
     on_new_run: Callable[[str], None] | None
     monitoring_success_iterations: int
     monitoring_timeout_seconds: int

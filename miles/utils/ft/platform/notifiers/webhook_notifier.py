@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from miles.utils.ft.protocols.platform import NotificationProtocol
+from miles.utils.ft.protocols.platform import NotifierProtocol
 from miles.utils.ft.utils.retry import retry_async_or_raise
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ _MAX_RETRIES = 3
 _INITIAL_BACKOFF_SECONDS = 1.0
 
 
-class WebhookNotifier(NotificationProtocol, abc.ABC):
+class WebhookNotifier(NotifierProtocol, abc.ABC):
     """Base class for webhook-based notifiers with retry and exponential backoff."""
 
     def __init__(self, webhook_url: str) -> None:
