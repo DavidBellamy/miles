@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import pytest
-from tests.fast.utils.ft.conftest import CriticalFixedDecisionDetector, FixedDecisionDetector, make_test_controller
+from tests.fast.utils.ft.conftest import (
+    CriticalFixedDecisionDetector,
+    FixedDecisionDetector,
+    make_test_controller,
+)
 
 from miles.utils.ft.controller.main_state_machine import Recovering
-from miles.utils.ft.controller.recovery.recovery_stepper import RealtimeChecks
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 
 class TestDynamicBadNodeInjection:
     @pytest.mark.anyio
     async def test_dynamic_bad_node_injection(self) -> None:
-        """Start recovery with initial bad nodes, inject additional bad nodes
-        via critical detector during recovery, verify they're merged."""
+        """Critical detector bad nodes are merged into the recovery flow
+        and both the initial and injected nodes are evicted."""
         initial_detector = FixedDecisionDetector(
             Decision(
                 action=ActionType.ENTER_RECOVERY,
@@ -35,16 +38,12 @@ class TestDynamicBadNodeInjection:
 
         harness = make_test_controller(detectors=[initial_detector, critical])
 
-        # Step 1: Enter recovery with initial bad nodes
+        # Step 1: single tick enters recovery and progresses through the full
+        # recovery flow (state machine loops within one tick with instant fakes)
         await harness.controller._tick()
         state = harness.controller._state_machine.state
         assert isinstance(state, Recovering)
-        assert isinstance(state.recovery, RealtimeChecks)
-        assert "node-A" in state.recovery.pre_identified_bad_nodes
 
-        # Step 2: Critical detector injects new bad nodes during recovery
-        await harness.controller._tick()
-        state = harness.controller._state_machine.state
-        assert isinstance(state, Recovering)
-        assert isinstance(state.recovery, RealtimeChecks)
-        assert set(state.recovery.pre_identified_bad_nodes) >= {"node-A", "node-B"}
+        # Step 2: verify both initial and critical-injected nodes were evicted
+        assert harness.node_manager.was_ever_marked_bad("node-A")
+        assert harness.node_manager.was_ever_marked_bad("node-B")

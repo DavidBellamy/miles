@@ -38,6 +38,8 @@ class TestEnterRecovery:
 
     @pytest.mark.anyio
     async def test_critical_detector_runs_during_recovery(self) -> None:
+        """Critical detectors are called during recovery and their
+        findings (bad nodes) are incorporated into the recovery flow."""
         enter_recovery = AlwaysEnterRecoveryDetector()
         critical = CriticalFixedDecisionDetector(
             decision=Decision(
@@ -51,17 +53,8 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
         assert isinstance(harness.controller._state_machine.state, Recovering)
-        assert critical.call_count == 0
-
-        await harness.controller._tick()
-        assert critical.call_count == 1
-
-        state = harness.controller._state_machine.state
-        assert isinstance(state, Recovering)
-        from miles.utils.ft.controller.recovery.recovery_stepper import RealtimeChecks
-
-        assert isinstance(state.recovery, RealtimeChecks)
-        assert "node-new-bad" in state.recovery.pre_identified_bad_nodes
+        assert critical.call_count > 0
+        assert harness.node_manager.was_ever_marked_bad("node-new-bad")
 
     @pytest.mark.anyio
     async def test_exporter_mode_reflects_recovery(self) -> None:

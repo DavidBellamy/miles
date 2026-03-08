@@ -8,8 +8,11 @@ from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 
 def _force_recovery_complete(harness) -> None:
-    """Force the machine back to DetectingAnomaly to simulate recovery completion."""
+    """Force the machine back to DetectingAnomaly and re-register a rank
+    so that detectors will fire on the next tick."""
     harness.controller._state_machine._state = DetectingAnomaly()
+    harness.controller._activate_run("recovery-done")
+    harness.controller.rank_roster.rank_placement[0] = "node-0"
 
 
 class TestRecoveryCooldown:
@@ -21,14 +24,17 @@ class TestRecoveryCooldown:
             recovery_cooldown_max_count=3,
         )
 
+        # Step 1: first recovery
         await harness.controller._tick()
         assert isinstance(harness.controller._state_machine.state, Recovering)
         _force_recovery_complete(harness)
 
+        # Step 2: second recovery
         await harness.controller._tick()
         assert isinstance(harness.controller._state_machine.state, Recovering)
         _force_recovery_complete(harness)
 
+        # Step 3: third attempt throttled
         await harness.controller._tick()
         assert not isinstance(harness.controller._state_machine.state, Recovering)
         assert harness.notifier is not None
@@ -38,7 +44,8 @@ class TestRecoveryCooldown:
         assert TriggerType.CRASH.value in content
 
     @pytest.mark.anyio
-    async def test_different_triggers_tracked_separately(self) -> None:
+    async def test_all_triggers_counted_globally(self) -> None:
+        """After 2 crashes, a HANG trigger also counts toward the global cooldown."""
         crash_detector = AlwaysEnterRecoveryDetector(reason="crash")
         harness = make_test_controller(
             detectors=[crash_detector],
@@ -56,7 +63,7 @@ class TestRecoveryCooldown:
             reason="hang",
         )
         await harness.controller._tick()
-        assert isinstance(harness.controller._state_machine.state, Recovering)
+        assert not isinstance(harness.controller._state_machine.state, Recovering)
 
     @pytest.mark.anyio
     async def test_recovery_within_cooldown_window_counted(self) -> None:
