@@ -8,6 +8,12 @@ from datetime import datetime, timezone
 from pydantic import ConfigDict
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery.utils import (
+    get_already_bad_nodes,
+    retry_mark_node_bad,
+    safe_notify,
+    stop_and_submit,
+)
 from miles.utils.ft.controller.recovery.restart_stepper.states import (
     Evicting,
     MonitoringProgress,
@@ -15,12 +21,6 @@ from miles.utils.ft.controller.recovery.restart_stepper.states import (
     RestartFailed,
     RestartState,
     StoppingAndRestarting,
-)
-from miles.utils.ft.controller.recovery.utils import (
-    get_already_bad_nodes,
-    retry_mark_node_bad,
-    safe_notify,
-    stop_and_submit,
 )
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
@@ -75,7 +75,15 @@ def iteration_progress(state: MonitoringProgress, mini_wandb: MiniWandb) -> int:
 
 class EvictingHandler:
     async def step(self, state: Evicting, ctx: RestartContext) -> RestartState:
-        already_bad = await get_already_bad_nodes(ctx.node_manager)
+        try:
+            already_bad = await get_already_bad_nodes(ctx.node_manager)
+        except Exception:
+            logger.error(
+                "get_already_bad_nodes_failed, aborting eviction to avoid re-including bad nodes",
+                exc_info=True,
+            )
+            return RestartFailed(bad_node_ids=state.bad_node_ids)
+
         nodes_to_mark = [n for n in state.bad_node_ids if n not in already_bad]
 
         for node_id in nodes_to_mark:

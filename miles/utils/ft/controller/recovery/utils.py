@@ -50,7 +50,6 @@ async def stop_and_submit(
     return True
 
 
-@graceful_degrade(default=set(), msg="get_bad_nodes_failed, proceeding without filter")
 async def get_already_bad_nodes(node_manager: NodeManagerProtocol) -> set[str]:
     return set(await node_manager.get_bad_nodes())
 
