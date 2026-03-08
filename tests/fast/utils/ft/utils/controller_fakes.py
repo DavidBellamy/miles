@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from typing import NamedTuple
 
 from prometheus_client import CollectorRegistry
@@ -12,6 +13,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, Mi
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.protocols.platform import JobStatus
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,50 @@ class CrashingDetector(BaseFaultDetector):
     def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         self.call_count += 1
         raise RuntimeError("detector internal error")
+
+
+class FastHangDetector(BaseFaultDetector):
+    """HangDetector with sub-minute timeout for fast testing."""
+
+    def __init__(self, timeout_seconds: float = 3.0) -> None:
+        self._timeout = timedelta(seconds=timeout_seconds)
+
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
+        if ctx.job_status != JobStatus.RUNNING:
+            return Decision(action=ActionType.NONE, reason="not running")
+
+        df = ctx.metric_store.changes(
+            AGENT_HEARTBEAT,
+            window=self._timeout,
+            label_filters={"rank": "0"},
+        )
+        if df.is_empty():
+            return Decision(action=ActionType.NONE, reason="no iteration data")
+
+        if df["value"][0] == 0:
+            return Decision(
+                action=ActionType.ENTER_RECOVERY,
+                reason=f"iteration stalled for {self._timeout.total_seconds()}s",
+                trigger=TriggerType.HANG,
+            )
+        return Decision(action=ActionType.NONE, reason="progressing")
+
+
+class OneShotCrashDetector(BaseFaultDetector):
+    """Fires ENTER_RECOVERY once, then returns NONE forever after."""
+
+    def __init__(self) -> None:
+        self._fired = False
+
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
+        if not self._fired:
+            self._fired = True
+            return Decision(
+                action=ActionType.ENTER_RECOVERY,
+                reason="one-shot crash for test",
+                trigger=TriggerType.CRASH,
+            )
+        return Decision(action=ActionType.NONE, reason="no fault")
 
 
 # ---------------------------------------------------------------------------

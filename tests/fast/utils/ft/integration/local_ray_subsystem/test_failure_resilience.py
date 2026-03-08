@@ -22,13 +22,6 @@ pytestmark = [
 ]
 
 
-def _kill_actor(name: str) -> None:
-    try:
-        ray.kill(ray.get_actor(name), no_restart=True)
-    except ValueError:
-        pass
-
-
 class TestAgentSurvivesControllerDeath:
     """Agents should not crash when the controller actor is killed."""
 

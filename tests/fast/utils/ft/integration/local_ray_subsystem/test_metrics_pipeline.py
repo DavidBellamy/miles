@@ -3,57 +3,27 @@
 from __future__ import annotations
 
 import time
-from datetime import timedelta
 
 import pytest
 import ray
 from prometheus_client import Gauge
-from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager
+from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FastHangDetector
 from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.platform.stubs import StubTrainingJob
-from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,
 ]
-
-
-class _FastHangDetector(BaseFaultDetector):
-    """HangDetector with sub-minute timeout for fast testing."""
-
-    def __init__(self, timeout_seconds: float = 3.0) -> None:
-        self._timeout = timedelta(seconds=timeout_seconds)
-
-    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
-        if ctx.job_status != JobStatus.RUNNING:
-            return Decision(action=ActionType.NONE, reason="not running")
-
-        df = ctx.metric_store.changes(
-            AGENT_HEARTBEAT,
-            window=self._timeout,
-            label_filters={"rank": "0"},
-        )
-        if df.is_empty():
-            return Decision(action=ActionType.NONE, reason="no iteration data")
-
-        if df["value"][0] == 0:
-            return Decision(
-                action=ActionType.ENTER_RECOVERY,
-                reason=f"iteration stalled for {self._timeout.total_seconds()}s",
-                trigger=TriggerType.HANG,
-            )
-        return Decision(action=ActionType.NONE, reason="progressing")
 
 
 class TestLogStepArrivesInMiniWandb:
@@ -246,7 +216,7 @@ class TestHangDetectionFullPath:
             node_manager_override=FakeNodeManager(),
             training_job_override=StubTrainingJob(),
             notifier_override=None,
-            detectors_override=[_FastHangDetector(timeout_seconds=3.0)],
+            detectors_override=[FastHangDetector(timeout_seconds=3.0)],
         )
 
         try:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import _kill_named_actor
 
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.config import FtControllerConfig
@@ -13,13 +14,6 @@ from miles.utils.ft.protocols.platform import ft_controller_actor_name
 pytestmark = [
     pytest.mark.local_ray,
 ]
-
-
-def _kill_actor(name: str) -> None:
-    try:
-        ray.kill(ray.get_actor(name), no_restart=True)
-    except ValueError:
-        pass
 
 
 class TestControllerStatusSerialization:
@@ -84,7 +78,7 @@ class TestConfigSerialization:
             status = ray.get(handle.get_status.remote(), timeout=5)
             assert isinstance(status, ControllerStatus)
         finally:
-            _kill_actor(name)
+            _kill_named_actor(name)
 
 
 class TestExceptionSerialization:

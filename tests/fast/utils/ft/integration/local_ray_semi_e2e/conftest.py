@@ -3,12 +3,11 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Any
 
 import pytest
 import ray
-from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager
+from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FastHangDetector
 from tests.fast.utils.ft.utils.diagnostic_fakes import StubDiagnostic
 from tests.fast.utils.ft.utils.fault_injection import LocalRayFaultInjector
 from tests.fast.utils.ft.utils.training_simulator import (
@@ -23,12 +22,10 @@ from tests.fast.utils.ft.utils.training_simulator import (
 from tests.fast.utils.ft.integration.conftest import _kill_named_actor, poll_for_run_id
 
 from miles.utils.ft.agents.collectors.stub import StubCollector
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.recovery.utils import SlidingWindowThrottle
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
@@ -144,33 +141,6 @@ def _wait_for_metrics_scraped(
 ) -> None:
     """Wait enough time for MiniPrometheus to scrape several cycles."""
     time.sleep(scrape_interval * cycles)
-
-
-class _FastHangDetector(BaseFaultDetector):
-    """HangDetector with sub-minute timeout for fast testing."""
-
-    def __init__(self, timeout_seconds: float = 3.0) -> None:
-        self._timeout = timedelta(seconds=timeout_seconds)
-
-    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
-        if ctx.job_status != JobStatus.RUNNING:
-            return Decision(action=ActionType.NONE, reason="not running")
-
-        df = ctx.metric_store.changes(
-            AGENT_HEARTBEAT,
-            window=self._timeout,
-            label_filters={"rank": "0"},
-        )
-        if df.is_empty():
-            return Decision(action=ActionType.NONE, reason="no iteration data")
-
-        if df["value"][0] == 0:
-            return Decision(
-                action=ActionType.ENTER_RECOVERY,
-                reason=f"iteration stalled for {self._timeout.total_seconds()}s",
-                trigger=TriggerType.HANG,
-            )
-        return Decision(action=ActionType.NONE, reason="progressing")
 
 
 # ------------------------------------------------------------------
@@ -378,7 +348,7 @@ def e2e_hang_env(local_ray: None) -> Generator[E2EEnv, None, None]:
     env = _build_e2e_env(
         ft_id="e2ehng",
         nodes=[NodeSpec(node_id="e2ehng-node-0")],
-        detectors=[_FastHangDetector(timeout_seconds=3.0)],
+        detectors=[FastHangDetector(timeout_seconds=3.0)],
     )
     yield env
     env.cleanup()

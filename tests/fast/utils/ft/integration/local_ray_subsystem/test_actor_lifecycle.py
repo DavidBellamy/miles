@@ -6,7 +6,7 @@ import time
 
 import pytest
 import ray
-from tests.fast.utils.ft.integration.conftest import poll_for_run_id
+from tests.fast.utils.ft.integration.conftest import _kill_named_actor, poll_for_run_id
 
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
@@ -16,13 +16,6 @@ from miles.utils.ft.protocols.platform import ft_controller_actor_name
 pytestmark = [
     pytest.mark.local_ray,
 ]
-
-
-def _kill_actor(name: str) -> None:
-    try:
-        ray.kill(ray.get_actor(name), no_restart=True)
-    except ValueError:
-        pass
 
 
 class TestNamedActorCreation:
@@ -36,7 +29,7 @@ class TestNamedActorCreation:
             status = ray.get(discovered.get_status.remote(), timeout=5)
             assert status.mode == ControllerMode.MONITORING
         finally:
-            _kill_actor(name)
+            _kill_named_actor(name)
 
 
 class TestFtIdIsolation:
@@ -92,8 +85,8 @@ class TestFtIdIsolation:
                 ray.get(handle_b.shutdown.remote(), timeout=5)
             except Exception:
                 pass
-            _kill_actor(name_a)
-            _kill_actor(name_b)
+            _kill_named_actor(name_a)
+            _kill_named_actor(name_b)
 
 
 class TestDuplicateActorName:
@@ -141,7 +134,7 @@ class TestShutdownReleasesName:
             status = ray.get(handle2.get_status.remote(), timeout=5)
             assert status.mode == ControllerMode.MONITORING
         finally:
-            _kill_actor(name)
+            _kill_named_actor(name)
 
 
 class TestKillAndAutoRestart:

@@ -7,6 +7,7 @@ from collections.abc import Callable
 import pytest
 import ray
 from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
+from tests.fast.utils.ft.utils.controller_fakes import OneShotCrashDetector
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
@@ -27,30 +28,6 @@ class _AlwaysCrashDetector(BaseFaultDetector):
             reason="injected crash for test",
             trigger=TriggerType.CRASH,
         )
-
-
-class _OneShotCrashDetector(BaseFaultDetector):
-    """Fires ENTER_RECOVERY once, then returns NONE forever after."""
-
-    def __init__(self) -> None:
-        self._fired = False
-
-    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
-        if not self._fired:
-            self._fired = True
-            return Decision(
-                action=ActionType.ENTER_RECOVERY,
-                reason="one-shot crash for test",
-                trigger=TriggerType.CRASH,
-            )
-        return Decision(action=ActionType.NONE, reason="no fault")
-
-
-def _kill_actor(name: str) -> None:
-    try:
-        ray.kill(ray.get_actor(name), no_restart=True)
-    except ValueError:
-        pass
 
 
 def _poll_until(
@@ -111,7 +88,7 @@ class TestRecoveryPhaseHistoryRecorded:
         make_controller_actor: Callable[..., ray.actor.ActorHandle],
     ) -> None:
         handle = make_controller_actor(
-            detectors_override=[_OneShotCrashDetector()],
+            detectors_override=[OneShotCrashDetector()],
         )
 
         handle.submit_and_run.remote()
