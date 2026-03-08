@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.models.metrics import GaugeSample
 
 logger = logging.getLogger(__name__)
+
+_STALENESS_METRIC = "ft_collector_last_success_timestamp"
+_CONSECUTIVE_FAILURES_METRIC = "ft_collector_consecutive_failures"
 
 
 class MetricCollectionLoop:
@@ -60,16 +65,55 @@ class MetricCollectionLoop:
 
     async def _run_single_collector(self, collector: BaseCollector) -> None:
         collector_name = type(collector).__name__
+        consecutive_failures = 0
+
         while True:
             try:
                 result = await collector.collect()
                 self._exporter.update_metrics(result.metrics)
+                consecutive_failures = 0
+                self._emit_staleness_metrics(
+                    collector_name=collector_name,
+                    last_success_timestamp=time.time(),
+                    consecutive_failures=0,
+                )
             except Exception:
+                consecutive_failures += 1
                 logger.warning(
-                    "Collector %s failed on node %s",
+                    "Collector %s failed on node %s (consecutive_failures=%d)",
                     collector_name,
                     self._node_id,
+                    consecutive_failures,
                     exc_info=True,
+                )
+                self._emit_staleness_metrics(
+                    collector_name=collector_name,
+                    last_success_timestamp=0.0,
+                    consecutive_failures=consecutive_failures,
                 )
 
             await asyncio.sleep(collector.collect_interval)
+
+    def _emit_staleness_metrics(
+        self,
+        *,
+        collector_name: str,
+        last_success_timestamp: float,
+        consecutive_failures: int,
+    ) -> None:
+        labels = {"collector": collector_name, "node_id": self._node_id}
+        staleness_metrics: list[GaugeSample] = []
+
+        if last_success_timestamp > 0:
+            staleness_metrics.append(
+                GaugeSample(name=_STALENESS_METRIC, labels=labels, value=last_success_timestamp)
+            )
+
+        staleness_metrics.append(
+            GaugeSample(
+                name=_CONSECUTIVE_FAILURES_METRIC,
+                labels=labels,
+                value=float(consecutive_failures),
+            )
+        )
+        self._exporter.update_metrics(staleness_metrics)
