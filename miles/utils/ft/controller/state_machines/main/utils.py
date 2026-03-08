@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 
-from miles.utils.ft.controller.actions import handle_notify_human
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     EvictingAndRestarting,
     RealtimeChecks,
@@ -24,6 +24,21 @@ def get_known_bad_nodes(recovery_state: RecoveryState) -> list[str]:
     if isinstance(recovery_state, RealtimeChecks):
         return recovery_state.pre_identified_bad_nodes
     return []
+
+
+async def handle_notify_human(
+    decision: Decision,
+    notifier: NotifierProtocol | None,
+) -> None:
+    logger.warning(
+        "decision_notify_human reason=%s",
+        decision.reason,
+    )
+    await safe_notify(
+        notifier,
+        title="Fault Alert",
+        content=decision.reason,
+    )
 
 
 async def notify_too_many_bad_nodes(

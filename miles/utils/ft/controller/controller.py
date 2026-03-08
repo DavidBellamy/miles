@@ -4,9 +4,8 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
-
-from miles.utils.ft.controller.actions import PlatformDeps
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.main_stepper import (
     DetectingAnomaly,
@@ -36,7 +35,7 @@ from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
-from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
+from miles.utils.ft.protocols.metrics import MetricQueryProtocol, MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
 from miles.utils.ft.protocols.platform import (
     JobStatus,
@@ -47,6 +46,21 @@ from miles.utils.ft.protocols.platform import (
 from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PlatformDeps:
+    """Bundles platform-level dependencies shared across action handlers."""
+
+    node_manager: NodeManagerProtocol
+    training_job: TrainingJobProtocol
+    metric_store: MetricQueryProtocol
+    mini_wandb: MiniWandb
+    notifier: NotificationProtocol | None
+    diagnostic_orchestrator: DiagnosticOrchestratorProtocol
+    controller_exporter: ControllerExporter | None
+    on_new_run: Callable[[str], None] | None = field(default=None)
+    rank_pids_provider: Callable[[str], dict[int, int]] | None = field(default=None)
 
 
 def _recovery_phase_name(recovery: RecoveryState) -> str:
