@@ -155,10 +155,11 @@ class TestRunSingleCollector:
         await loop.stop()
 
         assert collector.call_count >= 2
+        staleness_names = {"ft_collector_consecutive_failures", "ft_collector_last_success_timestamp"}
         for call in exporter.update_metrics.call_args_list:
             samples = call[0][0]
             assert all(
-                "consecutive_failures" in s.name for s in samples
+                s.name in staleness_names for s in samples
             ), f"Only staleness signals expected on failure, got: {samples}"
 
 

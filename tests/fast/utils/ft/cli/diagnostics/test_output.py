@@ -83,7 +83,7 @@ class TestExitWithResults:
 
 class TestValidateCheckNames:
     def test_unknown_names_raises_typer_exit(self) -> None:
-        with pytest.raises(SystemExit):
+        with pytest.raises(typer.Exit):
             validate_check_names(
                 selected=["known", "unknown_x"],
                 available=["known", "other"],

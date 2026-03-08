@@ -217,6 +217,7 @@ def make_test_controller(
     recovery_cooldown_max_count: int = 3,
     registration_grace_ticks: int = 0,
     register_dummy_rank: bool = True,
+    monitoring_success_iterations: int = 10,
 ) -> ControllerTestHarness:
     """Construct a Controller and all its dependencies for testing.
 
@@ -255,6 +256,7 @@ def make_test_controller(
         diagnostic_orchestrator=diagnostic_orchestrator,
         recovery_cooldown=recovery_cooldown,
         registration_grace_ticks=registration_grace_ticks,
+        monitoring_success_iterations=monitoring_success_iterations,
     )
 
     if register_dummy_rank:

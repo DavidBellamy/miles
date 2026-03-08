@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+
 import polars as pl
 import pytest
+
+_has_xlsxwriter = importlib.util.find_spec("xlsxwriter") is not None
 
 from miles.utils.ft.controller.detectors.checks.gpu.xid_catalog.converter import (
     AUTO_RECOVERABLE_BUCKETS,
@@ -102,6 +106,10 @@ class TestGenerateInfoPy:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not _has_xlsxwriter,
+    reason="xlsxwriter not installed",
+)
 class TestReadXidsSheet:
     def test_column_mapping_with_standard_names(self, tmp_path: pytest.TempPathFactory) -> None:
         """Round-trip: write a minimal xlsx, read it back through _read_xids_sheet."""
