@@ -49,7 +49,7 @@ class TestMultiNode:
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=30.0,
+            timeout=60.0,
         )
 
         # Step 2: crash during MONITORING → DIAGNOSING

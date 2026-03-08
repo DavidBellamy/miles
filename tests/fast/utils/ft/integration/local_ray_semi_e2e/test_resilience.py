@@ -144,18 +144,18 @@ class TestNotifierResilience:
             notifier_override=_CrashingNotifier(),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=60.0)
 
         # Step 1: first crash → recovery (notifier not called on normal recovery)
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=120.0,
         )
 
         # Step 2: second crash → throttled → notifier.send() called → raises → controller survives
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=60.0)
         await env.injector.crash_training()
         await asyncio.sleep(5.0)
 

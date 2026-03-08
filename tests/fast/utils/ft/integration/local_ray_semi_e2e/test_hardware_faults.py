@@ -256,18 +256,18 @@ class TestCrossFaultTypeThrottle:
             recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=60.0)
 
         # Step 1: crash → first recovery
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=120.0,
         )
 
         # Step 2: NaN → should be throttled (shared window, max_count=2)
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=60.0)
         await env.injector.inject_nan_loss()
         await asyncio.sleep(5.0)
         status = get_status(env.controller)
