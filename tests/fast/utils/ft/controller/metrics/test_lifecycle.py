@@ -1,0 +1,90 @@
+"""Tests for miles.utils.ft.controller.metrics.lifecycle."""
+
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import AsyncMock
+
+from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
+
+
+class TestStartMetricStoreTask:
+    def test_start_creates_task(self) -> None:
+        store = AsyncMock()
+        store.start = AsyncMock(side_effect=asyncio.CancelledError)
+
+        async def _run() -> None:
+            task = await start_metric_store_task(store)
+            assert isinstance(task, asyncio.Task)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(_run())
+
+    def test_start_retries_on_exception(self) -> None:
+        """store.start() crashes once, then hangs (simulated via CancelledError)."""
+        call_count = 0
+
+        async def _failing_start() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("scrape failed")
+            await asyncio.Event().wait()
+
+        store = AsyncMock()
+        store.start = _failing_start
+
+        async def _run() -> None:
+            import miles.utils.ft.controller.metrics.lifecycle as mod
+
+            original_delay = mod._SCRAPE_RESTART_DELAY_SECONDS
+            mod._SCRAPE_RESTART_DELAY_SECONDS = 0.01
+            try:
+                task = await start_metric_store_task(store)
+                await asyncio.sleep(0.1)
+                assert call_count >= 2
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            finally:
+                mod._SCRAPE_RESTART_DELAY_SECONDS = original_delay
+
+        asyncio.run(_run())
+
+
+class TestStopMetricStoreTask:
+    def test_stop_cancels_task(self) -> None:
+        store = AsyncMock()
+        store.stop = AsyncMock()
+
+        async def _run() -> None:
+            async def _noop() -> None:
+                await asyncio.Event().wait()
+
+            task = asyncio.create_task(_noop())
+            await stop_metric_store_task(store=store, task=task)
+
+            assert task.cancelled()
+            store.stop.assert_awaited_once()
+
+        asyncio.run(_run())
+
+    def test_stop_handles_cancelled_error_gracefully(self) -> None:
+        store = AsyncMock()
+        store.stop = AsyncMock()
+
+        async def _run() -> None:
+            async def _already_done() -> None:
+                pass
+
+            task = asyncio.create_task(_already_done())
+            await task
+            await stop_metric_store_task(store=store, task=task)
+
+        asyncio.run(_run())
