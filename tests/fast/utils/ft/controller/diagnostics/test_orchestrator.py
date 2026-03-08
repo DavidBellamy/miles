@@ -265,6 +265,23 @@ class TestDiagnosticOrchestratorInterMachine:
         assert decision.conclusive is False
 
     @pytest.mark.anyio
+    async def test_inter_machine_inconclusive_continues_to_next_executor(self) -> None:
+        """When inter-machine all-fail, pipeline continues to next executor (gpu)."""
+        agents = make_fake_agents(
+            {
+                "node-0": {"inter_machine": False, "gpu": False},
+                "node-1": {"inter_machine": False, "gpu": True},
+            }
+        )
+        orchestrator = DiagnosticOrchestrator(
+            agents=agents,
+            pipeline=[InterMachineClusterExecutor(), GpuClusterExecutor()],
+        )
+        decision = await orchestrator.run_diagnostic_pipeline()
+        assert "node-0" in decision.bad_node_ids
+        assert decision.conclusive is True
+
+    @pytest.mark.anyio
     async def test_inter_machine_single_node_skipped(self) -> None:
         agents = make_fake_agents({"node-0": {"inter_machine": True}})
         orchestrator = DiagnosticOrchestrator(
