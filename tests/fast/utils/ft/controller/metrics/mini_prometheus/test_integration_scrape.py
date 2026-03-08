@@ -21,6 +21,19 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _wait_for_http_ready(port: int, timeout: float = 5.0) -> None:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("localhost", port), timeout=0.5):
+                return
+        except OSError:
+            time.sleep(0.05)
+    raise TimeoutError(f"HTTP server on port {port} not ready within {timeout}s")
+
+
 def _start_exporter(
     metrics: list[tuple[str, dict[str, str], float]] | None = None,
     port: int | None = None,
@@ -57,7 +70,7 @@ def _start_exporter(
         target=lambda: start_http_server(port=port, registry=registry),
         daemon=True,
     ).start()
-    time.sleep(0.5)
+    _wait_for_http_ready(port)
 
     return port, registry
 
@@ -98,7 +111,7 @@ class TestMiniPrometheusScrapeReal:
             target=lambda: start_http_server(port=port, registry=registry),
             daemon=True,
         ).start()
-        time.sleep(0.5)
+        _wait_for_http_ready(port)
 
         store = make_fake_metric_store()
         store.add_scrape_target(target_id="node-0", address=f"http://localhost:{port}")

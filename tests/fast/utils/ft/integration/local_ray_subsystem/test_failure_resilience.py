@@ -52,11 +52,19 @@ class TestStaleHandleAfterKill:
         controller_actor: ray.actor.ActorHandle,
     ) -> None:
         ray.kill(controller_actor, no_restart=False)
-        time.sleep(2.0)
 
         name = ft_controller_actor_name("")
-        handle = ray.get_actor(name)
-        status = ray.get(handle.get_status.remote(), timeout=5)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            try:
+                handle = ray.get_actor(name)
+                status = ray.get(handle.get_status.remote(), timeout=2)
+                break
+            except Exception:
+                time.sleep(0.3)
+        else:
+            raise TimeoutError("Actor did not restart within 10s")
+
         assert status.mode == ControllerMode.MONITORING
         assert status.tick_count == 0
 

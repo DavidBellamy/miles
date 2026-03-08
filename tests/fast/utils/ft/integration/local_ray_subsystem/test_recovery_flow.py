@@ -192,10 +192,18 @@ class TestControllerKilledDuringRecovery:
         _poll_until(_in_recovery, timeout=15)
 
         ray.kill(handle, no_restart=False)
-        time.sleep(2.0)
 
         name = ft_controller_actor_name("")
-        restarted = ray.get_actor(name)
-        status = ray.get(restarted.get_status.remote(), timeout=5)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            try:
+                restarted = ray.get_actor(name)
+                status = ray.get(restarted.get_status.remote(), timeout=2)
+                break
+            except Exception:
+                time.sleep(0.3)
+        else:
+            raise TimeoutError("Actor did not restart within 10s")
+
         assert status.mode == ControllerMode.MONITORING
         assert status.recovery_in_progress is False
