@@ -15,17 +15,16 @@ from miles.utils.ft.factories.controller import build_ft_controller
 class TestBuildFtController:
     def test_stub_platform_creates_correct_components(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
-        assert isinstance(ctrl._platform_deps.node_manager, StubNodeManager)
         assert isinstance(ctrl._training_job, StubTrainingJob)
 
     def test_stub_platform_has_full_detector_chain(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
         expected_count = len(build_detector_chain())
-        assert len(ctrl._detectors) == expected_count
+        assert len(ctrl._tick_loop._detectors) == expected_count
 
     def test_stub_platform_has_stub_notifier(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
-        assert isinstance(ctrl._platform_deps.notifier, StubNotifier)
+        assert isinstance(ctrl._notifier, StubNotifier)
 
     def test_lark_webhook_notifier_when_url_provided(self) -> None:
         from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
@@ -35,7 +34,7 @@ class TestBuildFtController:
             notify_webhook_url="https://hook.example.com",
             start_exporter=False,
         )
-        assert isinstance(ctrl._platform_deps.notifier, LarkWebhookNotifier)
+        assert isinstance(ctrl._notifier, LarkWebhookNotifier)
 
     def test_custom_tick_interval(self) -> None:
         ctrl = build_ft_controller(
@@ -80,7 +79,7 @@ class TestBuildFtController:
     def test_detector_chain_types_match(self) -> None:
         ctrl = build_ft_controller(platform="stub", start_exporter=False)
         expected_chain = build_detector_chain()
-        actual_types = [type(d).__name__ for d in ctrl._detectors]
+        actual_types = [type(d).__name__ for d in ctrl._tick_loop._detectors]
         expected_types = [type(d).__name__ for d in expected_chain]
         assert actual_types == expected_types
 

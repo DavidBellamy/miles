@@ -40,7 +40,7 @@ class TestTickEmptyDetectorChain:
             mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
-        decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
+        decision = run_detectors(detectors=harness.controller._tick_loop._detectors, ctx=ctx)
         assert decision.action == ActionType.NONE
 
 
@@ -57,7 +57,7 @@ class TestDetectorChain:
             mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
-        decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
+        decision = run_detectors(detectors=harness.controller._tick_loop._detectors, ctx=ctx)
         assert decision.action == ActionType.ENTER_RECOVERY
         assert none_detector.call_count == 1
         assert bad_detector.call_count == 1
@@ -74,7 +74,7 @@ class TestDetectorChain:
             mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
-        decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
+        decision = run_detectors(detectors=harness.controller._tick_loop._detectors, ctx=ctx)
         assert decision.action == ActionType.ENTER_RECOVERY
         assert bad_detector.call_count == 1
         assert trailing_detector.call_count == 0
@@ -91,7 +91,7 @@ class TestDetectorExceptionIsolation:
             mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
-        decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
+        decision = run_detectors(detectors=harness.controller._tick_loop._detectors, ctx=ctx)
 
         assert crashing.call_count == 1
         assert good.call_count == 1
@@ -107,7 +107,7 @@ class TestDetectorExceptionIsolation:
             mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
-        decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
+        decision = run_detectors(detectors=harness.controller._tick_loop._detectors, ctx=ctx)
 
         assert d1.call_count == 1
         assert d2.call_count == 1
@@ -128,7 +128,7 @@ class TestTickFailureTracker:
     async def test_persistent_failure_triggers_notification(self) -> None:
         harness = make_test_controller()
         harness.training_job.get_training_status = _raise_runtime_error  # type: ignore[assignment]
-        harness.controller._tick_failure_tracker._threshold = 3
+        harness.controller._tick_loop._tick_failure_tracker._threshold = 3
 
         for _ in range(3):
             await harness.controller._tick()
@@ -141,7 +141,7 @@ class TestTickFailureTracker:
     async def test_sporadic_failure_does_not_trigger_notification(self) -> None:
         harness = make_test_controller()
         harness.training_job.get_training_status = _raise_runtime_error  # type: ignore[assignment]
-        harness.controller._tick_failure_tracker._threshold = 5
+        harness.controller._tick_loop._tick_failure_tracker._threshold = 5
 
         await harness.controller._tick()
 

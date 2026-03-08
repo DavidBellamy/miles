@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import time
+
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
+
+
+def _now() -> float:
+    return time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -18,52 +24,58 @@ class TestSlidingWindowCounter:
         assert not counter.should_notify
 
     def test_below_threshold_not_reached(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=3)
-        counter.record("a", _now=0.0)
-        counter.record("b", _now=1.0)
+        counter.record("a", _now=t)
+        counter.record("b", _now=t + 1.0)
         assert counter.count == 2
         assert not counter.threshold_reached
 
     def test_at_threshold_reached(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=3)
-        counter.record("a", _now=0.0)
-        counter.record("a", _now=1.0)
-        counter.record("b", _now=2.0)
+        counter.record("a", _now=t)
+        counter.record("a", _now=t + 1.0)
+        counter.record("b", _now=t + 2.0)
         assert counter.threshold_reached
 
     def test_should_notify_fires_once(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=2)
-        counter.record("a", _now=0.0)
-        counter.record("b", _now=1.0)
+        counter.record("a", _now=t)
+        counter.record("b", _now=t + 1.0)
         assert counter.should_notify
         assert not counter.should_notify
         assert not counter.should_notify
 
     def test_window_expiry_resets(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=10, threshold=2)
-        counter.record("a", _now=0.0)
-        counter.record("a", _now=1.0)
+        counter.record("a", _now=t)
+        counter.record("a", _now=t + 1.0)
         assert counter.should_notify
 
-        counter.record("a", _now=20.0)
+        counter.record("a", _now=t + 20.0)
         assert not counter.should_notify
 
-        counter.record("a", _now=21.0)
+        counter.record("a", _now=t + 21.0)
         assert counter.should_notify
 
     def test_record_with_label(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=5)
-        counter.record("DetA", _now=0.0)
-        counter.record("DetB", _now=1.0)
-        counter.record("DetA", _now=2.0)
+        counter.record("DetA", _now=t)
+        counter.record("DetB", _now=t + 1.0)
+        counter.record("DetA", _now=t + 2.0)
         summary = counter.summary()
         assert "DetA=2" in summary
         assert "DetB=1" in summary
 
     def test_summary_format(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=5)
-        counter.record("X", _now=0.0)
-        counter.record("Y", _now=1.0)
+        counter.record("X", _now=t)
+        counter.record("Y", _now=t + 1.0)
         summary = counter.summary()
         assert summary.startswith("2 events in 60")
         assert "X=1" in summary
@@ -71,19 +83,19 @@ class TestSlidingWindowCounter:
 
     def test_prune_does_not_lose_recent(self) -> None:
         """Events exactly at the window boundary are kept."""
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=10, threshold=2)
-        counter.record("a", _now=0.0)
-        counter.record("b", _now=10.0)
-        # At _now=10.0: cutoff = 0.0, event at 0.0 is NOT >= cutoff, so pruned
-        # Only event at 10.0 survives
-        counter.record("c", _now=10.0)
-        assert counter.threshold_reached  # 2 events at t=10.0
+        counter.record("a", _now=t)
+        counter.record("b", _now=t + 10.0)
+        counter.record("c", _now=t + 10.0)
+        assert counter.threshold_reached
 
     def test_above_threshold_still_reached(self) -> None:
+        t = _now()
         counter = SlidingWindowCounter(window_seconds=60, threshold=2)
-        counter.record(_now=0.0)
-        counter.record(_now=1.0)
-        counter.record(_now=2.0)
+        counter.record(_now=t)
+        counter.record(_now=t + 1.0)
+        counter.record(_now=t + 2.0)
         assert counter.threshold_reached
 
 

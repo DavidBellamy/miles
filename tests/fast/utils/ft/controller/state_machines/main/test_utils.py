@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,36 +45,40 @@ class _RecoveryDetector(BaseFaultDetector):
 
 class TestDetectorCrashTracking:
     def test_below_threshold_does_not_notify(self) -> None:
+        t = time.monotonic()
         tracker = SlidingWindowCounter(window_seconds=60, threshold=3)
-        tracker.record("DetA", _now=0.0)
-        tracker.record("DetB", _now=1.0)
+        tracker.record("DetA", _now=t)
+        tracker.record("DetB", _now=t + 1.0)
         assert not tracker.should_notify
 
     def test_reaching_threshold_notifies_once(self) -> None:
+        t = time.monotonic()
         tracker = SlidingWindowCounter(window_seconds=60, threshold=3)
-        tracker.record("DetA", _now=0.0)
-        tracker.record("DetA", _now=1.0)
-        tracker.record("DetB", _now=2.0)
+        tracker.record("DetA", _now=t)
+        tracker.record("DetA", _now=t + 1.0)
+        tracker.record("DetB", _now=t + 2.0)
         assert tracker.should_notify
         assert not tracker.should_notify
 
     def test_window_expiry_resets_notification(self) -> None:
+        t = time.monotonic()
         tracker = SlidingWindowCounter(window_seconds=10, threshold=2)
-        tracker.record("DetA", _now=0.0)
-        tracker.record("DetA", _now=1.0)
+        tracker.record("DetA", _now=t)
+        tracker.record("DetA", _now=t + 1.0)
         assert tracker.should_notify
 
-        tracker.record("DetA", _now=20.0)
+        tracker.record("DetA", _now=t + 20.0)
         assert not tracker.should_notify
 
-        tracker.record("DetA", _now=21.0)
+        tracker.record("DetA", _now=t + 21.0)
         assert tracker.should_notify
 
     def test_summary_includes_crash_counts(self) -> None:
+        t = time.monotonic()
         tracker = SlidingWindowCounter(window_seconds=60, threshold=5)
-        tracker.record("DetA", _now=0.0)
-        tracker.record("DetB", _now=1.0)
-        tracker.record("DetA", _now=2.0)
+        tracker.record("DetA", _now=t)
+        tracker.record("DetB", _now=t + 1.0)
+        tracker.record("DetA", _now=t + 2.0)
         summary = tracker.summary()
         assert "DetA=2" in summary
         assert "DetB=1" in summary

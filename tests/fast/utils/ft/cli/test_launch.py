@@ -25,7 +25,7 @@ def _patch_build_and_run() -> Generator[tuple[MagicMock, MagicMock], None, None]
     mock_actor_instance.submit_and_run.remote.return_value = MagicMock()
 
     with (
-        patch("miles.utils.ft.cli.launch.FtControllerActor", mock_actor_cls),
+        patch("miles.utils.ft.adapters.impl.ray.controller_actor.FtControllerActor", mock_actor_cls),
         patch("miles.utils.ft.cli.launch.ray") as mock_ray,
     ):
         yield mock_actor_cls, mock_ray

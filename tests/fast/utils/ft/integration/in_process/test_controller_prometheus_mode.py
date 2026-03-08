@@ -15,7 +15,7 @@ from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_s
 
 import miles.utils.ft.controller.metrics.metric_names as mn
 from miles.utils.ft.adapters.types import JobStatus
-from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.factory import create_ft_controller
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.client import PrometheusClient
 
@@ -44,7 +44,7 @@ class TestControllerPrometheusMode:
         registry, exporter = make_test_exporter()
         prom_client = PrometheusClient(url="http://fake:9090")
 
-        controller = FtController.create(
+        controller = create_ft_controller(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(status_sequence=[JobStatus.RUNNING]),
             metric_store=prom_client,
@@ -64,7 +64,7 @@ class TestControllerPrometheusMode:
         _, exporter = make_test_exporter()
         prom_client = PrometheusClient(url="http://fake:9090")
 
-        controller = FtController.create(
+        controller = create_ft_controller(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=prom_client,
@@ -89,7 +89,7 @@ class TestControllerPrometheusMode:
         registry, exporter = make_test_exporter()
         mini_wandb = MiniWandb()
 
-        controller = FtController.create(
+        controller = create_ft_controller(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=PrometheusClient(url="http://fake:9090"),

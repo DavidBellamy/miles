@@ -19,6 +19,7 @@ from tests.fast.utils.ft.conftest import (
 import miles.utils.ft.controller.metrics.metric_names as mn
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.factory import create_ft_controller
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.main import Recovering
@@ -197,14 +198,15 @@ class TestAgentManagement:
 
 class TestDefaultDiagnosticOrchestratorWiring:
     def test_default_orchestrator_has_rank_pids_provider(self) -> None:
-        controller = FtController.create(
+        controller = create_ft_controller(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
             metric_store=make_fake_metric_store(),
             mini_wandb=MiniWandb(),
         )
 
-        assert callable(controller._platform_deps.rank_pids_provider)
+        assert controller._tick_loop._restart_context is not None
+        assert controller._tick_loop._restart_context.on_new_run is not None
 
 
 class TestDefaultDiagnosticPipeline:
@@ -212,7 +214,7 @@ class TestDefaultDiagnosticPipeline:
         from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor
 
         harness = make_test_controller()
-        orchestrator = harness.controller._platform_deps.diagnostic_orchestrator
+        orchestrator = harness.controller._tick_loop._diagnostic_orchestrator
         assert any(isinstance(e, GpuClusterExecutor) for e in orchestrator._pipeline)
 
 
