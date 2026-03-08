@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from collections.abc import Callable
 from unittest.mock import patch
 
+import pytest
 import ray
+from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
@@ -17,7 +18,6 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
-from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.models.recovery import ControllerMode
@@ -25,10 +25,10 @@ from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 
 class TestAgentWithoutController:
-    async def test_rank_agent_graceful_degrade(self, local_ray: None) -> None:
+    async def test_rank_agent_graceful_degrade(self, local_ray: None, monkeypatch: pytest.MonkeyPatch) -> None:
         """Creating FtTrainingRankAgent when controller doesn't exist → no crash."""
-        os.environ["MILES_FT_ID"] = "nonexistent"
-        os.environ["MILES_FT_TRAINING_RUN_ID"] = "fake-run"
+        monkeypatch.setenv("MILES_FT_ID", "nonexistent")
+        monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "fake-run")
 
         from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 

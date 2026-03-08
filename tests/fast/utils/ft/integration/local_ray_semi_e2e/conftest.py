@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
@@ -31,6 +32,8 @@ from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.platform.ray_wrappers.node_agent_actor import FtNodeAgentActor
 from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name, ft_node_agent_actor_name
+
+logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -85,30 +88,30 @@ class E2EEnv:
             try:
                 ray.get(worker.stop.remote(), timeout=5)
             except Exception:
-                pass
+                logger.debug("cleanup failed", exc_info=True)
 
         for agent in self.node_agents.values():
             try:
                 ray.get(agent.stop.remote(), timeout=5)
             except Exception:
-                pass
+                logger.debug("cleanup failed", exc_info=True)
 
         try:
             ray.get(self.controller.shutdown.remote(), timeout=10)
         except Exception:
-            pass
+            logger.debug("cleanup failed", exc_info=True)
 
         for name in self._cleanup_names:
             try:
                 ray.kill(ray.get_actor(name), no_restart=True)
-            except (ValueError, Exception):
-                pass
+            except Exception:
+                logger.debug("cleanup: failed to kill actor %s", name, exc_info=True)
 
         for handle in self._cleanup_handles:
             try:
                 ray.kill(handle, no_restart=True)
             except Exception:
-                pass
+                logger.debug("cleanup failed", exc_info=True)
 
 
 # ------------------------------------------------------------------
