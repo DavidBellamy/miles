@@ -10,6 +10,8 @@ from io import StringIO
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tests.fast.utils.ft.utils import make_mock_pynvml
 
 from miles.utils.ft.agents.diagnostics.utils.gpu_check_script import (
