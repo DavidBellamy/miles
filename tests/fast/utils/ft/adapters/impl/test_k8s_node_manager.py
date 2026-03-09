@@ -15,10 +15,17 @@ from miles.utils.ft.adapters.impl.k8s_node_manager import (
 
 def _make_manager_with_mock_api(
     label_prefix: str = "",
+    ray_cluster_name: str = "",
+    namespace: str = "default",
 ) -> tuple[K8sNodeManager, AsyncMock]:
     """Create a K8sNodeManager with a mocked CoreV1Api injected via ApiClient."""
     mock_api_client = MagicMock()
-    manager = K8sNodeManager(api_client=mock_api_client, label_prefix=label_prefix)
+    manager = K8sNodeManager(
+        api_client=mock_api_client,
+        label_prefix=label_prefix,
+        ray_cluster_name=ray_cluster_name,
+        namespace=namespace,
+    )
 
     mock_core_v1 = AsyncMock()
     manager._ensure_client = AsyncMock(return_value=mock_core_v1)
@@ -148,3 +155,88 @@ class TestLabelPrefix:
         mock_core_v1.list_node.assert_awaited_once_with(
             label_selector="ft.miles.io/pfx-disabled=true",
         )
+
+
+class TestMarkNodeBadDeletesPod:
+    @pytest.mark.anyio
+    async def test_mark_node_bad_deletes_worker_pod_when_cluster_configured(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(
+            ray_cluster_name="my-cluster",
+            namespace="test-ns",
+        )
+        mock_pod = SimpleNamespace(metadata=SimpleNamespace(name="my-cluster-worker-abc"))
+        mock_core_v1.list_namespaced_pod.return_value = SimpleNamespace(items=[mock_pod])
+
+        await manager.mark_node_bad(node_id="node-1", reason="gpu_ecc_error")
+
+        mock_core_v1.patch_node.assert_awaited_once()
+        mock_core_v1.list_namespaced_pod.assert_awaited_once()
+        list_kwargs = mock_core_v1.list_namespaced_pod.call_args.kwargs
+        assert list_kwargs["namespace"] == "test-ns"
+        assert "ray.io/cluster=my-cluster" in list_kwargs["label_selector"]
+        assert "ray.io/node-type=worker" in list_kwargs["label_selector"]
+        assert list_kwargs["field_selector"] == "spec.nodeName=node-1"
+
+        mock_core_v1.delete_namespaced_pod.assert_awaited_once()
+        del_kwargs = mock_core_v1.delete_namespaced_pod.call_args.kwargs
+        assert del_kwargs["name"] == "my-cluster-worker-abc"
+        assert del_kwargs["namespace"] == "test-ns"
+
+    @pytest.mark.anyio
+    async def test_mark_node_bad_skips_pod_delete_when_no_cluster(self) -> None:
+        """Without ray_cluster_name, mark_node_bad only patches labels."""
+        manager, mock_core_v1 = _make_manager_with_mock_api()
+
+        await manager.mark_node_bad(node_id="node-1", reason="test")
+
+        mock_core_v1.patch_node.assert_awaited_once()
+        mock_core_v1.list_namespaced_pod.assert_not_awaited()
+        mock_core_v1.delete_namespaced_pod.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_mark_node_bad_handles_no_pods_on_node(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(ray_cluster_name="cluster-x")
+        mock_core_v1.list_namespaced_pod.return_value = SimpleNamespace(items=[])
+
+        await manager.mark_node_bad(node_id="node-1", reason="test")
+
+        mock_core_v1.patch_node.assert_awaited_once()
+        mock_core_v1.list_namespaced_pod.assert_awaited_once()
+        mock_core_v1.delete_namespaced_pod.assert_not_awaited()
+
+    @pytest.mark.anyio
+    async def test_mark_node_bad_deletes_multiple_pods(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(ray_cluster_name="c1")
+        pods = [
+            SimpleNamespace(metadata=SimpleNamespace(name="c1-worker-0")),
+            SimpleNamespace(metadata=SimpleNamespace(name="c1-worker-1")),
+        ]
+        mock_core_v1.list_namespaced_pod.return_value = SimpleNamespace(items=pods)
+
+        await manager.mark_node_bad(node_id="node-1", reason="test")
+
+        assert mock_core_v1.delete_namespaced_pod.await_count == 2
+        deleted_names = [
+            call.kwargs["name"]
+            for call in mock_core_v1.delete_namespaced_pod.call_args_list
+        ]
+        assert "c1-worker-0" in deleted_names
+        assert "c1-worker-1" in deleted_names
+
+
+class TestDeleteRayWorkerPodOnNode:
+    @pytest.mark.anyio
+    async def test_uses_correct_selectors(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api(
+            ray_cluster_name="train-cluster",
+            namespace="ml",
+        )
+        mock_core_v1.list_namespaced_pod.return_value = SimpleNamespace(items=[])
+
+        await manager._delete_ray_worker_pod_on_node("gpu-node-3")
+
+        mock_core_v1.list_namespaced_pod.assert_awaited_once()
+        kwargs = mock_core_v1.list_namespaced_pod.call_args.kwargs
+        assert kwargs["namespace"] == "ml"
+        assert kwargs["label_selector"] == "ray.io/cluster=train-cluster,ray.io/node-type=worker"
+        assert kwargs["field_selector"] == "spec.nodeName=gpu-node-3"

@@ -30,16 +30,22 @@ class K8sNodeManager(NodeManagerProtocol):
     """Manage bad-node labels on Kubernetes nodes via the K8s API.
 
     Implements NodeManagerProtocol using kubernetes_asyncio for async calls.
+    When ray_cluster_name is provided, mark_node_bad also deletes the Ray
+    worker pod on the labeled node so the RayCluster operator reschedules it.
     """
 
     def __init__(
         self,
         api_client: ApiClient | None = None,
         label_prefix: str = "",
+        ray_cluster_name: str = "",
+        namespace: str = "default",
     ) -> None:
         self._api_client: ApiClient | None = api_client
         self._core_v1: CoreV1Api | None = None
         self._label_key, self._reason_label_key = _build_label_keys(label_prefix)
+        self._ray_cluster_name = ray_cluster_name
+        self._namespace = namespace
 
     async def mark_node_bad(self, node_id: str, reason: str) -> None:
         elapsed = await self._patch_node_labels(
@@ -52,6 +58,9 @@ class K8sNodeManager(NodeManagerProtocol):
             reason,
             elapsed,
         )
+
+        if self._ray_cluster_name:
+            await self._delete_ray_worker_pod_on_node(node_id)
 
     async def unmark_node_bad(self, node_id: str) -> None:
         elapsed = await self._patch_node_labels(
@@ -90,6 +99,47 @@ class K8sNodeManager(NodeManagerProtocol):
             elapsed,
         )
         return names
+
+    async def _delete_ray_worker_pod_on_node(self, node_id: str) -> None:
+        core_v1 = await self._ensure_client()
+
+        label_selector = f"ray.io/cluster={self._ray_cluster_name},ray.io/node-type=worker"
+        field_selector = f"spec.nodeName={node_id}"
+
+        start = time.monotonic()
+        pod_list = await retry_async_or_raise(
+            lambda: core_v1.list_namespaced_pod(
+                namespace=self._namespace,
+                label_selector=label_selector,
+                field_selector=field_selector,
+            ),
+            description=f"list_pods_on_node({node_id})",
+            max_retries=_K8S_API_MAX_RETRIES,
+            per_call_timeout=_K8S_API_TIMEOUT_SECONDS,
+            backoff_base=_K8S_API_BACKOFF_BASE,
+        )
+
+        for pod in pod_list.items:
+            pod_name = pod.metadata.name
+            await retry_async_or_raise(
+                lambda name=pod_name: core_v1.delete_namespaced_pod(
+                    name=name,
+                    namespace=self._namespace,
+                ),
+                description=f"delete_pod({pod_name})",
+                max_retries=_K8S_API_MAX_RETRIES,
+                per_call_timeout=_K8S_API_TIMEOUT_SECONDS,
+                backoff_base=_K8S_API_BACKOFF_BASE,
+            )
+            logger.info("deleted_ray_worker_pod pod=%s node=%s", pod_name, node_id)
+
+        elapsed = time.monotonic() - start
+        logger.info(
+            "delete_ray_worker_pods_on_node node_id=%s count=%d elapsed_seconds=%.3f",
+            node_id,
+            len(pod_list.items),
+            elapsed,
+        )
 
     async def _ensure_client(self) -> CoreV1Api:
         if self._core_v1 is not None:
