@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.placement_group_utils import BundleProbe, PlacementGroupInfo, PlacementGroupSlice
+from miles.utils.placement_group_utils import BundleLocationSnapshot, PlacementGroupInfo, PlacementGroupSlice
 
 
 class _FakePlacementGroup:
@@ -10,13 +10,13 @@ class _FakePlacementGroup:
     pass
 
 
-def _make_pg_info(probes: list[BundleProbe]) -> PlacementGroupInfo:
+def _make_pg_info(probes: list[BundleLocationSnapshot]) -> PlacementGroupInfo:
     return PlacementGroupInfo(pg=_FakePlacementGroup(), bundles=probes)
 
 
-class TestBundleProbe:
+class TestBundleLocationSnapshot:
     def test_fields(self) -> None:
-        probe = BundleProbe(bundle_index=3, node_ip="10.0.0.1", gpu_id="2")
+        probe = BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.1", gpu_id="2")
         assert probe.bundle_index == 3
         assert probe.node_ip == "10.0.0.1"
         assert probe.gpu_id == "2"
@@ -25,18 +25,18 @@ class TestBundleProbe:
 class TestPlacementGroupInfo:
     def test_reordered_bundle_indices(self) -> None:
         probes = [
-            BundleProbe(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
-            BundleProbe(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
-            BundleProbe(bundle_index=1, node_ip="10.0.0.2", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.2", gpu_id="0"),
         ]
         info = _make_pg_info(probes)
         assert info.reordered_bundle_indices == [3, 0, 1]
 
     def test_reordered_gpu_ids(self) -> None:
         probes = [
-            BundleProbe(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
-            BundleProbe(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
-            BundleProbe(bundle_index=1, node_ip="10.0.0.2", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.2", gpu_id="0"),
         ]
         info = _make_pg_info(probes)
         assert info.reordered_gpu_ids == ["0", "1", "0"]
@@ -47,14 +47,14 @@ class TestPlacementGroupInfo:
         assert info.reordered_gpu_ids == []
 
     def test_getitem_rejects_int_index(self) -> None:
-        info = _make_pg_info([BundleProbe(bundle_index=0, node_ip="10.0.0.1", gpu_id="0")])
+        info = _make_pg_info([BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="0")])
         with pytest.raises(TypeError, match="slices"):
             info[0]
 
     def test_getitem_rejects_step(self) -> None:
         info = _make_pg_info([
-            BundleProbe(bundle_index=0, node_ip="10.0.0.1", gpu_id="0"),
-            BundleProbe(bundle_index=1, node_ip="10.0.0.1", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.1", gpu_id="1"),
         ])
         with pytest.raises(ValueError, match="step"):
             info[0:2:2]
@@ -64,12 +64,12 @@ class TestPlacementGroupSlice:
     def _make_six_bundle_info(self) -> PlacementGroupInfo:
         """6 bundles across 3 nodes (2 GPUs each), already sorted."""
         probes = [
-            BundleProbe(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
-            BundleProbe(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
-            BundleProbe(bundle_index=5, node_ip="10.0.0.2", gpu_id="0"),
-            BundleProbe(bundle_index=1, node_ip="10.0.0.2", gpu_id="1"),
-            BundleProbe(bundle_index=4, node_ip="10.0.0.3", gpu_id="0"),
-            BundleProbe(bundle_index=2, node_ip="10.0.0.3", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=5, node_ip="10.0.0.2", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.2", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=4, node_ip="10.0.0.3", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=2, node_ip="10.0.0.3", gpu_id="1"),
         ]
         return _make_pg_info(probes)
 
@@ -117,8 +117,8 @@ class TestPlacementGroupSlice:
         assert s.reordered_bundle_indices == [5, 1]
 
         # Simulate refresh: replace bundle at rank 2
-        info.bundles[2] = BundleProbe(bundle_index=5, node_ip="10.0.0.4", gpu_id="3")
-        info.bundles[3] = BundleProbe(bundle_index=1, node_ip="10.0.0.4", gpu_id="1")
+        info.bundles[2] = BundleLocationSnapshot(bundle_index=5, node_ip="10.0.0.4", gpu_id="3")
+        info.bundles[3] = BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.4", gpu_id="1")
 
         assert s.reordered_bundle_indices == [5, 1]
         assert s.reordered_gpu_ids == ["3", "1"]
