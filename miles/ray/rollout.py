@@ -212,10 +212,9 @@ class RolloutManager:
         if self.rollout_id == -1:
             return self.rollout_engines, self.rollout_engine_lock, self.num_new_engines
 
+        self.pg.refresh()
+
         dead_indices = [i for i, engine in enumerate(self.all_rollout_engines) if engine is None]
-        if dead_indices:
-            self.pg.refresh()
-            logger.info("PG refresh completed before engine recovery")
         self.num_new_engines = init_rollout_engines(self.args, self.pg, self.all_rollout_engines)
         logger.info(f"Recovered {self.num_new_engines} dead rollout engines")
         assert self.num_new_engines == len(dead_indices), "num_new_engines does not match dead_indices length"
