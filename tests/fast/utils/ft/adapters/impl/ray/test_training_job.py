@@ -430,6 +430,7 @@ class _FakeJobDetails:
 
     def __init__(self, job_id: str, status: str) -> None:
         self.job_id = job_id
+        self.submission_id = job_id
         self.status = status
 
 

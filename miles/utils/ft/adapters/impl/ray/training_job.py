@@ -37,22 +37,20 @@ async def stop_all_active_jobs(
 ) -> int:
     """Stop all non-terminal Ray jobs. Returns count of jobs stopped."""
     all_jobs = await asyncio.to_thread(client.list_jobs)
-    active = [
-        j
-        for j in all_jobs
-        if _parse_ray_status(j.status) not in _TERMINAL_STATUSES
-        and j.job_id is not None
-    ]
+    active = [j for j in all_jobs if _parse_ray_status(j.status) not in _TERMINAL_STATUSES]
     if not active:
         return 0
 
     stopped = 0
     for job in active:
+        stop_id = getattr(job, "submission_id", None) or job.job_id
+        if stop_id is None:
+            continue
         try:
-            await _stop_job(client, job.job_id, timeout_seconds=timeout_seconds)
+            await _stop_job(client, stop_id, timeout_seconds=timeout_seconds)
             stopped += 1
         except Exception:
-            logger.warning("stop_all_active_jobs_failed job_id=%s", job.job_id, exc_info=True)
+            logger.warning("stop_all_active_jobs_failed job_id=%s", stop_id, exc_info=True)
 
     logger.info("stop_all_active_jobs stopped=%d attempted=%d", stopped, len(active))
     return stopped
