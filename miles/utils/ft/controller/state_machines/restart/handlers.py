@@ -77,15 +77,12 @@ class EvictingHandler(StateHandler[Evicting, RestartContext]):
             severity="warning",
         )
 
-        if ctx.get_expected_node_count is not None:
-            expected = await ctx.get_expected_node_count()
-            return WaitingForNewNode(
-                bad_node_ids=state.bad_node_ids,
-                wait_start_time=datetime.now(timezone.utc),
-                expected_node_count=expected,
-            )
-
-        return StoppingAndRestarting(bad_node_ids=state.bad_node_ids)
+        expected = await ctx.get_expected_node_count() if ctx.get_expected_node_count is not None else 0
+        return WaitingForNewNode(
+            bad_node_ids=state.bad_node_ids,
+            wait_start_time=datetime.now(timezone.utc),
+            expected_node_count=expected,
+        )
 
 
 class StoppingAndRestartingHandler(StateHandler[StoppingAndRestarting, RestartContext]):
