@@ -30,36 +30,6 @@ def get_alive_gpu_nodes(
     return nodes
 
 
-def resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
-    """Map node identifiers (K8s names, IPs, or Ray hex IDs) to Ray node IDs.
-
-    Looks up each identifier against NodeName, NodeManagerAddress, and NodeID
-    of alive Ray nodes. Identifiers already matching a NodeID pass through.
-    Unresolvable identifiers are logged and skipped.
-    """
-    lookup: dict[str, str] = {}
-    for node in ray.nodes():
-        if not node.get("Alive"):
-            continue
-        ray_id = node["NodeID"]
-        lookup[ray_id] = ray_id
-        if name := node.get("NodeName"):
-            lookup[name] = ray_id
-        if addr := node.get("NodeManagerAddress"):
-            lookup[addr] = ray_id
-
-    seen: set[str] = set()
-    resolved: list[str] = []
-    for ident in identifiers:
-        ray_id = lookup.get(ident)
-        if ray_id is not None and ray_id not in seen:
-            seen.add(ray_id)
-            resolved.append(ray_id)
-        elif ray_id is None:
-            logger.warning("resolve_to_ray_node_ids: %s not found in Ray cluster, skipping", ident)
-    return resolved
-
-
 def build_node_address_map(nodes: list[dict[str, Any]]) -> dict[str, str]:
     """Build a mapping from NodeID to NodeManagerAddress."""
     return {node["NodeID"]: addr for node in nodes if (addr := node.get("NodeManagerAddress", ""))}

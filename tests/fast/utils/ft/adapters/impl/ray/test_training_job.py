@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.adapters.impl.ray.node_discovery import resolve_to_ray_node_ids
 from miles.utils.ft.adapters.impl.ray.training_job import (
     RayTrainingJob,
     _parse_ray_status,
@@ -66,34 +65,6 @@ class TestSubmitTraining:
 
         assert run_id_1 != run_id_2
         assert mock_client.submit_job.call_count == 2
-
-    @pytest.mark.anyio
-    async def test_excluded_node_ids_appended_to_entrypoint(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "ray-job-exc"
-
-        fake_nodes = [
-            {"Alive": True, "NodeID": "aaa111", "NodeName": "gpu-worker-01", "NodeManagerAddress": "10.0.0.1"},
-            {"Alive": True, "NodeID": "bbb222", "NodeName": "gpu-worker-02", "NodeManagerAddress": "10.0.0.2"},
-        ]
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = fake_nodes
-            await job.submit_training(excluded_node_ids=["gpu-worker-01", "gpu-worker-02"])
-
-        call_kwargs = mock_client.submit_job.call_args.kwargs
-        assert "--excluded-node-ids" in call_kwargs["entrypoint"]
-        assert "aaa111" in call_kwargs["entrypoint"]
-        assert "bbb222" in call_kwargs["entrypoint"]
-
-    @pytest.mark.anyio
-    async def test_excluded_node_ids_none_does_not_modify_entrypoint(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "ray-job-no-exc"
-
-        await job.submit_training(excluded_node_ids=None)
-
-        call_kwargs = mock_client.submit_job.call_args.kwargs
-        assert call_kwargs["entrypoint"] == "python train.py"
 
     @pytest.mark.anyio
     async def test_injects_ft_id_and_label_prefix_into_env(self) -> None:
@@ -281,67 +252,6 @@ class TestGetTrainingStatus:
 
         with pytest.raises(ConnectionError, match="Ray unreachable"):
             await job.get_training_status()
-
-
-class TestResolveToRayNodeIds:
-    _FAKE_NODES = [
-        {"Alive": True, "NodeID": "aaa111", "NodeName": "gpu-worker-01", "NodeManagerAddress": "10.0.0.1"},
-        {"Alive": True, "NodeID": "bbb222", "NodeName": "gpu-worker-02", "NodeManagerAddress": "10.0.0.2"},
-        {"Alive": False, "NodeID": "ccc333", "NodeName": "dead-node", "NodeManagerAddress": "10.0.0.3"},
-    ]
-
-    def test_resolves_k8s_node_names(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["gpu-worker-01", "gpu-worker-02"])
-        assert result == ["aaa111", "bbb222"]
-
-    def test_resolves_ip_addresses(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["10.0.0.1"])
-        assert result == ["aaa111"]
-
-    def test_passes_through_ray_node_ids(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["bbb222"])
-        assert result == ["bbb222"]
-
-    def test_skips_dead_nodes(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["dead-node"])
-        assert result == []
-
-    def test_skips_unknown_identifiers(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["nonexistent"])
-        assert result == []
-
-    def test_empty_input(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids([])
-        assert result == []
-
-    def test_ignores_nodes_with_missing_node_name_or_address(self) -> None:
-        """Nodes without NodeName/NodeManagerAddress should not pollute the lookup with empty-string keys."""
-        nodes = [
-            {"Alive": True, "NodeID": "aaa111"},
-            {"Alive": True, "NodeID": "bbb222", "NodeName": "", "NodeManagerAddress": ""},
-        ]
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = nodes
-            result = resolve_to_ray_node_ids([""])
-        assert result == []
-
-    def test_deduplicates_same_node_resolved_via_different_identifiers(self) -> None:
-        with patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray") as mock_ray:
-            mock_ray.nodes.return_value = self._FAKE_NODES
-            result = resolve_to_ray_node_ids(["gpu-worker-01", "10.0.0.1", "aaa111"])
-        assert result == ["aaa111"]
 
 
 class TestParseRayStatus:

@@ -68,7 +68,6 @@ class FakeTrainingJob(TrainingJobProtocol):
         self._stopped: bool = False
         self._submitted: bool = False
         self._submit_call_count: int = 0
-        self._last_excluded_node_ids: list[str] | None = None
         self._run_id: str = "fake-initial"
 
     async def get_training_status(self) -> JobStatus:
@@ -80,10 +79,9 @@ class FakeTrainingJob(TrainingJobProtocol):
     async def stop_training(self, timeout_seconds: int = 300) -> None:
         self._stopped = True
 
-    async def submit_training(self, excluded_node_ids: list[str] | None = None) -> str:
+    async def submit_training(self) -> str:
         self._submitted = True
         self._submit_call_count += 1
-        self._last_excluded_node_ids = excluded_node_ids
         self._call_count = 0
         self._run_id = f"fake-run-{self._submit_call_count}"
         return self._run_id
@@ -284,7 +282,7 @@ async def failing_stop_training(timeout_seconds: int = 300) -> None:
     raise RuntimeError("stop failed")
 
 
-async def failing_submit_training(excluded_node_ids: list[str] | None = None) -> str:
+async def failing_submit_training() -> str:
     raise RuntimeError("submit failed")
 
 

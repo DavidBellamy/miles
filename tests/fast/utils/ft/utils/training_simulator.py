@@ -40,7 +40,7 @@ class TrainingStateActor:
         self._run_id: str = uuid4().hex[:8]
         self._submit_count: int = 0
         self._stop_called: bool = False
-        self._excluded_node_ids: list[str] = []
+        self._submit_count: int = 0
         self._hung: bool = False
         self._custom_log_metrics: dict[str, float] = {}
 
@@ -53,14 +53,13 @@ class TrainingStateActor:
     def get_run_id(self) -> str:
         return self._run_id
 
-    def submit(self, excluded_node_ids: list[str] | None = None) -> str:
+    def submit(self) -> str:
         self._submit_count += 1
         self._run_id = uuid4().hex[:8]
         self._status = JobStatus.RUNNING.value
         self._stop_called = False
         self._hung = False
         self._custom_log_metrics = {}
-        self._excluded_node_ids = excluded_node_ids or []
         return self._run_id
 
     def stop(self) -> None:
@@ -73,8 +72,6 @@ class TrainingStateActor:
     def get_stop_called(self) -> bool:
         return self._stop_called
 
-    def get_excluded_node_ids(self) -> list[str]:
-        return self._excluded_node_ids
 
     def set_hung(self, hung: bool) -> None:
         self._hung = hung
@@ -107,11 +104,8 @@ class RemoteControlledTrainingJob(TrainingJobProtocol):
     async def stop_training(self, timeout_seconds: int = 300) -> None:
         await self._state.stop.remote()
 
-    async def submit_training(
-        self,
-        excluded_node_ids: list[str] | None = None,
-    ) -> str:
-        run_id: str = await self._state.submit.remote(excluded_node_ids)
+    async def submit_training(self) -> str:
+        run_id: str = await self._state.submit.remote()
         return run_id
 
 

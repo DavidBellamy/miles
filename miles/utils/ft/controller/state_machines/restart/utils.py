@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 async def stop_and_submit(
     training_job: TrainingJobProtocol,
-    excluded_node_ids: list[str] | None = None,
     on_new_run: Callable[[str], None] | None = None,
 ) -> bool:
     """Stop training, submit new job, notify caller of new run_id. Returns True on success."""
@@ -36,7 +35,7 @@ async def stop_and_submit(
             return False
 
     try:
-        run_id = await training_job.submit_training(excluded_node_ids=excluded_node_ids)
+        run_id = await training_job.submit_training()
     except Exception:
         logger.error("submit_training_failed", exc_info=True)
         return False

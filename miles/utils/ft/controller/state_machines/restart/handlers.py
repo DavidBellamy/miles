@@ -104,10 +104,8 @@ class StoppingAndRestartingHandler(StateHandler[StoppingAndRestarting, RestartCo
         state: StoppingAndRestarting,
         ctx: RestartContext,
     ) -> RestartState | None:
-        excluded = state.bad_node_ids or None
         success = await stop_and_submit(
             ctx.training_job,
-            excluded_node_ids=excluded,
             on_new_run=ctx.on_new_run,
         )
         if not success:

@@ -160,18 +160,6 @@ class TestStopAndSubmit:
         assert training_job._stopped
 
     @pytest.mark.anyio
-    async def test_excluded_node_ids_passed_to_submit(self) -> None:
-        training_job = FakeTrainingJob()
-
-        result = await stop_and_submit(
-            training_job,
-            excluded_node_ids=["node-x", "node-y"],
-        )
-
-        assert result is True
-        assert training_job._last_excluded_node_ids == ["node-x", "node-y"]
-
-    @pytest.mark.anyio
     async def test_on_new_run_called_after_successful_submit(self) -> None:
         training_job = FakeTrainingJob()
         calls: list[str] = []

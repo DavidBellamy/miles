@@ -8,7 +8,6 @@ from uuid import uuid4
 
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.adapters.impl.ray.node_discovery import resolve_to_ray_node_ids
 from miles.utils.ft.adapters.types import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus, TrainingJobProtocol
 from miles.utils.ft.utils.polling import poll_until
 
@@ -84,10 +83,7 @@ class RayTrainingJob(TrainingJobProtocol):
     def job_id(self) -> str | None:
         return self._job_id
 
-    async def submit_training(
-        self,
-        excluded_node_ids: list[str] | None = None,
-    ) -> str:
+    async def submit_training(self) -> str:
         if self._job_id is not None:
             raise RuntimeError(
                 f"Cannot submit: previous job {self._job_id} still tracked. " "Call stop_training() first."
@@ -102,18 +98,11 @@ class RayTrainingJob(TrainingJobProtocol):
         }
         runtime_env = {**self._runtime_env, "env_vars": env_override}
 
-        entrypoint = self._entrypoint
-        if excluded_node_ids:
-            ray_node_ids = await asyncio.to_thread(resolve_to_ray_node_ids, excluded_node_ids)
-            if ray_node_ids:
-                # TODO: this is no longer supported!
-                entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
-
         start = time.monotonic()
         job_id = await asyncio.wait_for(
             asyncio.to_thread(
                 self._client.submit_job,
-                entrypoint=entrypoint,
+                entrypoint=self._entrypoint,
                 runtime_env=runtime_env,
             ),
             timeout=_SUBMIT_TIMEOUT_SECONDS,

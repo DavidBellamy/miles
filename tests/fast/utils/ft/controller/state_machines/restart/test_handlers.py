@@ -242,16 +242,6 @@ class TestStoppingAndRestarting:
         assert len(captured_run_ids) == 1
 
     @pytest.mark.asyncio
-    async def test_submit_excludes_bad_nodes(self) -> None:
-        training_job = FakeTrainingJob()
-        stepper = _make_stepper()
-        ctx = _make_context(training_job=training_job)
-
-        state = StoppingAndRestarting(bad_node_ids=["node-B"])
-        await stepper(state, ctx)
-        assert training_job._last_excluded_node_ids == ["node-B"]
-
-    @pytest.mark.asyncio
     async def test_stop_training_exception_still_submits(self) -> None:
         """After stop_training fails but job is already stopped, submit_training proceeds."""
         training_job = FakeTrainingJob(status_sequence=[JobStatus.STOPPED])

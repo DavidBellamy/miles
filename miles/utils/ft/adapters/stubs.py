@@ -31,12 +31,9 @@ class StubTrainingJob(TrainingJobProtocol):
     async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None:
         logger.info("stub_stop_training timeout_seconds=%d", timeout_seconds)
 
-    async def submit_training(
-        self,
-        excluded_node_ids: list[str] | None = None,
-    ) -> str:
+    async def submit_training(self) -> str:
         run_id = uuid4().hex[:8]
-        logger.info("stub_submit_training run_id=%s excluded_node_ids=%s", run_id, excluded_node_ids)
+        logger.info("stub_submit_training run_id=%s", run_id)
         return run_id
 
     async def get_training_status(self) -> JobStatus:

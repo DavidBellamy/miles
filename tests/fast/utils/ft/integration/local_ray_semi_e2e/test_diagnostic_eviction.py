@@ -66,11 +66,11 @@ class TestDiagnosticEviction:
 
 
 class TestEvictionExcludedNodes:
-    async def test_multi_node_eviction_passes_correct_excluded_ids(
+    async def test_multi_node_eviction_marks_both_nodes_bad(
         self,
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """2 bad nodes out of 3 → excluded_node_ids contains both."""
+        """2 bad nodes out of 3 → both nodes marked bad via K8s labels."""
         env = make_e2e_env(
             ft_id="e2eexcl",
             nodes=[

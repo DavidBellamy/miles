@@ -63,8 +63,8 @@ class TestRunIdUniqueness:
         recorded_run_ids: list[str] = []
         original_submit = harness.training_job.submit_training
 
-        async def tracking_submit(excluded_node_ids: list[str] | None = None) -> str:
-            run_id = await original_submit(excluded_node_ids)
+        async def tracking_submit() -> str:
+            run_id = await original_submit()
             recorded_run_ids.append(run_id)
             return run_id
 
