@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class BundleProbe:
+class BundleLocationSnapshot:
     bundle_index: int
     node_ip: str
     gpu_id: str
@@ -21,7 +21,7 @@ class BundleProbe:
 @dataclass
 class PlacementGroupInfo:
     pg: PlacementGroup
-    bundles: list[BundleProbe] = field(default_factory=list)
+    bundles: list[BundleLocationSnapshot] = field(default_factory=list)
 
     @property
     def reordered_bundle_indices(self) -> list[int]:
@@ -59,7 +59,7 @@ class PlacementGroupSlice:
         return self.owner.reordered_gpu_ids[self.offset : self.offset + self.count]
 
 
-def bundle_sort_key(probe: BundleProbe) -> tuple[list[int], str]:
+def bundle_sort_key(probe: BundleLocationSnapshot) -> tuple[list[int], str]:
     node_identifier = probe.node_ip
     try:
         node_ip_parts = list(map(int, node_identifier.split(".")))
@@ -80,7 +80,7 @@ class InfoActor:
         return ray.util.get_node_ip_address(), ray.get_gpu_ids()[0]
 
 
-def probe_bundles(pg: PlacementGroup, num_bundles: int, num_gpus: float = 1) -> list[BundleProbe]:
+def probe_bundles(pg: PlacementGroup, num_bundles: int, num_gpus: float = 1) -> list[BundleLocationSnapshot]:
     """Probe all bundles in a PG to discover (node_ip, gpu_id) mappings.
 
     Args:
@@ -106,7 +106,7 @@ def probe_bundles(pg: PlacementGroup, num_bundles: int, num_gpus: float = 1) -> 
         ray.kill(actor)
 
     probes = [
-        BundleProbe(bundle_index=i, node_ip=gpu_ids[i][0], gpu_id=gpu_ids[i][1])
+        BundleLocationSnapshot(bundle_index=i, node_ip=gpu_ids[i][0], gpu_id=gpu_ids[i][1])
         for i in range(num_bundles)
     ]
 
