@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import time
 from collections.abc import Generator
 
@@ -21,6 +22,7 @@ LONG_RECOVERY_TIMEOUT = 120.0 * _TIMEOUT_SCALE
 def _init_local_ray(*, include_dashboard: bool) -> tuple[ray.runtime_env.RuntimeContext, str | None]:
     if ray.is_initialized():
         ray.shutdown()
+    subprocess.run(["ray", "stop", "--force"], capture_output=True)
     kwargs: dict[str, object] = dict(
         address="local",
         num_cpus=32,

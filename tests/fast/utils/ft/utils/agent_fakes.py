@@ -94,7 +94,7 @@ def make_mock_pynvml(
     mock.NVML_TEMPERATURE_GPU = 0
     mock.NVML_PCIE_UTIL_TX_BYTES = 1
     mock.NVML_MEMORY_ERROR_TYPE_UNCORRECTED = 1
-    mock.NVML_VOLATILE_ECC_COUNTER_TYPE = 0
+    mock.NVML_VOLATILE_ECC = 0
     mock.NVML_PAGE_RETIREMENT_CAUSE_DOUBLE_BIT_ECC_ERROR = 0
 
     mock.nvmlInit.return_value = None

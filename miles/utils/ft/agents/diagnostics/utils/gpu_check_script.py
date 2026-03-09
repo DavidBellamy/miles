@@ -142,7 +142,7 @@ def _check_nvml(handle: object) -> _NvmlCheckResult:
     ecc_uncorrectable = pynvml.nvmlDeviceGetTotalEccErrors(
         handle,
         pynvml.NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
-        pynvml.NVML_VOLATILE_ECC_COUNTER_TYPE,
+        pynvml.NVML_VOLATILE_ECC,
     )
 
     retired_double_bit = pynvml.nvmlDeviceGetRetiredPages(
@@ -219,7 +219,7 @@ def _compute_fingerprint(
     with torch.no_grad():
         output = model_gpu(tgt=x_gpu, memory=x_gpu, tgt_mask=mask_gpu)
 
-    output_bytes = output.cpu().contiguous().numpy().tobytes()
+    output_bytes = output.cpu().float().contiguous().numpy().tobytes()
     digest = hashlib.sha256(output_bytes).hexdigest()
 
     del model_gpu, x_gpu, mask_gpu, output

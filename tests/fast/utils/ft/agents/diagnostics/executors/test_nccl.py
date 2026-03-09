@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -424,6 +425,10 @@ class TestNcclPairwise:
 # ---------------------------------------------------------------------------
 
 
+_HAS_NCCL_TESTS = shutil.which("all_reduce_perf") is not None
+
+
+@pytest.mark.skipif(not _HAS_NCCL_TESTS, reason="all_reduce_perf (nccl-tests) not installed")
 class TestNcclSimpleRealGpu:
     """E2E tests that run real all_reduce_perf on a single GPU node."""
 
