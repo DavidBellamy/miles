@@ -136,29 +136,49 @@ def _check_single_gpu(
 
 
 def _check_nvml(handle: object) -> _NvmlCheckResult:
-    """Run pynvml extended checks on a single GPU handle."""
+    """Run pynvml extended checks on a single GPU handle.
+
+    Individual NVML queries may raise NVMLError_NotSupported on GPUs that
+    lack the feature (e.g. ECC on consumer cards, row-remap on some SKUs).
+    Treat "not supported" as healthy for that check.
+    """
     import pynvml
 
-    ecc_uncorrectable = pynvml.nvmlDeviceGetTotalEccErrors(
-        handle,
-        pynvml.NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
-        pynvml.NVML_VOLATILE_ECC,
-    )
+    try:
+        ecc_uncorrectable: int = pynvml.nvmlDeviceGetTotalEccErrors(
+            handle,
+            pynvml.NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+            pynvml.NVML_VOLATILE_ECC,
+        )
+    except pynvml.NVMLError_NotSupported:
+        ecc_uncorrectable = 0
 
-    retired_double_bit = pynvml.nvmlDeviceGetRetiredPages(
-        handle,
-        pynvml.NVML_PAGE_RETIREMENT_CAUSE_DOUBLE_BIT_ECC_ERROR,
-    )
+    try:
+        retired_double_bit = pynvml.nvmlDeviceGetRetiredPages(
+            handle,
+            pynvml.NVML_PAGE_RETIREMENT_CAUSE_DOUBLE_BIT_ECC_ERROR,
+        )
+        retired_pages_count = len(retired_double_bit)
+    except pynvml.NVMLError_NotSupported:
+        retired_pages_count = 0
 
-    power_state: int = pynvml.nvmlDeviceGetPowerState(handle)
+    try:
+        power_state: int = pynvml.nvmlDeviceGetPowerState(handle)
+        power_state_abnormal = power_state in _ABNORMAL_POWER_STATES
+    except pynvml.NVMLError_NotSupported:
+        power_state_abnormal = False
 
-    remap_info = pynvml.nvmlDeviceGetRemappedRows(handle)
+    try:
+        remap_info = pynvml.nvmlDeviceGetRemappedRows(handle)
+        row_remap_failure = bool(remap_info[3])
+    except pynvml.NVMLError_NotSupported:
+        row_remap_failure = False
 
     return _NvmlCheckResult(
         ecc_errors_uncorrectable=ecc_uncorrectable,
-        retired_pages_count=len(retired_double_bit),
-        power_state_abnormal=power_state in _ABNORMAL_POWER_STATES,
-        row_remap_failure=bool(remap_info[3]),
+        retired_pages_count=retired_pages_count,
+        power_state_abnormal=power_state_abnormal,
+        row_remap_failure=row_remap_failure,
     )
 
 
