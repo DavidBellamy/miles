@@ -252,3 +252,21 @@ def _named_params_and_buffers_global(
                 layer_idx, rest = match.groups()
                 layer_idx = int(layer_idx) + layer_offset
                 yield f"module.module.decoder.layers.{layer_idx}.{rest}", buffer
+
+
+def collect_named_tensors_for_weight_transfer(
+    args: Namespace,
+    model: Sequence[torch.nn.Module],
+    convert_to_global_name: bool = True,
+    translate_gpu_to_cpu: bool = False,
+    is_expert: bool = False,
+) -> Iterator[tuple[str, torch.Tensor]]:
+
+    for name, tensor in named_params_and_buffers(
+        args,
+        model,
+        convert_to_global_name,
+        translate_gpu_to_cpu,
+    ):
+        if (".experts." not in name and not is_expert) or (".experts." in name and is_expert):
+            yield name, tensor
