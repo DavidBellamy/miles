@@ -41,6 +41,19 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
+_SEVERE_MISMATCH_TYPES = {"special_token_count", "special_token_type", "non_assistant_text"}
+
+
+def _check_tito_mismatches(session_metadata: dict) -> None:
+    """Raise if session metadata contains severe TITO mismatches."""
+    mismatches = session_metadata.get("tito_session_mismatch", [])
+    severe = [m for m in mismatches if m.get("type") in _SEVERE_MISMATCH_TYPES]
+    if severe:
+        raise ValueError(
+            f"TITO produced {len(severe)} severe mismatch(es): "
+            + "; ".join(f'{m["type"]} at segment {m["segment_index"]}' for m in severe)
+        )
+
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     tracer = await OpenAIEndpointTracer.create(input.args)
@@ -58,6 +71,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     )
 
     records, session_metadata = await tracer.collect_records()
+    _check_tito_mismatches(session_metadata)
 
     if not records:
         logger.warning("No model calls recorded for sample")
