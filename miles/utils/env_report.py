@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -52,9 +53,13 @@ def collect_and_print_node_env_report(
     launcher_report = None
     if partial_env_report:
         try:
-            launcher_report = json.loads(partial_env_report)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse partial_env_report", exc_info=True)
+            decoded = base64.b64decode(partial_env_report).decode()
+            launcher_report = json.loads(decoded)
+        except Exception:
+            try:
+                launcher_report = json.loads(partial_env_report)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse partial_env_report", exc_info=True)
 
     editable_packages, full_pip_list = _collect_pip_info()
 
