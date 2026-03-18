@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import logging
 import os
@@ -76,17 +75,6 @@ def init_wandb_primary(args):
     wandb.init(**init_kwargs)
 
     _init_wandb_common()
-
-    if (env_report_raw := args.env_report):
-        from miles.utils.env_report import collect_and_print_node_env_report
-
-        node_report = collect_and_print_node_env_report(
-            role="driver", rank=0, env_report_json=env_report_raw,
-        )
-        wandb.config.update(
-            {"node_env_report": dataclasses.asdict(node_report)},
-            allow_val_change=True,
-        )
 
     # Set wandb_run_id in args for easy access throughout the training process
     args.wandb_run_id = wandb.run.id

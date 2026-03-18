@@ -181,27 +181,6 @@ def _collect_full_pip_list() -> list[dict[str, str]]:
 
 
 def _print_report(report: NodeEnvReport) -> None:
-    header = f"========== ENV REPORT (role={report.role}, rank={report.rank}) =========="
-    print(header)
-
-    if report.launcher_env_report:
-        print("--- Launcher Config ---")
-        print(json.dumps(report.launcher_env_report, indent=2, default=str))
-
-    print("--- Editable Packages ---")
-    for pkg in report.editable_packages:
-        print(f"  {pkg.name} {pkg.version} {pkg.location}")
-
-    for repo in report.git_repos:
-        print(f"--- Git Status: {repo.package_name} ({repo.location}) ---")
-        print(f"  commit: {repo.commit}")
-        print(f"  dirty: {'yes' if repo.dirty else 'no'}")
-        if repo.diff_stat:
-            for line in repo.diff_stat.splitlines():
-                print(f"  {line}")
-
-    print("--- Full Package List ---")
-    for pkg in report.full_pip_list:
-        print(f"  {pkg.get('name', '?')} {pkg.get('version', '?')}")
-
-    print("=" * len(header))
+    print(f"========== ENV REPORT (role={report.role}, rank={report.rank}) ==========")
+    print(json.dumps(dataclasses.asdict(report), indent=2, default=str))
+    print("=" * 60)
