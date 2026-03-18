@@ -89,7 +89,7 @@ def _compute_config_for_logging(args):
     ]
     output["env_vars"] = {k: v for k, v in os.environ.items() if k in whitelist_env_vars}
 
-    if (env_report_raw := args.env_report):
+    if env_report_raw := args.env_report:
         try:
             output["launcher_env_report"] = json.loads(env_report_raw)
         except json.JSONDecodeError:

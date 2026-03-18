@@ -59,9 +59,7 @@ def collect_and_print_node_env_report(
     editable_packages, full_pip_list = _collect_pip_info()
 
     git_repos = [
-        info
-        for pkg in editable_packages
-        if (info := _collect_git_info(package_name=pkg.name, location=pkg.location))
+        info for pkg in editable_packages if (info := _collect_git_info(package_name=pkg.name, location=pkg.location))
     ]
 
     report = NodeEnvReport(
@@ -103,7 +101,7 @@ def _collect_pip_info() -> tuple[list[EditablePackageInfo], list[dict[str, str]]
                 version=entry["version"],
                 location=pkg["direct_url"]["url"].removeprefix("file://"),
             )
-            for pkg, entry in zip(installed, full_pip_list)
+            for pkg, entry in zip(installed, full_pip_list, strict=True)
             if _is_editable(pkg)
         ]
 
@@ -156,9 +154,7 @@ def _collect_git_info(*, package_name: str, location: str) -> GitRepoInfo | None
             diff_stat=diff_stat,
         )
     except Exception:
-        logger.warning(
-            "Failed to collect git info for %s at %s", package_name, location, exc_info=True
-        )
+        logger.warning("Failed to collect git info for %s at %s", package_name, location, exc_info=True)
         return None
 
 

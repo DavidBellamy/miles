@@ -11,7 +11,6 @@ import pytest
 from miles.utils.env_report import (
     ENV_REPORT_PREFIX,
     EditablePackageInfo,
-    GitRepoInfo,
     NodeEnvReport,
     _collect_git_info,
     _collect_pip_info,
@@ -92,15 +91,22 @@ class TestCollectPipInfo:
 
         assert len(editable) == 2
         assert editable[0] == EditablePackageInfo(
-            name="miles", version="0.2.1", location="/workspace/miles",
+            name="miles",
+            version="0.2.1",
+            location="/workspace/miles",
         )
         assert editable[1] == EditablePackageInfo(
-            name="sglang", version="0.4.0", location="/workspace/sglang",
+            name="sglang",
+            version="0.4.0",
+            location="/workspace/sglang",
         )
 
     def test_pip_inspect_failure_returns_empty(self) -> None:
         mock_result = subprocess.CompletedProcess(
-            args=["pip", "inspect"], returncode=1, stdout="", stderr="error",
+            args=["pip", "inspect"],
+            returncode=1,
+            stdout="",
+            stderr="error",
         )
         with patch("miles.utils.env_report.subprocess.run", return_value=mock_result):
             editable, full_list = _collect_pip_info()
@@ -122,9 +128,14 @@ class TestCollectGitInfo:
         subprocess.run(
             ["git", "-C", str(tmp_path), "commit", "-m", "init"],
             capture_output=True,
-            env={"GIT_AUTHOR_NAME": "test", "GIT_COMMITTER_NAME": "test",
-                 "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_EMAIL": "t@t",
-                 "HOME": str(tmp_path), "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+            env={
+                "GIT_AUTHOR_NAME": "test",
+                "GIT_COMMITTER_NAME": "test",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+                "HOME": str(tmp_path),
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            },
         )
 
         info = _collect_git_info(package_name="test_pkg", location=str(tmp_path))
@@ -154,7 +165,9 @@ class TestCollectAndPrintNodeEnvReport:
     def test_returns_structured_report(self) -> None:
         with patch("miles.utils.env_report.subprocess.run", return_value=self._mock_pip_inspect()):
             report = collect_and_print_node_env_report(
-                role="training", rank=0, partial_env_report='{"flavor": "test"}',
+                role="training",
+                rank=0,
+                partial_env_report='{"flavor": "test"}',
             )
 
         assert isinstance(report, NodeEnvReport)
@@ -166,12 +179,14 @@ class TestCollectAndPrintNodeEnvReport:
 
     def test_prints_single_line_json(self, capsys) -> None:
         with patch("miles.utils.env_report.subprocess.run", return_value=self._mock_pip_inspect()):
-            report = collect_and_print_node_env_report(
-                role="rollout", rank=3, partial_env_report="",
+            collect_and_print_node_env_report(
+                role="rollout",
+                rank=3,
+                partial_env_report="",
             )
 
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.splitlines() if l.startswith(ENV_REPORT_PREFIX)]
+        lines = [line for line in captured.out.splitlines() if line.startswith(ENV_REPORT_PREFIX)]
         assert len(lines) == 1
         json_str = lines[0].removeprefix(ENV_REPORT_PREFIX)
         parsed = json.loads(json_str)
@@ -181,21 +196,27 @@ class TestCollectAndPrintNodeEnvReport:
     def test_empty_partial_env_report(self) -> None:
         with patch("miles.utils.env_report.subprocess.run", return_value=self._mock_pip_inspect()):
             report = collect_and_print_node_env_report(
-                role="training", rank=0, partial_env_report="",
+                role="training",
+                rank=0,
+                partial_env_report="",
             )
         assert report.launcher_env_report is None
 
     def test_invalid_json_partial_env_report(self) -> None:
         with patch("miles.utils.env_report.subprocess.run", return_value=self._mock_pip_inspect()):
             report = collect_and_print_node_env_report(
-                role="training", rank=0, partial_env_report="not json",
+                role="training",
+                rank=0,
+                partial_env_report="not json",
             )
         assert report.launcher_env_report is None
 
     def test_report_serializable(self) -> None:
         with patch("miles.utils.env_report.subprocess.run", return_value=self._mock_pip_inspect()):
             report = collect_and_print_node_env_report(
-                role="training", rank=0, partial_env_report='{"x": 1}',
+                role="training",
+                rank=0,
+                partial_env_report='{"x": 1}',
             )
         report_dict = asdict(report)
         json_str = json.dumps(report_dict, default=str)
@@ -210,13 +231,19 @@ class TestCollectAndPrintNodeEnvReport:
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = {
-        "GIT_AUTHOR_NAME": "test", "GIT_COMMITTER_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_EMAIL": "t@t",
-        "HOME": str(repo), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "HOME": str(repo),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
     }
     return subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, env=env, check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
     )
 
 
@@ -241,7 +268,8 @@ def editable_package(tmp_path: Path):
 
     subprocess.run(
         ["pip", "install", "-e", str(repo), "--no-build-isolation", "-q"],
-        capture_output=True, check=True,
+        capture_output=True,
+        check=True,
     )
 
     yield {"pkg_name": pkg_name, "repo": repo, "commit": commit}
@@ -260,21 +288,22 @@ class TestRealEditablePackage:
 
         # Step 1: Run the full collection (no mocks)
         report = collect_and_print_node_env_report(
-            role="training", rank=0, partial_env_report='{"test": true}',
+            role="training",
+            rank=0,
+            partial_env_report='{"test": true}',
         )
 
         # Step 2: Verify the package appears in editable_packages
         editable_names = {pkg.name for pkg in report.editable_packages}
-        assert pkg_name in editable_names, (
-            f"{pkg_name} not in editable packages: {editable_names}"
-        )
+        assert pkg_name in editable_names, f"{pkg_name} not in editable packages: {editable_names}"
 
         pkg_info = next(p for p in report.editable_packages if p.name == pkg_name)
         assert pkg_info.location == str(repo)
 
         # Step 3: Verify git info — clean repo
         git_info = next(
-            (r for r in report.git_repos if r.package_name == pkg_name), None,
+            (r for r in report.git_repos if r.package_name == pkg_name),
+            None,
         )
         assert git_info is not None, f"git info not found for {pkg_name}"
         assert git_info.commit == expected_commit
@@ -283,9 +312,7 @@ class TestRealEditablePackage:
 
         # Step 4: Verify single-line JSON output is parseable and contains this package
         captured = capsys.readouterr()
-        report_lines = [
-            l for l in captured.out.splitlines() if l.startswith(ENV_REPORT_PREFIX)
-        ]
+        report_lines = [line for line in captured.out.splitlines() if line.startswith(ENV_REPORT_PREFIX)]
         assert len(report_lines) == 1
         parsed = json.loads(report_lines[0].removeprefix(ENV_REPORT_PREFIX))
         parsed_editable_names = {p["name"] for p in parsed["editable_packages"]}
@@ -310,12 +337,15 @@ class TestRealEditablePackage:
 
         # Step 2: Run collection
         report = collect_and_print_node_env_report(
-            role="training", rank=0, partial_env_report="",
+            role="training",
+            rank=0,
+            partial_env_report="",
         )
 
         # Step 3: Verify dirty + diff_stat mentions the file
         git_info = next(
-            (r for r in report.git_repos if r.package_name == pkg_name), None,
+            (r for r in report.git_repos if r.package_name == pkg_name),
+            None,
         )
         assert git_info is not None
         assert git_info.commit == expected_commit
@@ -333,12 +363,15 @@ class TestRealEditablePackage:
 
         # Step 2: Run collection
         report = collect_and_print_node_env_report(
-            role="training", rank=0, partial_env_report="",
+            role="training",
+            rank=0,
+            partial_env_report="",
         )
 
         # Step 3: Verify dirty
         git_info = next(
-            (r for r in report.git_repos if r.package_name == pkg_name), None,
+            (r for r in report.git_repos if r.package_name == pkg_name),
+            None,
         )
         assert git_info is not None
         assert git_info.dirty is True

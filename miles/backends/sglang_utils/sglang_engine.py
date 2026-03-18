@@ -134,11 +134,13 @@ class SGLangEngine(RayActor):
         router_ip=None,
         router_port=None,
     ):
-        if (env_report := self.args.env_report):
+        if env_report := self.args.env_report:
             from miles.utils.env_report import collect_and_print_node_env_report
 
             collect_and_print_node_env_report(
-                role="rollout", rank=self.rank, partial_env_report=env_report,
+                role="rollout",
+                rank=self.rank,
+                partial_env_report=env_report,
             )
 
         self.router_ip = router_ip if router_ip is not None else self.args.sglang_router_ip
