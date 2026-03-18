@@ -1,6 +1,9 @@
 import json
+import os
 import subprocess
+import uuid
 from dataclasses import asdict
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -198,3 +201,126 @@ class TestCollectAndPrintNodeEnvReport:
         json_str = json.dumps(report_dict, default=str)
         parsed = json.loads(json_str)
         assert parsed["editable_packages"][0]["name"] == "miles"
+
+
+def _git(repo: Path, *args: str, **kwargs) -> subprocess.CompletedProcess:
+    env = {
+        "GIT_AUTHOR_NAME": "test", "GIT_COMMITTER_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_EMAIL": "t@t",
+        "HOME": str(repo), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+    }
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True, text=True, env=env, check=True, **kwargs,
+    )
+
+
+def _create_editable_package(base_dir: Path, *, pkg_name: str) -> tuple[Path, str]:
+    """Create a minimal editable Python package with a git repo.
+
+    Returns (repo_path, initial_commit_hash).
+    """
+    repo = base_dir / pkg_name
+    repo.mkdir()
+    src = repo / pkg_name
+    src.mkdir()
+    (src / "__init__.py").write_text(f'__version__ = "0.0.1"\n')
+    (repo / "pyproject.toml").write_text(
+        f'[project]\nname = "{pkg_name}"\nversion = "0.0.1"\n'
+        f'[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n'
+    )
+
+    subprocess.run(["git", "init", str(repo)], capture_output=True, check=True)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "init")
+    commit = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    return repo, commit
+
+
+class TestRealEditablePackage:
+    """Integration tests: create a real editable package, pip install -e, run env report."""
+
+    def test_detects_clean_editable_package(self, tmp_path: Path, capsys) -> None:
+        """Install a temp editable package, verify env report finds it with correct git commit."""
+        pkg_name = f"envreporttest{uuid.uuid4().hex[:8]}"
+        repo, expected_commit = _create_editable_package(tmp_path, pkg_name=pkg_name)
+
+        # Step 1: pip install -e into current environment
+        subprocess.run(
+            ["pip", "install", "-e", str(repo), "--no-build-isolation", "-q"],
+            capture_output=True, check=True,
+        )
+        try:
+            # Step 2: Run the full collection (no mocks)
+            report = collect_and_print_node_env_report(
+                role="training", rank=0, partial_env_report='{"test": true}',
+            )
+
+            # Step 3: Verify the package appears in editable_packages
+            editable_names = {pkg.name for pkg in report.editable_packages}
+            assert pkg_name in editable_names, (
+                f"{pkg_name} not in editable packages: {editable_names}"
+            )
+
+            pkg_info = next(p for p in report.editable_packages if p.name == pkg_name)
+            assert pkg_info.location == str(repo)
+
+            # Step 4: Verify git info is correct
+            git_info = next(
+                (r for r in report.git_repos if r.package_name == pkg_name), None,
+            )
+            assert git_info is not None, f"git info not found for {pkg_name}"
+            assert git_info.commit == expected_commit
+            assert git_info.dirty is False
+            assert git_info.diff_stat == ""
+
+            # Step 5: Verify printed single-line JSON is parseable and contains this package
+            captured = capsys.readouterr()
+            report_lines = [
+                l for l in captured.out.splitlines() if l.startswith(ENV_REPORT_PREFIX)
+            ]
+            assert len(report_lines) == 1
+            parsed = json.loads(report_lines[0].removeprefix(ENV_REPORT_PREFIX))
+            parsed_editable_names = {p["name"] for p in parsed["editable_packages"]}
+            assert pkg_name in parsed_editable_names
+            parsed_git_repos = {r["package_name"]: r for r in parsed["git_repos"]}
+            assert parsed_git_repos[pkg_name]["commit"] == expected_commit
+            assert parsed_git_repos[pkg_name]["dirty"] is False
+
+            # Step 6: Verify package also in full_pip_list
+            full_names = {p["name"] for p in report.full_pip_list}
+            assert pkg_name in full_names
+        finally:
+            subprocess.run(["pip", "uninstall", "-y", pkg_name], capture_output=True)
+
+    def test_detects_dirty_editable_package(self, tmp_path: Path) -> None:
+        """Install a temp editable package, make it dirty, verify env report detects dirty state."""
+        pkg_name = f"envreporttest{uuid.uuid4().hex[:8]}"
+        repo, expected_commit = _create_editable_package(tmp_path, pkg_name=pkg_name)
+
+        # Step 1: pip install -e
+        subprocess.run(
+            ["pip", "install", "-e", str(repo), "--no-build-isolation", "-q"],
+            capture_output=True, check=True,
+        )
+        try:
+            # Step 2: Make the repo dirty — add an uncommitted file
+            dirty_file = repo / "dirty_change.txt"
+            dirty_file.write_text("uncommitted change\n")
+            _git(repo, "add", "dirty_change.txt")
+
+            # Step 3: Run collection
+            report = collect_and_print_node_env_report(
+                role="training", rank=0, partial_env_report="",
+            )
+
+            # Step 4: Verify dirty is detected
+            git_info = next(
+                (r for r in report.git_repos if r.package_name == pkg_name), None,
+            )
+            assert git_info is not None
+            assert git_info.commit == expected_commit
+            assert git_info.dirty is True
+            assert "dirty_change.txt" in git_info.diff_stat
+        finally:
+            subprocess.run(["pip", "uninstall", "-y", pkg_name], capture_output=True)
