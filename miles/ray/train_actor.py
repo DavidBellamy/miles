@@ -52,6 +52,13 @@ class TrainRayActor(RayActor):
         self.role = role
         self.with_ref = with_ref
 
+        if getattr(args, "env_report", ""):
+            from miles.utils.env_report import collect_and_print_node_env_report
+
+            collect_and_print_node_env_report(
+                role=role, rank=self._rank, env_report_json=args.env_report,
+            )
+
         torch.serialization.add_safe_globals([miles.utils.eval_config.EvalDatasetConfig])
 
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
