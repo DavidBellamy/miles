@@ -21,9 +21,7 @@ from miles.utils.chat_template_utils.token_seq_comparator import MismatchType, S
 class ModelConfig:
     model_id: str
     trust_remote_code: bool
-    # Text representations — resolved to IDs after loading the tokenizer.
-    tool_start_tokens: tuple[str, ...]
-    tool_end_tokens: tuple[str, ...]
+    assistant_start_str: str
     # A few known special tokens we assert are recognised.
     known_special_tokens: tuple[str, ...]
 
@@ -32,15 +30,13 @@ _CONFIGS: dict[str, ModelConfig] = {
     "qwen3_4b": ModelConfig(
         model_id="Qwen/Qwen3-4B",
         trust_remote_code=True,
-        tool_start_tokens=("<tool_call>", "<tool_response>"),
-        tool_end_tokens=("</tool_call>", "</tool_response>"),
+        assistant_start_str="<|im_start|>assistant",
         known_special_tokens=("<|im_start|>", "<|im_end|>", "<|endoftext|>"),
     ),
     "glm47_flash": ModelConfig(
         model_id="zai-org/GLM-4.7-Flash",
         trust_remote_code=True,
-        tool_start_tokens=("<tool_call>", "<tool_response>"),
-        tool_end_tokens=("</tool_call>", "</tool_response>"),
+        assistant_start_str="<|assistant|>",
         known_special_tokens=("<|assistant|>", "<|user|>", "<|system|>", "<|observation|>", "<|endoftext|>"),
     ),
 }
@@ -58,8 +54,6 @@ class TokenizerEnv:
     tokenizer: AutoTokenizer
     config: ModelConfig
     comparator: TokenSeqComparator
-    tool_start_ids: set[int]
-    tool_end_ids: set[int]
 
     def encode(self, text: str) -> list[int]:
         return self.tokenizer.encode(text, add_special_tokens=False)
@@ -76,25 +70,15 @@ def _build_env(cfg: ModelConfig) -> TokenizerEnv:
         return _ENV_CACHE[cfg.model_id]
 
     tok = AutoTokenizer.from_pretrained(cfg.model_id, trust_remote_code=cfg.trust_remote_code)
-    tool_start_ids = {tok.convert_tokens_to_ids(t) for t in cfg.tool_start_tokens}
-    tool_end_ids = {tok.convert_tokens_to_ids(t) for t in cfg.tool_end_tokens}
-
-    # Tool tokens may not be marked special=True in the vocab — include them
-    # in special_token_ids so that segmentation treats them as boundaries.
-    extra_special = tool_start_ids | tool_end_ids
     comp = TokenSeqComparator(
         tok,
-        special_token_ids=TokenSeqComparator._collect_special_ids(tok) | extra_special,
-        tool_start_ids=tool_start_ids,
-        tool_end_ids=tool_end_ids,
+        assistant_start_str=cfg.assistant_start_str,
     )
 
     env = TokenizerEnv(
         tokenizer=tok,
         config=cfg,
         comparator=comp,
-        tool_start_ids=tool_start_ids,
-        tool_end_ids=tool_end_ids,
     )
     _ENV_CACHE[cfg.model_id] = env
     return env
@@ -123,6 +107,18 @@ class TestCollectSpecialIds:
         collected = TokenSeqComparator._collect_special_ids(env.tokenizer)
         for tid in env.encode("Hello world"):
             assert tid not in collected, f"regular token id={tid} should not be special"
+
+    def test_non_special_added_tokens_excluded(self, env: TokenizerEnv):
+        """Added tokens with special=False are NOT collected."""
+        collected = TokenSeqComparator._collect_special_ids(env.tokenizer)
+        decoder = getattr(env.tokenizer, "added_tokens_decoder", None)
+        if decoder:
+            for tid, token_obj in decoder.items():
+                if not token_obj.special:
+                    assert tid not in collected, (
+                        f"non-special added token {token_obj.content!r} (id={tid}) "
+                        "should not be in collected special ids"
+                    )
 
 
 # ===========================================================================
@@ -162,37 +158,6 @@ class TestSegmentation:
         for seg, expected_id in zip(segs, sp_ids, strict=False):
             assert seg.token_ids == [expected_id]
 
-    def test_tool_call_structure(self, env: TokenizerEnv):
-        """<tool_call> json_content </tool_call> → 3 segments."""
-        tc_start = env.token_id(env.config.tool_start_tokens[0])
-        tc_end = env.token_id(env.config.tool_end_tokens[0])
-        json_ids = env.encode('{"name":"get_weather","arguments":{"city":"Shanghai"}}')
-        seq = [tc_start] + json_ids + [tc_end]
-        segs = env.comparator.segment_by_special_tokens(seq)
-        assert len(segs) == 3
-        assert segs[0] == Segment(token_ids=[tc_start], is_special=True)
-        assert segs[1] == Segment(token_ids=json_ids, is_special=False)
-        assert segs[2] == Segment(token_ids=[tc_end], is_special=True)
-
-    def test_realistic_multi_segment(self, env: TokenizerEnv):
-        """A realistic assistant turn: <sp> role <tool_call> json </tool_call> <sp>."""
-        sp1 = env.token_id(env.config.known_special_tokens[0])
-        sp2 = env.token_id(env.config.known_special_tokens[1])
-        tc_start = env.token_id(env.config.tool_start_tokens[0])
-        tc_end = env.token_id(env.config.tool_end_tokens[0])
-        role_ids = env.encode("assistant\n")
-        json_ids = env.encode('{"name":"f","arguments":{}}')
-        seq = [sp1] + role_ids + [tc_start] + json_ids + [tc_end] + [sp2]
-        segs = env.comparator.segment_by_special_tokens(seq)
-        # sp1, role_content, tc_start, json_content, tc_end, sp2
-        assert len(segs) == 6
-        assert segs[0].is_special and segs[0].token_ids == [sp1]
-        assert not segs[1].is_special and segs[1].token_ids == role_ids
-        assert segs[2].is_special and segs[2].token_ids == [tc_start]
-        assert not segs[3].is_special and segs[3].token_ids == json_ids
-        assert segs[4].is_special and segs[4].token_ids == [tc_end]
-        assert segs[5].is_special and segs[5].token_ids == [sp2]
-
 
 # ===========================================================================
 # compare_sequences — identical
@@ -204,13 +169,6 @@ class TestCompareIdentical:
         sp = env.token_id(env.config.known_special_tokens[0])
         ids = [sp] + env.encode("Hello world") + [sp]
         assert env.comparator.compare_sequences(ids, ids) == []
-
-    def test_identical_with_tool_call(self, env: TokenizerEnv):
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        json_ids = env.encode('{"name":"get_weather","arguments":{"city":"Shanghai"}}')
-        seq = [tc_s] + json_ids + [tc_e]
-        assert env.comparator.compare_sequences(seq, seq) == []
 
     def test_both_empty(self, env: TokenizerEnv):
         assert env.comparator.compare_sequences([], []) == []
@@ -260,106 +218,159 @@ class TestCompareSpecialToken:
 
 
 # ===========================================================================
-# compare_sequences — TEXT mismatches
+# compare_sequences — content text mismatches (NON_ASSISTANT_TEXT)
 # ===========================================================================
 
 
-class TestCompareText:
+class TestCompareNonAssistantText:
     def test_content_text_differs(self, env: TokenizerEnv):
-        sp = env.token_id(env.config.known_special_tokens[0])
+        """Non-assistant content mismatch → NON_ASSISTANT_TEXT."""
+        # Use a non-assistant special token (index 1: <|im_end|> for Qwen3, <|user|> for GLM)
+        sp = env.token_id(env.config.known_special_tokens[1])
         expected = [sp] + env.encode("Hello world") + [sp]
         actual = [sp] + env.encode("Goodbye world") + [sp]
         result = env.comparator.compare_sequences(expected, actual)
         assert len(result) == 1
-        assert result[0].type == MismatchType.TEXT
+        assert result[0].type == MismatchType.NON_ASSISTANT_TEXT
         assert result[0].segment_index == 1
 
-    def test_content_length_differs(self, env: TokenizerEnv):
+
+# ===========================================================================
+# _is_assistant_content
+# ===========================================================================
+
+
+@pytest.fixture
+def qwen3_env() -> TokenizerEnv:
+    return _build_env(_CONFIGS["qwen3_4b"])
+
+
+@pytest.fixture
+def glm47_env() -> TokenizerEnv:
+    return _build_env(_CONFIGS["glm47_flash"])
+
+
+class TestIsAssistantContent:
+    def test_qwen3_assistant_content(self, qwen3_env: TokenizerEnv):
+        """Qwen3: content after <|im_start|> starting with 'assistant' → True."""
+        env = qwen3_env
+        im_start = env.token_id("<|im_start|>")
+        im_end = env.token_id("<|im_end|>")
+        content_ids = env.encode("assistant\nHello!")
+        segs = env.comparator.segment_by_special_tokens([im_start] + content_ids + [im_end])
+        # seg 0 = <|im_start|>, seg 1 = content, seg 2 = <|im_end|>
+        assert env.comparator._is_assistant_content(segs, 1) is True
+
+    def test_qwen3_user_content_not_assistant(self, qwen3_env: TokenizerEnv):
+        """Qwen3: content after <|im_start|> starting with 'user' → False."""
+        env = qwen3_env
+        im_start = env.token_id("<|im_start|>")
+        im_end = env.token_id("<|im_end|>")
+        content_ids = env.encode("user\nHello!")
+        segs = env.comparator.segment_by_special_tokens([im_start] + content_ids + [im_end])
+        assert env.comparator._is_assistant_content(segs, 1) is False
+
+    def test_glm_assistant_content(self, glm47_env: TokenizerEnv):
+        """GLM: content after <|assistant|> → True."""
+        env = glm47_env
+        assistant_id = env.token_id("<|assistant|>")
+        user_id = env.token_id("<|user|>")
+        content_ids = env.encode("Hello!")
+        segs = env.comparator.segment_by_special_tokens([assistant_id] + content_ids + [user_id])
+        assert env.comparator._is_assistant_content(segs, 1) is True
+
+    def test_glm_user_content_not_assistant(self, glm47_env: TokenizerEnv):
+        """GLM: content after <|user|> → False."""
+        env = glm47_env
+        user_id = env.token_id("<|user|>")
+        assistant_id = env.token_id("<|assistant|>")
+        content_ids = env.encode("Hello!")
+        segs = env.comparator.segment_by_special_tokens([user_id] + content_ids + [assistant_id])
+        assert env.comparator._is_assistant_content(segs, 1) is False
+
+    def test_special_segment_returns_false(self, env: TokenizerEnv):
+        """Calling on a special segment → False (is_special guard)."""
         sp = env.token_id(env.config.known_special_tokens[0])
-        expected = [sp] + env.encode("short") + [sp]
-        actual = [sp] + env.encode("a much longer sentence here") + [sp]
-        result = env.comparator.compare_sequences(expected, actual)
-        assert len(result) == 1
-        assert result[0].type == MismatchType.TEXT
+        content_ids = env.encode("text")
+        segs = env.comparator.segment_by_special_tokens([sp] + content_ids + [sp])
+        assert env.comparator._is_assistant_content(segs, 0) is False
+        assert env.comparator._is_assistant_content(segs, 2) is False
 
-    def test_non_tool_content_between_tool_tokens_without_config(self, env: TokenizerEnv):
-        """Comparator without tool config → always TEXT even between tool tokens."""
-        comp_no_tool = TokenSeqComparator(
-            env.tokenizer,
-            special_token_ids=env.comparator._special_ids,
-        )
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        expected = [tc_s] + env.encode("foo") + [tc_e]
-        actual = [tc_s] + env.encode("bar") + [tc_e]
-        result = comp_no_tool.compare_sequences(expected, actual)
-        assert len(result) == 1
-        assert result[0].type == MismatchType.TEXT
+    def test_content_at_index_zero(self, env: TokenizerEnv):
+        """Content at index 0 (no preceding segment) → False."""
+        content_ids = env.encode("some text")
+        sp = env.token_id(env.config.known_special_tokens[0])
+        segs = env.comparator.segment_by_special_tokens(content_ids + [sp])
+        assert env.comparator._is_assistant_content(segs, 0) is False
+
+    def test_no_assistant_config_raises(self, env: TokenizerEnv):
+        """Comparator without assistant_start_str raises ValueError on content mismatch."""
+        comp_no_config = TokenSeqComparator(env.tokenizer)
+        sp = env.token_id(env.config.known_special_tokens[0])
+        content_ids = env.encode("text")
+        segs = comp_no_config.segment_by_special_tokens([sp] + content_ids + [sp])
+        with pytest.raises(ValueError, match="assistant_start_str not configured"):
+            comp_no_config._is_assistant_content(segs, 1)
 
 
 # ===========================================================================
-# compare_sequences — JSON (tool) mismatches
+# compare_sequences — assistant text classification
 # ===========================================================================
 
 
-_JSON_COMPACT = '{"name":"get_weather","arguments":{"city":"Shanghai"}}'
-_JSON_PRETTY = '{\n  "name": "get_weather",\n  "arguments": {"city": "Shanghai"}\n}'
-_JSON_DIFFERENT = '{"name":"get_weather","arguments":{"city":"Beijing"}}'
-_NOT_JSON = "This is not JSON at all"
-
-
-class TestCompareJson:
-    def test_json_formatting_only(self, env: TokenizerEnv):
-        """Compact vs pretty-printed JSON → JSON mismatch (formatting)."""
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        expected = [tc_s] + env.encode(_JSON_COMPACT) + [tc_e]
-        actual = [tc_s] + env.encode(_JSON_PRETTY) + [tc_e]
+class TestAssistantTextClassification:
+    def test_qwen3_assistant_mismatch(self, qwen3_env: TokenizerEnv):
+        """Qwen3: mismatch in assistant content → ASSISTANT_TEXT."""
+        env = qwen3_env
+        im_start = env.token_id("<|im_start|>")
+        im_end = env.token_id("<|im_end|>")
+        expected = [im_start] + env.encode("assistant\nHello") + [im_end]
+        actual = [im_start] + env.encode("assistant\nGoodbye") + [im_end]
         result = env.comparator.compare_sequences(expected, actual)
         assert len(result) == 1
-        assert result[0].type == MismatchType.JSON
-        assert "formatting" in result[0].detail
+        assert result[0].type == MismatchType.ASSISTANT_TEXT
 
-    def test_json_semantically_different(self, env: TokenizerEnv):
-        """Shanghai vs Beijing → JSON mismatch (parsed JSON differs)."""
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        expected = [tc_s] + env.encode(_JSON_COMPACT) + [tc_e]
-        actual = [tc_s] + env.encode(_JSON_DIFFERENT) + [tc_e]
+    def test_qwen3_user_mismatch(self, qwen3_env: TokenizerEnv):
+        """Qwen3: mismatch in user content → NON_ASSISTANT_TEXT."""
+        env = qwen3_env
+        im_start = env.token_id("<|im_start|>")
+        im_end = env.token_id("<|im_end|>")
+        expected = [im_start] + env.encode("user\nHello") + [im_end]
+        actual = [im_start] + env.encode("user\nGoodbye") + [im_end]
         result = env.comparator.compare_sequences(expected, actual)
         assert len(result) == 1
-        assert result[0].type == MismatchType.JSON
-        assert "parsed JSON differs" in result[0].detail
+        assert result[0].type == MismatchType.NON_ASSISTANT_TEXT
 
-    def test_json_parse_failure_falls_back_to_text(self, env: TokenizerEnv):
-        """One side isn't valid JSON → falls back to TEXT mismatch."""
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        expected = [tc_s] + env.encode(_JSON_COMPACT) + [tc_e]
-        actual = [tc_s] + env.encode(_NOT_JSON) + [tc_e]
+    def test_glm_assistant_mismatch(self, glm47_env: TokenizerEnv):
+        """GLM: mismatch in assistant content → ASSISTANT_TEXT."""
+        env = glm47_env
+        assistant_id = env.token_id("<|assistant|>")
+        user_id = env.token_id("<|user|>")
+        expected = [assistant_id] + env.encode("Hello") + [user_id]
+        actual = [assistant_id] + env.encode("Goodbye") + [user_id]
         result = env.comparator.compare_sequences(expected, actual)
         assert len(result) == 1
-        assert result[0].type == MismatchType.TEXT
-        assert "JSON parsing failed" in result[0].detail
+        assert result[0].type == MismatchType.ASSISTANT_TEXT
 
-    def test_tool_response_json(self, env: TokenizerEnv):
-        """Tool response tokens also trigger JSON comparison."""
-        tr_s = env.token_id(env.config.tool_start_tokens[1])  # <tool_response>
-        tr_e = env.token_id(env.config.tool_end_tokens[1])  # </tool_response>
-        compact = '{"result":"sunny","temp":25}'
-        pretty = '{\n  "result": "sunny",\n  "temp": 25\n}'
-        expected = [tr_s] + env.encode(compact) + [tr_e]
-        actual = [tr_s] + env.encode(pretty) + [tr_e]
+    def test_glm_user_mismatch(self, glm47_env: TokenizerEnv):
+        """GLM: mismatch in user content → NON_ASSISTANT_TEXT."""
+        env = glm47_env
+        user_id = env.token_id("<|user|>")
+        assistant_id = env.token_id("<|assistant|>")
+        expected = [user_id] + env.encode("Hello") + [assistant_id]
+        actual = [user_id] + env.encode("Goodbye") + [assistant_id]
         result = env.comparator.compare_sequences(expected, actual)
         assert len(result) == 1
-        assert result[0].type == MismatchType.JSON
+        assert result[0].type == MismatchType.NON_ASSISTANT_TEXT
 
-    def test_identical_tool_content_no_mismatch(self, env: TokenizerEnv):
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        json_ids = env.encode(_JSON_COMPACT)
-        seq = [tc_s] + json_ids + [tc_e]
-        assert env.comparator.compare_sequences(seq, seq) == []
+    def test_no_config_raises_on_mismatch(self, env: TokenizerEnv):
+        """Comparator without assistant_start_str raises on content mismatch."""
+        comp = TokenSeqComparator(env.tokenizer)
+        sp = env.token_id(env.config.known_special_tokens[0])
+        expected = [sp] + env.encode("Hello") + [sp]
+        actual = [sp] + env.encode("Goodbye") + [sp]
+        with pytest.raises(ValueError, match="assistant_start_str not configured"):
+            comp.compare_sequences(expected, actual)
 
 
 # ===========================================================================
@@ -394,103 +405,44 @@ class TestTrimTrailingIds:
 
 
 # ===========================================================================
-# _is_tool_segment edge cases with real tokens
-# ===========================================================================
-
-
-class TestIsToolSegment:
-    def test_content_preceded_by_tool_start(self, env: TokenizerEnv):
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        json_ids = env.encode('{"a":1}')
-        segs = env.comparator.segment_by_special_tokens([tc_s] + json_ids + [tc_e])
-        # seg 0 = <tool_call>, seg 1 = json content, seg 2 = </tool_call>
-        assert env.comparator._is_tool_segment(segs, 1)
-
-    def test_content_after_non_tool_special(self, env: TokenizerEnv):
-        """Content after a non-tool special token → not a tool segment."""
-        sp = env.token_id(env.config.known_special_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        text_ids = env.encode("just text")
-        segs = env.comparator.segment_by_special_tokens([sp] + text_ids + [tc_e])
-        assert not env.comparator._is_tool_segment(segs, 1)
-
-    def test_tool_start_no_matching_end(self, env: TokenizerEnv):
-        """<tool_call> content <non_tool_end> → not a tool segment (end token mismatch)."""
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        sp = env.token_id(env.config.known_special_tokens[0])  # not a tool-end token
-        text_ids = env.encode("data")
-        segs = env.comparator.segment_by_special_tokens([tc_s] + text_ids + [sp])
-        assert not env.comparator._is_tool_segment(segs, 1)
-
-    def test_no_tool_config(self, env: TokenizerEnv):
-        """Comparator without tool_start_ids → _is_tool_segment always False."""
-        comp_no_tool = TokenSeqComparator(
-            env.tokenizer,
-            special_token_ids=env.comparator._special_ids,
-        )
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        json_ids = env.encode('{"a":1}')
-        segs = comp_no_tool.segment_by_special_tokens([tc_s] + json_ids + [tc_e])
-        assert not comp_no_tool._is_tool_segment(segs, 1)
-
-
-# ===========================================================================
 # Mixed mismatches — realistic sequences
 # ===========================================================================
 
 
 class TestCompareMixed:
-    def test_text_and_json_mismatch_in_one_sequence(self, env: TokenizerEnv):
-        """A sequence with both a plain text diff and a tool call JSON diff."""
-        sp1 = env.token_id(env.config.known_special_tokens[0])
-        sp2 = env.token_id(env.config.known_special_tokens[1])
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
+    def test_assistant_and_non_assistant_mismatch(self, qwen3_env: TokenizerEnv):
+        """A sequence with both assistant and non-assistant content mismatches."""
+        env = qwen3_env
+        im_start = env.token_id("<|im_start|>")
+        im_end = env.token_id("<|im_end|>")
 
-        expected = [sp1] + env.encode("Hello") + [tc_s] + env.encode(_JSON_COMPACT) + [tc_e] + [sp2]
-        actual = [sp1] + env.encode("Goodbye") + [tc_s] + env.encode(_JSON_DIFFERENT) + [tc_e] + [sp2]
+        # user turn (non-assistant) + assistant turn
+        expected = (
+            [im_start]
+            + env.encode("user\nHello")
+            + [im_end]
+            + [im_start]
+            + env.encode("assistant\nHi there")
+            + [im_end]
+        )
+        actual = (
+            [im_start]
+            + env.encode("user\nGoodbye")
+            + [im_end]
+            + [im_start]
+            + env.encode("assistant\nBye there")
+            + [im_end]
+        )
 
         result = env.comparator.compare_sequences(expected, actual)
         types = {m.type for m in result}
-        assert MismatchType.TEXT in types
-        assert MismatchType.JSON in types
-
-    def test_full_realistic_sequence_no_diff(self, env: TokenizerEnv):
-        """Full assistant turn with tool call — identical → no mismatches."""
-        sp1 = env.token_id(env.config.known_special_tokens[0])
-        sp2 = env.token_id(env.config.known_special_tokens[1])
-        tc_s = env.token_id(env.config.tool_start_tokens[0])
-        tc_e = env.token_id(env.config.tool_end_tokens[0])
-        tr_s = env.token_id(env.config.tool_start_tokens[1])
-        tr_e = env.token_id(env.config.tool_end_tokens[1])
-
-        seq = (
-            [sp1]
-            + env.encode("assistant\n")
-            + [tc_s]
-            + env.encode(_JSON_COMPACT)
-            + [tc_e]
-            + [sp2]
-            + [sp1]
-            + env.encode("tool\n")
-            + [tr_s]
-            + env.encode('{"result":"ok"}')
-            + [tr_e]
-            + [sp2]
-        )
-        assert env.comparator.compare_sequences(seq, seq) == []
+        assert MismatchType.NON_ASSISTANT_TEXT in types
+        assert MismatchType.ASSISTANT_TEXT in types
 
 
 # ===========================================================================
-# GLM 4.7 specific: <|user|> vs <|observation|> type mismatch is acceptable
+# GLM 4.7 specific: <|user|> vs <|observation|> type mismatch
 # ===========================================================================
-
-
-@pytest.fixture
-def glm47_env() -> TokenizerEnv:
-    return _build_env(_CONFIGS["glm47_flash"])
 
 
 class TestGlm47SpecialTokenType:
@@ -513,17 +465,3 @@ class TestGlm47SpecialTokenType:
         assert len(result) == 1
         assert result[0].type == MismatchType.SPECIAL_TOKEN_TYPE
         assert result[0].segment_index == 2
-
-    def test_count_mismatch_on_missing_segment(self, glm47_env: TokenizerEnv):
-        """Extra or missing segments → SPECIAL_TOKEN_COUNT."""
-        env = glm47_env
-        user_id = env.token_id("<|user|>")
-        assistant_id = env.token_id("<|assistant|>")
-        text_ids = env.encode("content")
-
-        expected = [assistant_id] + text_ids + [user_id]
-        actual = [assistant_id] + text_ids  # missing <|user|>
-
-        result = env.comparator.compare_sequences(expected, actual)
-        assert len(result) == 1
-        assert result[0].type == MismatchType.SPECIAL_TOKEN_COUNT

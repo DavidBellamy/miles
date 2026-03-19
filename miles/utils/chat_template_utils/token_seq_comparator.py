@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from enum import Enum
-
-
-# ---------------------------------------------------------------------------
-# Data types
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -23,15 +17,21 @@ class Segment:
 class MismatchType(Enum):
     # Segment count or structure (special/content pattern) differs between
     # expected and actual.  When this happens, segments can't be aligned so
-    # no per-segment text/JSON comparison is possible.
+    # no per-segment comparison is possible.
     SPECIAL_TOKEN_COUNT = "special_token_count"
 
     # A special-token segment has the same position in both sequences but
     # contains a different token ID.
     SPECIAL_TOKEN_TYPE = "special_token_type"
 
-    JSON = "json"
-    TEXT = "text"
+    # Non-assistant content (user, system, tool, etc.) differs.  This indicates
+    # a bug in the TITO algorithm — these regions should match exactly.
+    NON_ASSISTANT_TEXT = "non_assistant_text"
+
+    # Assistant content differs.  Expected and non-severe: assistant tokens
+    # are inherited directly from the pretokenized prefix across turns,
+    # so they may not match the chat template's canonical tokenization.
+    ASSISTANT_TEXT = "assistant_text"
 
 
 @dataclass
@@ -54,94 +54,67 @@ class Mismatch:
         }
 
 
-# ---------------------------------------------------------------------------
-# Calculator
-# ---------------------------------------------------------------------------
-
-
 class TokenSeqComparator:
     """Segment token sequences by special tokens and compare them.
 
     Parameters
     ----------
-    tokenizer
-        A HuggingFace tokenizer (``PreTrainedTokenizerBase``).
+    tokenizer : PreTrainedTokenizerBase
     special_token_ids : set[int] | None
-        Token IDs treated as segment boundaries.
-        Default: ``tokenizer.all_special_ids``.
-    tool_start_ids : set[int] | None
-        Special-token IDs that mark the **start** of a tool-call or
-        tool-response block (e.g. ``<tool_call>``, ``<tool_response>``).
-        Content segments immediately following one of these are compared
-        via JSON parsing instead of raw text.
-    tool_end_ids : set[int] | None
-        Special-token IDs that mark the **end** of a tool-call or
-        tool-response block (e.g. ``</tool_call>``, ``</tool_response>``).
+        Extra IDs treated as segment boundaries (merged with auto-detected ones).
+    assistant_start_str : str | None
+        Decoded text prefix identifying assistant content segments, e.g.
+        ``"<|im_start|>assistant"`` (Qwen3) or ``"<|assistant|>"`` (GLM).
+        Required — raises ``ValueError`` on content mismatch if absent.
     """
 
     def __init__(
         self,
         tokenizer,
         special_token_ids: set[int] | None = None,
-        tool_start_ids: set[int] | None = None,
-        tool_end_ids: set[int] | None = None,
+        assistant_start_str: str | None = None,
     ):
         self.tokenizer = tokenizer
-        self._special_ids: set[int] = self._collect_special_ids(tokenizer)
+        self._special_ids = self._collect_special_ids(tokenizer)
         if special_token_ids is not None:
             self._special_ids |= set(special_token_ids)
-        self._tool_start_ids: set[int] = set(tool_start_ids) if tool_start_ids else set()
-        self._tool_end_ids: set[int] = set(tool_end_ids) if tool_end_ids else set()
+        self._assistant_start_str = assistant_start_str
 
     @staticmethod
     def _collect_special_ids(tokenizer) -> set[int]:
-        """Collect all added-token IDs from the tokenizer.
-
-        All tokens in ``added_tokens_decoder`` are used as segment
-        boundaries, regardless of their ``special`` flag.  Tokens like
-        ``<arg_value>``, ``</arg_value>`` etc. may have ``special=False``
-        but still function as structural delimiters for comparison.
-        """
+        """Collect token IDs with ``special=True`` from the tokenizer."""
         ids = set(tokenizer.all_special_ids)
         decoder = getattr(tokenizer, "added_tokens_decoder", None)
         if decoder:
-            ids |= set(decoder.keys())
+            ids |= {k for k, v in decoder.items() if v.special}
         return ids
 
-    # ------------------------------------------------------------------
-    # Segmentation
-    # ------------------------------------------------------------------
-
     def segment_by_special_tokens(self, token_ids: list[int]) -> list[Segment]:
-        """Split *token_ids* into segments delimited by special tokens.
+        """Split *token_ids* into segments at special-token boundaries.
 
-        Consecutive non-special tokens are grouped into a single plain segment.
-        Each special token becomes its own segment (``is_special=True``).
-        Empty input returns an empty list.
+        Each special token becomes its own single-ID segment with
+        ``is_special=True``.  Consecutive non-special tokens are grouped
+        into content segments.  Example for Qwen3::
+
+            [<|im_start|>, "assistant", "\\n", "Hi", <|im_end|>, "\\n"]
+            → [special(<|im_start|>), content("assistant\\nHi"), special(<|im_end|>), content("\\n")]
         """
         if not token_ids:
             return []
 
         segments: list[Segment] = []
         current: list[int] = []
-
         for tid in token_ids:
             if tid in self._special_ids:
                 if current:
-                    segments.append(Segment(token_ids=current, is_special=False))
+                    segments.append(Segment(token_ids=current))
                     current = []
                 segments.append(Segment(token_ids=[tid], is_special=True))
             else:
                 current.append(tid)
-
         if current:
-            segments.append(Segment(token_ids=current, is_special=False))
-
+            segments.append(Segment(token_ids=current))
         return segments
-
-    # ------------------------------------------------------------------
-    # Comparison
-    # ------------------------------------------------------------------
 
     def compare_sequences(
         self,
@@ -149,172 +122,118 @@ class TokenSeqComparator:
         actual_ids: list[int],
         trim_trailing_ids: set[int] | None = None,
     ) -> list[Mismatch]:
-        """Compare two token-ID sequences and return a list of mismatches.
+        """Compare two token-ID sequences and return mismatches.
 
-        Algorithm:
-        1. Segment both sequences by special tokens.
-        2. Verify that the segment structures match (same count, same
-           ``is_special`` pattern).  Any difference is reported as
-           ``MismatchType.SPECIAL_TOKEN_COUNT``.
-        3. For each pair of aligned segments:
-           - **Special-token segments**: token IDs must be identical —
-             ``MismatchType.SPECIAL_TOKEN_TYPE`` on mismatch.
-           - **Tool-call / tool-response content segments** (preceded by a
-             tool-start token and, when end tokens exist, followed by a
-             tool-end token): decode both, parse as JSON, compare parsed
-             structures — ``MismatchType.JSON`` on mismatch.
-           - **Other content segments**: decode both, compare text —
-             ``MismatchType.TEXT`` on mismatch.
+        Parameters
+        ----------
+        trim_trailing_ids : set[int] | None
+            Token IDs to strip from both sequence tails before comparison.
+            Models may generate stop tokens that the chat template also emits,
+            causing duplicates at the boundary.  E.g. GLM 4.7 uses ``<|user|>``
+            both as a stop token and as the next turn's start — the pretokenized
+            prefix may end with ``<|user|>`` while the expected sequence does
+            not, so trimming it avoids a false structural mismatch.
         """
         if trim_trailing_ids:
-            while expected_ids and expected_ids[-1] in trim_trailing_ids:
-                expected_ids = expected_ids[:-1]
-            while actual_ids and actual_ids[-1] in trim_trailing_ids:
-                actual_ids = actual_ids[:-1]
+            expected_ids = _trim_trailing(expected_ids, trim_trailing_ids)
+            actual_ids = _trim_trailing(actual_ids, trim_trailing_ids)
 
-        expected_segs = self.segment_by_special_tokens(expected_ids)
-        actual_segs = self.segment_by_special_tokens(actual_ids)
+        exp_segs = self.segment_by_special_tokens(expected_ids)
+        act_segs = self.segment_by_special_tokens(actual_ids)
 
-        # --- structural check ---
-        # When segment count or structure pattern differs, segments can't be
-        # aligned — no per-segment comparison is possible.
-        if len(expected_segs) != len(actual_segs):
-            return [
-                Mismatch(
-                    type=MismatchType.SPECIAL_TOKEN_COUNT,
-                    segment_index=-1,
-                    expected_text=self._describe_structure(expected_segs),
-                    actual_text=self._describe_structure(actual_segs),
-                    detail=(f"segment count differs: " f"expected {len(expected_segs)}, got {len(actual_segs)}"),
-                )
-            ]
+        structural = self._check_structure(exp_segs, act_segs)
+        if structural:
+            return [structural]
 
-        pattern_expected = [s.is_special for s in expected_segs]
-        pattern_actual = [s.is_special for s in actual_segs]
-        if pattern_expected != pattern_actual:
-            return [
-                Mismatch(
-                    type=MismatchType.SPECIAL_TOKEN_COUNT,
-                    segment_index=-1,
-                    expected_text=self._describe_structure(expected_segs),
-                    actual_text=self._describe_structure(actual_segs),
-                    detail="segment structure (special/content pattern) differs",
-                )
-            ]
-
-        # --- per-segment comparison ---
         mismatches: list[Mismatch] = []
-        for idx, (exp, act) in enumerate(zip(expected_segs, actual_segs, strict=False)):
-            if exp.is_special:
-                if exp.token_ids != act.token_ids:
-                    mismatches.append(
-                        Mismatch(
-                            type=MismatchType.SPECIAL_TOKEN_TYPE,
-                            segment_index=idx,
-                            expected_text=self._decode(exp.token_ids),
-                            actual_text=self._decode(act.token_ids),
-                        )
-                    )
-            else:
-                # Chat-template assembly and natural model output may differ
-                # in leading/trailing whitespace (\n, spaces) at segment
-                # boundaries — strip so these are not reported as mismatches.
-                exp_text = self._decode(exp.token_ids).strip()
-                act_text = self._decode(act.token_ids).strip()
-                if exp_text == act_text:
-                    continue
-
-                if self._is_tool_segment(expected_segs, idx):
-                    mismatch = self._compare_tool_content(idx, exp_text, act_text)
-                    if mismatch is not None:
-                        mismatches.append(mismatch)
-                else:
-                    mismatches.append(
-                        Mismatch(
-                            type=MismatchType.TEXT,
-                            segment_index=idx,
-                            expected_text=exp_text,
-                            actual_text=act_text,
-                        )
-                    )
-
+        for idx, (exp, act) in enumerate(zip(exp_segs, act_segs, strict=True)):
+            is_assistant_content = self._is_assistant_content(exp_segs, idx) and self._is_assistant_content(
+                act_segs, idx
+            )
+            m = self._compare_segment(idx, exp, act, is_assistant_content=is_assistant_content)
+            if m is not None:
+                mismatches.append(m)
         return mismatches
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    def _check_structure(
+        self,
+        exp_segs: list[Segment],
+        act_segs: list[Segment],
+    ) -> Mismatch | None:
+        """Return a structural mismatch if segment count or pattern differs."""
+        if len(exp_segs) != len(act_segs):
+            detail = f"segment count differs: expected {len(exp_segs)}, got {len(act_segs)}"
+        elif [s.is_special for s in exp_segs] != [s.is_special for s in act_segs]:
+            detail = "segment structure (special/content pattern) differs"
+        else:
+            return None
+        return Mismatch(
+            type=MismatchType.SPECIAL_TOKEN_COUNT,
+            segment_index=-1,
+            expected_text=self._describe_structure(exp_segs),
+            actual_text=self._describe_structure(act_segs),
+            detail=detail,
+        )
+
+    def _compare_segment(
+        self,
+        idx: int,
+        exp: Segment,
+        act: Segment,
+        *,
+        is_assistant_content: bool,
+    ) -> Mismatch | None:
+        if exp.is_special:
+            if exp.token_ids != act.token_ids:
+                return Mismatch(
+                    type=MismatchType.SPECIAL_TOKEN_TYPE,
+                    segment_index=idx,
+                    expected_text=self._decode(exp.token_ids),
+                    actual_text=self._decode(act.token_ids),
+                )
+            return None
+
+        exp_text = self._decode(exp.token_ids).strip()
+        act_text = self._decode(act.token_ids).strip()
+        if exp_text == act_text:
+            return None
+
+        return Mismatch(
+            type=MismatchType.ASSISTANT_TEXT if is_assistant_content else MismatchType.NON_ASSISTANT_TEXT,
+            segment_index=idx,
+            expected_text=exp_text,
+            actual_text=act_text,
+        )
+
+    def _is_assistant_content(self, segments: list[Segment], idx: int) -> bool:
+        """Check if the segment at *idx* belongs to an assistant message."""
+        if segments[idx].is_special:
+            return False
+        if self._assistant_start_str is None:
+            raise ValueError(
+                "assistant_start_str not configured — cannot classify content mismatch. "
+                "Use TITOTokenizer.create_comparator() to get a properly configured comparator."
+            )
+        if idx == 0:
+            return False
+        prev = segments[idx - 1]
+        if not prev.is_special:
+            return False
+        special_text = self._decode(prev.token_ids)
+        content_prefix = self._decode(segments[idx].token_ids[:10])
+        return (special_text + content_prefix).startswith(self._assistant_start_str)
 
     def _decode(self, token_ids: list[int]) -> str:
         return self.tokenizer.decode(token_ids, skip_special_tokens=False)
 
-    def _is_tool_segment(self, segments: list[Segment], content_idx: int) -> bool:
-        """Determine if the content segment at *content_idx* is a tool block.
-
-        A content segment is a tool block when:
-        - The immediately preceding segment is a special token whose ID is
-          in ``tool_start_ids``.
-        - If ``tool_end_ids`` is configured, the immediately following
-          segment must be a special token whose ID is in ``tool_end_ids``.
-        """
-        if not self._tool_start_ids:
-            return False
-
-        # Check preceding segment is a tool-start token.
-        if content_idx == 0:
-            return False
-        prev = segments[content_idx - 1]
-        if not prev.is_special or prev.token_ids[0] not in self._tool_start_ids:
-            return False
-
-        # If end tokens are configured, the following segment must be a tool-end token.
-        if self._tool_end_ids:
-            if content_idx + 1 >= len(segments):
-                return False
-            nxt = segments[content_idx + 1]
-            if not nxt.is_special or nxt.token_ids[0] not in self._tool_end_ids:
-                return False
-
-        return True
-
-    _TOOL_CALL_RELEVANT_KEYS = ("name", "arguments")
-
-    def _compare_tool_content(self, idx: int, exp_text: str, act_text: str) -> Mismatch | None:
-        """Compare two tool-segment texts via JSON parsing.
-
-        Only the keys listed in ``_TOOL_CALL_RELEVANT_KEYS`` (``name``,
-        ``arguments``) are compared.  Extra fields (e.g. ``id``, ``type``)
-        are ignored.  Returns ``None`` when all relevant fields match.
-        """
-        try:
-            exp_parsed = json.loads(exp_text.strip())
-            act_parsed = json.loads(act_text.strip())
-        except json.JSONDecodeError:
-            return Mismatch(
-                type=MismatchType.TEXT,
-                segment_index=idx,
-                expected_text=exp_text,
-                actual_text=act_text,
-                detail="tool segment but JSON parsing failed, falling back to text compare",
-            )
-
-        for key in self._TOOL_CALL_RELEVANT_KEYS:
-            if exp_parsed.get(key) != act_parsed.get(key):
-                return Mismatch(
-                    type=MismatchType.JSON,
-                    segment_index=idx,
-                    expected_text=exp_text,
-                    actual_text=act_text,
-                    detail=f"tool call field '{key}' differs",
-                )
-
-        return None
-
     def _describe_structure(self, segments: list[Segment]) -> str:
-        """Human-readable summary of segment structure for error messages."""
-        parts = []
-        for s in segments:
-            if s.is_special:
-                parts.append(f"[{self._decode(s.token_ids)}]")
-            else:
-                parts.append(f"({len(s.token_ids)} tokens)")
-        return " ".join(parts)
+        return " ".join(
+            f"[{self._decode(s.token_ids)}]" if s.is_special else f"({len(s.token_ids)} tokens)" for s in segments
+        )
+
+
+def _trim_trailing(ids: list[int], to_remove: set[int]) -> list[int]:
+    end = len(ids)
+    while end > 0 and ids[end - 1] in to_remove:
+        end -= 1
+    return ids[:end]

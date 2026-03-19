@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Any
 
 from miles.utils.chat_template_utils.template import apply_chat_template, assert_messages_append_only
+from miles.utils.chat_template_utils.token_seq_comparator import Mismatch, TokenSeqComparator
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ class TITOTokenizer:
 
     max_trim_tokens: int = 0
     _trailing_token_ids: frozenset[int] = frozenset()
+    _assistant_start_str: str | None = None
 
     def get_comparator_ignore_trailing_ids(self) -> set[int] | None:
         """Return token IDs that the comparator should strip from sequence
@@ -81,6 +83,32 @@ class TITOTokenizer:
     ):
         self.tokenizer = tokenizer
         self.chat_template_kwargs = chat_template_kwargs or {}
+
+    def create_comparator(self) -> TokenSeqComparator:
+        """Create a :class:`TokenSeqComparator` pre-configured with
+        model-specific assistant content detection."""
+        return TokenSeqComparator(
+            self.tokenizer,
+            assistant_start_str=self._assistant_start_str,
+        )
+
+    def compare_sequences(
+        self,
+        expected_ids: list[int],
+        actual_ids: list[int],
+    ) -> list[Mismatch]:
+        """Compare two token-ID sequences using a correctly-configured comparator.
+
+        Automatically applies model-specific ``trim_trailing_ids``.
+        The comparator is lazily created and cached.
+        """
+        if not hasattr(self, "_comparator"):
+            self._comparator = self.create_comparator()
+        return self._comparator.compare_sequences(
+            expected_ids,
+            actual_ids,
+            trim_trailing_ids=self.get_comparator_ignore_trailing_ids(),
+        )
 
     def tokenize_additional_non_assistant(
         self,
@@ -168,6 +196,8 @@ class Qwen3TITOTokenizer(TITOTokenizer):
     prefix matches the canonical template output.
     """
 
+    _assistant_start_str = "<|im_start|>assistant"
+
     def __init__(
         self,
         tokenizer: Any,
@@ -210,6 +240,7 @@ class GLM47TITOTokenizer(TITOTokenizer):
     """
 
     max_trim_tokens: int = 1
+    _assistant_start_str = "<|assistant|>"
 
     def __init__(
         self,
