@@ -19,14 +19,10 @@ from pathlib import Path
 import pytest
 import torch
 
-from miles.backends.training_utils.loss import (
-    compute_advantages_and_returns,
-    get_log_probs_and_entropy,
-    get_values,
-    loss_function,
-)
+from miles.backends.training_utils.loss import compute_advantages_and_returns, loss_function
 from miles.backends.training_utils.loss_hub.corrections import icepop_function, vanilla_tis_function
 from miles.backends.training_utils.loss_hub.losses import policy_loss_function, sft_loss_function, value_loss_function
+from miles.backends.training_utils.loss_hub.utils import get_log_probs_and_entropy, get_values
 
 from .loss_test_utils import (
     assert_outputs_equal,
