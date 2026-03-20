@@ -9,8 +9,8 @@ from miles.utils.types import RolloutBatch
 
 from ..cp_utils import all_gather_with_cp, get_sum_of_sample_mean
 from ..parallel import ParallelState
-from .importance_sampling import vanilla_tis_function
-from .logit_processing import get_log_probs_and_entropy, get_values
+from .corrections import vanilla_tis_function
+from .utils import get_log_probs_and_entropy, get_values
 
 
 def policy_loss_function(
