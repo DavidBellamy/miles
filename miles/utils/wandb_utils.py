@@ -91,8 +91,7 @@ def _compute_config_for_logging(args):
     if env_report_raw := args.env_report:
         from miles.utils.env_report import decode_env_report
 
-        launcher_report = decode_env_report(env_report_raw)
-        if launcher_report is not None:
+        if launcher_report := decode_env_report(env_report_raw):
             output["launcher_env_report"] = launcher_report
 
     return output
