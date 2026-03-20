@@ -140,6 +140,7 @@ class TestCollectPipInfo:
 class TestDecodeEnvReport:
     def test_decodes_base64_json(self) -> None:
         import base64
+
         data = {"flavor": "test"}
         encoded = base64.b64encode(json.dumps(data).encode()).decode()
         assert decode_env_report(encoded) == data
