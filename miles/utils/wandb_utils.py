@@ -4,6 +4,8 @@ from copy import deepcopy
 
 import wandb
 
+from miles.utils.env_report import decode_env_report
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,8 +91,6 @@ def _compute_config_for_logging(args):
     output["env_vars"] = {k: v for k, v in os.environ.items() if k in whitelist_env_vars}
 
     if env_report_raw := args.env_report:
-        from miles.utils.env_report import decode_env_report
-
         if launcher_report := decode_env_report(env_report_raw):
             output["launcher_env_report"] = launcher_report
 
