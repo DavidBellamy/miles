@@ -17,25 +17,16 @@ When ``use_rollout_routing_replay`` is enabled (MoE models), routed
 expert arrays are also compared.
 """
 
-import argparse
 import logging
 import statistics
-from collections.abc import Callable
 from copy import deepcopy
-from typing import Any
 
 import numpy as np
 import pybase64
-from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
-from miles.rollout.generate_utils.openai_endpoint_utils import (
-    OpenAIEndpointTracer,
-    compute_samples_from_openai_records,
-)
-from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.generate_hub.agentic_tool_call import _finalize, _generate_core
 from miles.utils.http_utils import post
-from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
@@ -45,49 +36,33 @@ LOGPROB_WARN_TOL = 0.0  # any nonzero diff is worth logging
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
-    """Run the agent, collect session records, then re-prefill and compare."""
+    """Run the production agentic flow, then verify logprobs via re-prefill."""
 
-    # === Step 1: normal agentic flow ===
-    tracer = await OpenAIEndpointTracer.create(input.args)
-
-    custom_agent_function: Callable = load_function(input.args.custom_agent_function_path)
-    assert (
-        custom_agent_function is not None
-    ), f"Custom agent function {input.args.custom_agent_function_path} not found"
-
-    agent_metadata = await custom_agent_function(
-        base_url=tracer.base_url,
-        prompt=input.sample.prompt,
-        request_kwargs=build_chat_request_kwargs(input.sampling_params),
-        metadata=input.sample.metadata,
-    )
-
-    records, session_metadata = await tracer.collect_records()
-
-    if not records:
-        logger.warning("No model calls recorded for sample")
+    # === Step 1: run the real production agentic_tool_call core ===
+    core = await _generate_core(input)
+    if core is None:
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
     # === Step 2: session-level checks ===
-    mismatch = session_metadata.get("tito_session_mismatch")
+    mismatch = core.session_metadata.get("tito_session_mismatch")
     assert mismatch == [], f"tito_session_mismatch is not empty: {mismatch}"
 
-    accumulated = session_metadata.get("accumulated_token_ids")
+    accumulated = core.session_metadata.get("accumulated_token_ids")
     assert accumulated and len(accumulated) > 0, "accumulated_token_ids is empty"
 
-    max_trim_tokens = session_metadata.get("max_trim_tokens", 0)
+    max_trim_tokens = core.session_metadata.get("max_trim_tokens", 0)
 
     # === Step 3: re-prefill verification ===
-    assert len(records) >= 2, f"Expected at least 2 turns for TITO verification, got {len(records)}"
+    assert len(core.records) >= 2, f"Expected at least 2 turns for TITO verification, got {len(core.records)}"
 
     sglang_url = f"http://{input.args.sglang_router_ip}:{input.args.sglang_router_port}"
     use_r3 = getattr(input.args, "use_rollout_routing_replay", False)
 
     await _verify_logprobs_via_reprefill(
         sglang_url,
-        records,
+        core.records,
         accumulated,
         max_trim_tokens=max_trim_tokens,
         use_r3=use_r3,
@@ -95,29 +70,30 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 
     logger.info(
         "Logprob equivalence verified: %d turns, %d accumulated tokens",
-        len(records),
+        len(core.records),
         len(accumulated),
     )
 
-    # === Step 4: build samples as usual (same as agentic_tool_call.generate) ===
-    samples = compute_samples_from_openai_records(
-        input.args,
-        input.sample,
-        records,
-        input.state.tokenizer,
-        accumulated_token_ids=accumulated,
-        max_trim_tokens=max_trim_tokens,
-    )
+    # === Step 4: finalize using the same production path ===
+    return _finalize(input, core)
 
-    for s in samples:
-        s.metadata.update(agent_metadata or {})
 
-    if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, input.state.tokenizer)
-        samples.metadata.update(session_metadata)
-    else:
-        samples[-1].metadata.update(session_metadata)
-    return GenerateFnOutput(samples=samples)
+# reuse the same CLI arguments as agentic_tool_call
+generate.add_arguments = None  # set below after import
+
+
+def _init_add_arguments():
+    from miles.rollout.generate_hub.agentic_tool_call import generate as _base_generate
+
+    generate.add_arguments = _base_generate.add_arguments
+
+
+_init_add_arguments()
+
+
+# ---------------------------------------------------------------------------
+# Verification logic (unique to this test generate function)
+# ---------------------------------------------------------------------------
 
 
 async def _verify_logprobs_via_reprefill(
@@ -301,7 +277,7 @@ def _verify_routed_experts(
         session_slice = session_re[session_start : session_start + matched * per_token_size]
 
         # Re-prefill: experts array covers all of accumulated_token_ids.
-        # Output at accumulated[cursor] → expert at index cursor-1.
+        # Output at accumulated[cursor] -> expert at index cursor-1.
         rp_offset = (cursor - 1) * per_token_size
         rp_slice = reprefill_re_flat[rp_offset : rp_offset + matched * per_token_size]
 
@@ -311,30 +287,3 @@ def _verify_routed_experts(
             err_msg=f"Turn {i}: routed_experts mismatch",
         )
         logger.info("Turn %d: routed_experts match (%d entries)", i, len(session_slice))
-
-
-def _add_arguments(parser: argparse.ArgumentParser):
-    parser.add_argument("--custom-agent-function-path", type=str)
-    parser.add_argument("--generate-multi-samples", action="store_true", default=False)
-
-
-generate.add_arguments = _add_arguments
-
-
-def build_chat_request_kwargs(sampling_params: dict[str, Any]) -> dict[str, Any]:
-    """Same as agentic_tool_call.build_chat_request_kwargs."""
-    request_kwargs = dict(sampling_params)
-    key_map = {
-        "max_new_tokens": "max_tokens",
-        "min_new_tokens": "min_tokens",
-        "sampling_seed": "seed",
-    }
-    for src, dst in key_map.items():
-        if src in request_kwargs:
-            if dst not in request_kwargs:
-                request_kwargs[dst] = request_kwargs[src]
-            request_kwargs.pop(src, None)
-
-    reserved_keys = {"model", "messages"}
-    allowed_keys = set(ChatCompletionRequest.model_fields) - reserved_keys
-    return {key: value for key, value in request_kwargs.items() if key in allowed_keys and value is not None}
