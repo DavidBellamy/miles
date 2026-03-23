@@ -131,7 +131,7 @@ def execute():
     sglang_args = f"--rollout-num-gpus-per-engine {cfg.num_gpus} " f"--sglang-reasoning-parser {cfg.reasoning_parser} "
     if cfg.tool_call_parser:
         sglang_args += f"--sglang-tool-call-parser {cfg.tool_call_parser} "
-    sglang_args += "--rm-type random "
+    sglang_args += "--rm-type random " "--sglang-enable-deterministic-inference "
 
     infra_args = (
         "--debug-rollout-only "
