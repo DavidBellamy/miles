@@ -23,7 +23,7 @@ strategy 2 is used unconditionally since there is nothing to roll back
 to.  This exercises both retry code paths under real inference.
 
 The agent is loaded at runtime by ``agentic_tool_call.generate`` via
-``--custom-agent-function-path tests.e2e.sglang.session_tool_agent.run_agent``.
+``--custom-agent-function-path tests.e2e.sglang.utils.session_tool_agent.run_agent``.
 """
 
 import logging

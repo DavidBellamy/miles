@@ -1,9 +1,17 @@
-"""E2E test: session-server pretokenized TITO with real model inference.
+"""E2E test: verify TITO session logprobs match a fresh full re-prefill.
 
-Starts the full miles pipeline (sglang + miles-router with session support)
-via ``execute_train --debug-rollout-only``, then runs the agentic_tool_call
-generate function with a custom agent that performs multi-turn tool calls and
-asserts the pretokenized prefix invariant on every turn.
+After a multi-turn agent conversation through the session server, each
+turn's output token logprobs are compared against logprobs obtained by
+re-prefilling the entire token sequence from scratch via the /generate
+endpoint.  This confirms that the incremental TITO tokenization path
+produces identical prefill results to a full re-tokenization.
+
+When an MoE model is used with ``ENABLE_R3=1``, routed_experts arrays
+are also compared.
+
+Uses the same infrastructure as ``test_session_server_tool_call``:
+``execute_train --debug-rollout-only`` with a custom generate function
+that wraps the normal agentic flow with re-prefill verification.
 
 Requires 1 GPU.
 """
@@ -21,6 +29,7 @@ import miles.utils.external_utils.command_utils as U
 # ---------------------------------------------------------------------------
 
 MODEL_FAMILY = os.environ.get("SESSION_TEST_MODEL_FAMILY", "qwen3")
+ENABLE_R3 = os.environ.get("ENABLE_R3", "0") == "1"
 
 
 @dataclass(frozen=True)
@@ -39,12 +48,6 @@ MODEL_REGISTRY: dict[str, ModelConfig] = {
         tool_call_parser="qwen25",
         tito_model="qwen3",
     ),
-    # qwen3.5 still has some small bugs.
-    # "qwen35": ModelConfig(
-    #     model_name="Qwen/Qwen3.5-4B",
-    #     reasoning_parser="qwen3",
-    #     tool_call_parser="qwen3_coder",
-    # ),
     "glm47": ModelConfig(
         model_name="zai-org/GLM-4.7-Flash",
         reasoning_parser="glm45",
@@ -54,7 +57,7 @@ MODEL_REGISTRY: dict[str, ModelConfig] = {
     ),
 }
 
-PROMPT_DATA_PATH = "/root/datasets/session_tool_call.jsonl"
+PROMPT_DATA_PATH = "/root/datasets/session_logprob_verify.jsonl"
 
 
 def _get_config() -> ModelConfig:
@@ -87,7 +90,7 @@ def prepare():
                 },
                 {
                     "role": "user",
-                    "content": ("What's the weather like in Beijing, Shanghai, Tokyo, and New York?"),
+                    "content": "What's the weather like in Beijing, Shanghai, Tokyo, and New York?",
                 },
             ],
         },
@@ -108,7 +111,7 @@ def execute():
         "--input-key messages "
         "--num-rollout 1 "
         "--rollout-batch-size 16 "
-        "--n-samples-per-prompt 4 "
+        "--n-samples-per-prompt 1 "
         "--rollout-max-response-len 1024 "
         "--rollout-temperature 0.7 "
         "--global-batch-size 64 "
@@ -116,12 +119,14 @@ def execute():
 
     generate_args = (
         "--custom-generate-function-path "
-        "miles.rollout.generate_hub.agentic_tool_call.generate "
+        "tests.e2e.sglang.utils.logprob_verify_generate.generate "
         "--custom-agent-function-path "
         "tests.e2e.sglang.utils.session_tool_agent.run_agent "
     )
 
     router_args = "--use-miles-router " "--chat-template-path autofix " f"--tito-model {cfg.tito_model} "
+    if ENABLE_R3:
+        router_args += "--use-rollout-routing-replay "
 
     sglang_args = f"--rollout-num-gpus-per-engine {cfg.num_gpus} " f"--sglang-reasoning-parser {cfg.reasoning_parser} "
     if cfg.tool_call_parser:
@@ -152,7 +157,7 @@ def execute():
 
 
 @pytest.mark.system
-def test_session_server_tool_call():
+def test_tito_logprob_equivalence():
     prepare()
     for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
         os.environ.pop(proxy_var, None)
