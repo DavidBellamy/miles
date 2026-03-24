@@ -169,6 +169,7 @@ def execute_train(
                     if config.cuda_core_dump
                     else {}
                 ),
+                **{k: os.environ[k] for k in ["GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME"] if k in os.environ},
                 **extra_env_vars,
                 **_parse_extra_env_vars(config.extra_env_vars),
             }
