@@ -778,7 +778,7 @@ class RolloutManager:
     def start_cell(self, cell_id: str) -> int:
         raise NotImplementedError("Pending PR #729")
 
-    def stop_cell(self, cell_id: str) -> None:
+    def stop_cell(self, cell_id: str, timeout_seconds: int = 30) -> None:
         raise NotImplementedError("Pending PR #729")
 
     def get_cell_status(self, cell_id: str) -> str:

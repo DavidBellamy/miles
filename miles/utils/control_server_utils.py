@@ -154,7 +154,7 @@ class _RolloutSubsystemHandle:
         return "rollout"
 
     async def stop(self, timeout_seconds: int) -> None:
-        await asyncio.to_thread(ray.get, self._rollout_manager.stop_cell.remote(self._cell_id))
+        await asyncio.to_thread(ray.get, self._rollout_manager.stop_cell.remote(self._cell_id, timeout_seconds))
 
     async def start(self) -> None:
         await asyncio.to_thread(ray.get, self._rollout_manager.start_cell.remote(self._cell_id))

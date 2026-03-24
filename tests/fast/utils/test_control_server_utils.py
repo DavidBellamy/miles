@@ -267,8 +267,10 @@ class _MockRemoteCall:
 
     def __init__(self, return_value: object) -> None:
         self._return_value = return_value
+        self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
     def remote(self, *args: object, **kwargs: object) -> object:
+        self.calls.append((args, kwargs))
         return self._return_value
 
 
@@ -294,6 +296,8 @@ async def test_rollout_handle_stop_delegates_to_manager(monkeypatch: pytest.Monk
 
     handle = mod._RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
     await handle.stop(timeout_seconds=45)
+
+    assert manager.stop_cell.calls == [(("cell-0", 45), {})]
 
 
 @pytest.mark.asyncio
