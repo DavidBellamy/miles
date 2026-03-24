@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import itertools
 import logging
@@ -365,6 +366,7 @@ class RolloutManager:
         self.rollout_id = -1
 
         self._metric_checker = MetricChecker.maybe_create(args)
+        self._cell_health = None  # TODO(PR #729): enable when ServerCell / group.cells are available
         self._health_monitors = []
         if not self.args.debug_train_only and self.args.use_fault_tolerance:
             for srv in self.servers.values():
@@ -396,6 +398,8 @@ class RolloutManager:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
     def dispose(self):
+        if self._cell_health is not None:
+            asyncio.get_event_loop().run_until_complete(self._cell_health.shutdown())
         if self._metric_checker is not None:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
@@ -487,10 +491,14 @@ class RolloutManager:
     def health_monitoring_pause(self) -> None:
         for monitor in self._health_monitors:
             monitor.pause()
+        if self._cell_health is not None:
+            self._cell_health.pause()
 
     def health_monitoring_resume(self) -> None:
         for monitor in self._health_monitors:
             monitor.resume()
+        if self._cell_health is not None:
+            self._cell_health.resume()
 
     def onload_weights(self):
         for srv in self.servers.values():
