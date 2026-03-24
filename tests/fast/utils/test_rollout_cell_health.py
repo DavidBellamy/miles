@@ -48,8 +48,8 @@ class TestCheckOneCell:
 
         mock_gauge.assert_called_with(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-0"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-0"],
             value=1.0,
         )
 
@@ -69,8 +69,8 @@ class TestCheckOneCell:
 
         mock_gauge.assert_called_with(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-0"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-0"],
             value=0.0,
         )
 
@@ -89,8 +89,8 @@ class TestCheckOneCell:
 
         mock_gauge.assert_called_with(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-0"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-0"],
             value=0.0,
         )
 
@@ -111,8 +111,8 @@ class TestCheckOneCell:
 
         mock_gauge.assert_called_with(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-0"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-0"],
             value=0.0,
         )
 
@@ -136,14 +136,14 @@ class TestCheckOneCell:
         calls = mock_gauge.call_args_list
         alive_call = call(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-a"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-a"],
             value=1.0,
         )
         dead_call = call(
             name="miles_rollout_cell_alive",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-b"],
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-b"],
             value=0.0,
         )
         assert alive_call in calls

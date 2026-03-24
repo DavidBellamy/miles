@@ -8,7 +8,7 @@ from miles.utils.prometheus_utils import set_prometheus_gauge
 logger = logging.getLogger(__name__)
 
 _METRIC_NAME = "miles_rollout_cell_alive"
-_LABEL_KEYS = ["session_id", "cell_id"]
+_LABEL_KEYS = ["session_id", "run_name", "cell_id"]
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,7 @@ class RolloutCellHealth:
             while True:
                 if not self._paused:
                     await asyncio.gather(
-                        *(_check_one_cell(entry=e, session_id=self._session_id, timeout=self._timeout)
+                        *(_check_one_cell(entry=e, session_id=self._session_id, run_name=self._run_name, timeout=self._timeout)
                           for e in self._cells.values())
                     )
                 await asyncio.sleep(self._check_interval)
@@ -79,14 +79,14 @@ class RolloutCellHealth:
         return self._paused
 
 
-async def _check_one_cell(*, entry: CellEntry, session_id: str, timeout: float) -> None:
+async def _check_one_cell(*, entry: CellEntry, session_id: str, run_name: str, timeout: float) -> None:
     is_healthy = False
     try:
         is_healthy = await _probe_cell(engines=entry.get_engines(), timeout=timeout)
     except Exception:
         logger.warning("Health probe failed for cell %s", entry.cell_id, exc_info=True)
 
-    _report(session_id=session_id, cell_id=entry.cell_id, is_healthy=is_healthy)
+    _report(session_id=session_id, run_name=run_name, cell_id=entry.cell_id, is_healthy=is_healthy)
 
 
 async def _probe_cell(*, engines: list[object], timeout: float) -> bool:
@@ -101,10 +101,10 @@ async def _probe_cell(*, engines: list[object], timeout: float) -> bool:
     return True
 
 
-def _report(*, session_id: str, cell_id: str, is_healthy: bool) -> None:
+def _report(*, session_id: str, run_name: str, cell_id: str, is_healthy: bool) -> None:
     set_prometheus_gauge(
         name=_METRIC_NAME,
         label_keys=_LABEL_KEYS,
-        label_values=[session_id, cell_id],
+        label_values=[session_id, run_name, cell_id],
         value=1.0 if is_healthy else 0.0,
     )
