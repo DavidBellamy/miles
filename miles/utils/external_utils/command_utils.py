@@ -189,7 +189,7 @@ def execute_train(
             f"--runtime-env-json='{runtime_env_json}' "
             f"-- python3 {train_script} "
             f"{'${MODEL_ARGS[@]}' if megatron_model_type is not None else ''} "
-            f"{'--use-prometheus --use-control-server --placement-persist-path ' + config.external_ft_dir + '/pg_snapshot.json ' if config.external_ft_dir else ''}"
+            f"""{f'--use-prometheus --use-control-server --placement-persist-path {config.external_ft_dir}/pg_snapshot.json ' if config.external_ft_dir else ''}"""
             f"{train_args}"
         )
 
