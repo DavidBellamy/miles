@@ -1173,6 +1173,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             return parser
 
+        def add_control_server_arguments(parser):
+            parser.add_argument("--use-control-server", action="store_true", default=False)
+            parser.add_argument(
+                "--control-server-port",
+                type=int,
+                default=9091,
+                help="Port for the control HTTP server. ",
+            )
+            return parser
+
         # debug
         def add_debug_arguments(parser):
             parser.add_argument(
@@ -1523,6 +1533,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_wandb_arguments(parser)
         parser = add_tensorboard_arguments(parser)
         parser = add_prometheus_arguments(parser)
+        parser = add_control_server_arguments(parser)
         parser = add_router_arguments(parser)
         parser = add_debug_arguments(parser)
         parser = add_sglang_arguments(parser)
