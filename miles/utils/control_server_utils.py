@@ -11,49 +11,33 @@ from pydantic import BaseModel, ConfigDict
 logger = logging.getLogger(__name__)
 
 
-@runtime_checkable
-class _SubsystemHandle(Protocol):
-    @property
-    def subsystem_id(self) -> str: ...
+def start_control_server(actor_model, rollout_manager, port):
+    registry = _SubsystemRegistry()
 
-    @property
-    def subsystem_type(self) -> str: ...
+    registry.register(_TrainingSubsystemHandle(node_ids=actor_model.get_node_ids()))
 
-    async def stop(self, timeout_seconds: int) -> None: ...
+    cell_infos = ray.get(rollout_manager.list_cells.remote())
+    for cell_info in cell_infos:
+        registry.register(_RolloutSubsystemHandle(
+            rollout_manager=rollout_manager,
+            cell_id=cell_info["cell_id"],
+        ))
 
-    async def start(self) -> None: ...
-
-    async def get_status(self) -> str: ...
-
-    async def get_node_ids(self) -> list[str]: ...
+    _start_control_server_raw(registry=registry, port=port)
 
 
-class _StopRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+def _start_control_server_raw(registry: "_SubsystemRegistry", port: int):
+    app = _create_control_app(registry)
 
-    timeout_seconds: int = 30
+    def _run() -> None:
+        uvicorn.run(app, host="0.0.0.0", port=port)
 
-
-class SubsystemRegistry:
-    def __init__(self) -> None:
-        self._handles: dict[str, _SubsystemHandle] = {}
-
-    def register(self, handle: _SubsystemHandle) -> None:
-        if handle.subsystem_id in self._handles:
-            raise ValueError(f"Subsystem '{handle.subsystem_id}' is already registered")
-        self._handles[handle.subsystem_id] = handle
-
-    def get_all(self) -> list[_SubsystemHandle]:
-        return list(self._handles.values())
-
-    def get(self, subsystem_id: str) -> _SubsystemHandle:
-        try:
-            return self._handles[subsystem_id]
-        except KeyError:
-            raise KeyError(f"Subsystem '{subsystem_id}' not found") from None
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    logger.info("Control server started on port %d", port)
 
 
-def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
+def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
     app = FastAPI()
 
     @app.get("/subsystems")
@@ -110,7 +94,50 @@ def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
     return app
 
 
-class TrainingSubsystemHandle:
+
+@runtime_checkable
+class _SubsystemHandle(Protocol):
+    @property
+    def subsystem_id(self) -> str: ...
+
+    @property
+    def subsystem_type(self) -> str: ...
+
+    async def stop(self, timeout_seconds: int) -> None: ...
+
+    async def start(self) -> None: ...
+
+    async def get_status(self) -> str: ...
+
+    async def get_node_ids(self) -> list[str]: ...
+
+
+class _StopRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timeout_seconds: int = 30
+
+
+class _SubsystemRegistry:
+    def __init__(self) -> None:
+        self._handles: dict[str, _SubsystemHandle] = {}
+
+    def register(self, handle: _SubsystemHandle) -> None:
+        if handle.subsystem_id in self._handles:
+            raise ValueError(f"Subsystem '{handle.subsystem_id}' is already registered")
+        self._handles[handle.subsystem_id] = handle
+
+    def get_all(self) -> list[_SubsystemHandle]:
+        return list(self._handles.values())
+
+    def get(self, subsystem_id: str) -> _SubsystemHandle:
+        try:
+            return self._handles[subsystem_id]
+        except KeyError:
+            raise KeyError(f"Subsystem '{subsystem_id}' not found") from None
+
+
+class _TrainingSubsystemHandle:
     def __init__(self, node_ids: list[str]) -> None:
         self._node_ids = node_ids
 
@@ -139,7 +166,7 @@ class TrainingSubsystemHandle:
         return self._node_ids
 
 
-class RolloutSubsystemHandle:
+class _RolloutSubsystemHandle:
     def __init__(self, rollout_manager: object, cell_id: str) -> None:
         self._rollout_manager = rollout_manager
         self._cell_id = cell_id
@@ -167,13 +194,3 @@ class RolloutSubsystemHandle:
         )
 
 
-def start_control_server(registry: SubsystemRegistry, port: int) -> threading.Thread:
-    app = _create_control_app(registry)
-
-    def _run() -> None:
-        uvicorn.run(app, host="0.0.0.0", port=port)
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    logger.info("Control server started on port %d", port)
-    return thread
