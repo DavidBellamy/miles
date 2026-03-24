@@ -366,7 +366,7 @@ class RolloutManager:
 
         self._metric_checker = MetricChecker.maybe_create(args)
         self._cell_health_checker = None
-        if getattr(args, "use_prometheus", False) and not self.args.debug_train_only:
+        if args.use_prometheus and not self.args.debug_train_only:
             from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealthChecker
 
             cells = [
