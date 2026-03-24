@@ -21,6 +21,27 @@ def train(args):
     # create the actor and critic models
     actor_model, critic_model = create_training_models(args, pgs, rollout_manager)
 
+    if args.use_control_server:
+        from miles.utils.control_server_utils import (
+            SubsystemRegistry,
+            _RolloutSubsystemHandle,
+            _TrainingSubsystemHandle,
+            start_control_server,
+        )
+
+        registry = SubsystemRegistry()
+        registry.register(_TrainingSubsystemHandle(node_ids=[]))
+
+        cell_infos = ray.get(rollout_manager.list_cells.remote())
+        for cell_info in cell_infos:
+            registry.register(_RolloutSubsystemHandle(
+                rollout_manager=rollout_manager,
+                cell_id=cell_info["cell_id"],
+                node_ids=cell_info.get("node_ids", []),
+            ))
+
+        start_control_server(registry=registry, port=args.control_server_port)
+
     if args.offload_rollout:
         ray.get(rollout_manager.onload_weights.remote())
 
