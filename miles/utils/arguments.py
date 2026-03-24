@@ -34,7 +34,8 @@ def reset_arg(parser, name, **kwargs):
         parser.add_argument(name, **kwargs)
 
 
-_FT_CHOICES = ["rollout", "train"]
+_FT_COMPONENT_CHOICES = ["rollout", "train"]
+_FT_MODE_CHOICES = ["rollout", "external"]
 
 
 def get_miles_extra_args_provider(add_custom_arguments=None):
@@ -478,15 +479,22 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-fault-tolerance",
                 action="store_true",
                 default=False,
-                help="Enable fault tolerance. Use --ft-components to select which components.",
+                help="Enable fault tolerance. Use --ft-mode to select which mode.",
+            )
+            parser.add_argument(
+                "--ft-mode",
+                type=str,
+                default=None,
+                choices=_FT_MODE_CHOICES,
+                help="Fault-tolerance mode to use (requires --use-fault-tolerance). "
+                "Choices: rollout, external. Default when omitted: rollout.",
             )
             parser.add_argument(
                 "--ft-components",
                 nargs="+",
                 default=None,
-                choices=_FT_CHOICES,
-                help="FT components to enable (requires --use-fault-tolerance). "
-                "Choices: rollout, train. Default when omitted: rollout.",
+                choices=_FT_COMPONENT_CHOICES,
+                help=argparse.SUPPRESS,
             )
             parser.add_argument(
                 "--rollout-health-check-interval",
@@ -1668,17 +1676,27 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-_FT_DEFAULT_COMPONENTS: frozenset[str] = frozenset({"rollout"})
+_FT_MODE_TO_COMPONENTS: dict[str, frozenset[str]] = {
+    "rollout": frozenset({"rollout"}),
+    "external": frozenset({"rollout", "train"}),
+}
+
+_FT_DEFAULT_COMPONENTS: frozenset[str] = _FT_MODE_TO_COMPONENTS["rollout"]
 
 
 def _resolve_ft_components(args: argparse.Namespace) -> frozenset[str]:
     if not args.use_fault_tolerance:
         if args.ft_components is not None:
             logger.warning("--ft-components is ignored without --use-fault-tolerance")
+        if args.ft_mode is not None:
+            logger.warning("--ft-mode is ignored without --use-fault-tolerance")
         return frozenset()
-    if args.ft_components is None:
-        return _FT_DEFAULT_COMPONENTS
-    return frozenset(args.ft_components)
+    if args.ft_mode is not None:
+        return _FT_MODE_TO_COMPONENTS[args.ft_mode]
+    if args.ft_components is not None:
+        logger.warning("--ft-components is deprecated; use --ft-mode instead.")
+        return frozenset(args.ft_components)
+    return _FT_DEFAULT_COMPONENTS
 
 
 def miles_validate_args(args):

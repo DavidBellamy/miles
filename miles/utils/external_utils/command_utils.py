@@ -92,7 +92,7 @@ class ExecuteTrainConfig:
     num_nodes: int = int(os.environ.get("SLURM_JOB_NUM_NODES", "1"))
     extra_env_vars: str = ""
     output_dir: str = "/root/shared_data"
-    full_fault_tolerance: bool = False
+    external_ft: bool = False
     ft_launch_extra_args: str = ""
 
 
@@ -190,7 +190,7 @@ def execute_train(
             f"--runtime-env-json='{runtime_env_json}' "
             f"-- python3 {train_script} "
             f"{'${MODEL_ARGS[@]}' if megatron_model_type is not None else ''} "
-            f"{'--use-fault-tolerance --ft-components rollout train ' if config.full_fault_tolerance else ''}"
+            f"{'--use-fault-tolerance --ft-mode external ' if config.external_ft else ''}"
             f"{train_args}"
         )
 
