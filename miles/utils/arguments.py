@@ -34,9 +34,6 @@ def reset_arg(parser, name, **kwargs):
         parser.add_argument(name, **kwargs)
 
 
-_FT_MODE_CHOICES = ["rollout", "external"]
-
-
 def get_miles_extra_args_provider(add_custom_arguments=None):
     def add_miles_arguments(parser):
         # Ray
@@ -478,15 +475,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-fault-tolerance",
                 action="store_true",
                 default=False,
-                help="Enable fault tolerance. Use --ft-mode to select which mode.",
-            )
-            parser.add_argument(
-                "--ft-mode",
-                type=str,
-                default=None,
-                choices=_FT_MODE_CHOICES,
-                help="Fault-tolerance mode to use (requires --use-fault-tolerance). "
-                "Choices: rollout, external. Default when omitted: rollout.",
+                help="Whether to enable the fault tolerance function during rollout.",
             )
             parser.add_argument(
                 "--rollout-health-check-interval",
@@ -1926,14 +1915,6 @@ def miles_validate_args(args):
         assert (
             args.use_dynamic_batch_size is False
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
-
-    if args.use_fault_tolerance and args.ft_mode == "external":
-        if (args.placement_persist_path is None) and (save_dir := args.save):
-            args.placement_persist_path = os.path.join(save_dir, "pg_snapshot.json")
-
-        assert (
-            args.placement_persist_path is not None
-        ), "--use-fault-tolerance requires --placement-persist-path (or --save to auto-derive it)"
 
 
 def hf_validate_args(args, hf_config):
