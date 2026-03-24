@@ -67,18 +67,6 @@ def get_prometheus() -> Any:
     return _collector_handle
 
 
-def set_prometheus_gauge(name: str, label_keys: list[str], label_values: list[str], value: float) -> None:
-    """Set a gauge with custom labels via the collector actor. No-op if Prometheus is not enabled."""
-    handle = get_prometheus()
-    if handle is None:
-        return
-
-    try:
-        ray.get(handle.set_gauge_with_labels.remote(name, label_keys, label_values, value))
-    except Exception:
-        logger.warning("Failed to set prometheus gauge %s", name, exc_info=True)
-
-
 class _PrometheusCollector:
     """Ray actor that owns the Prometheus HTTP server and gauges.
 
@@ -92,12 +80,9 @@ class _PrometheusCollector:
 
         self._Gauge = Gauge
         self._gauges: dict = {}
-        self._custom_gauges: dict[str, Any] = {}
         self._run_name = (
             getattr(args, "prometheus_run_name", None) or getattr(args, "wandb_group", None) or "miles_training"
         )
-        self._label_keys = ["run_name"]
-        self._label_vals = [self._run_name]
 
         port = args.prometheus_port
         start_http_server(port)
@@ -113,21 +98,19 @@ class _PrometheusCollector:
             safe_key = _METRIC_PREFIX + (key.replace("/", "_").replace("-", "_").replace("@", "_at_"))
             self.set_gauge(safe_key, value)
 
-    def set_gauge(self, name: str, value: float):
-        """Set a named gauge to the given value."""
-        if name not in self._gauges:
-            self._gauges[name] = self._Gauge(
-                name,
-                name,
-                self._label_keys,
-            )
-        self._gauges[name].labels(*self._label_vals).set(value)
+    def set_gauge(self, name: str, value: float, extra_labels: dict[str, str] | None = None) -> None:
+        """Set a named gauge. Always includes run_name; extra_labels are merged in."""
+        labels = {"run_name": self._run_name}
+        if extra_labels:
+            labels.update(extra_labels)
 
-    def set_gauge_with_labels(self, name: str, label_keys: list[str], label_values: list[str], value: float) -> None:
-        """Set a gauge with custom labels (different from the default run_name labels)."""
-        if name not in self._custom_gauges:
-            self._custom_gauges[name] = self._Gauge(name, name, label_keys)
-        self._custom_gauges[name].labels(*label_values).set(value)
+        label_keys = sorted(labels.keys())
+        cache_key = (name, tuple(label_keys))
+
+        if cache_key not in self._gauges:
+            self._gauges[cache_key] = self._Gauge(name, name, label_keys)
+
+        self._gauges[cache_key].labels(**labels).set(value)
 
     def ping(self):
         return True

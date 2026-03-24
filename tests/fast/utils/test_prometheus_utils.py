@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from argparse import Namespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import prometheus_client
 import pytest
 
-import miles.utils.prometheus_utils as prometheus_mod
-from miles.utils.prometheus_utils import _PrometheusCollector, set_prometheus_gauge
+from miles.utils.prometheus_utils import _PrometheusCollector
 
 _registry = prometheus_client.REGISTRY
 
@@ -32,8 +31,6 @@ def collector() -> _PrometheusCollector:
     yield c
 
     for gauge in list(c._gauges.values()):
-        _registry.unregister(gauge)
-    for gauge in list(c._custom_gauges.values()):
         _registry.unregister(gauge)
 
 
@@ -89,6 +86,30 @@ class TestSetGauge:
         assert _sample("test_sg_label", {"run_name": "wrong"}) is None
 
 
+class TestSetGaugeWithExtraLabels:
+    def test_extra_labels_merged_with_run_name(self, collector: _PrometheusCollector) -> None:
+        collector.set_gauge(
+            "test_extra_val", 1.0,
+            extra_labels={"session_id": "sess-1", "cell_id": "cell-0"},
+        )
+        assert _sample("test_extra_val", {"run_name": "test-run", "session_id": "sess-1", "cell_id": "cell-0"}) == 1.0
+
+    def test_update_overwrites_previous_value(self, collector: _PrometheusCollector) -> None:
+        collector.set_gauge("test_extra_overwrite", 1.0, extra_labels={"cell_id": "cell-0"})
+        collector.set_gauge("test_extra_overwrite", 0.0, extra_labels={"cell_id": "cell-0"})
+        assert _sample("test_extra_overwrite", {"run_name": "test-run", "cell_id": "cell-0"}) == 0.0
+
+    def test_different_label_values_independent(self, collector: _PrometheusCollector) -> None:
+        collector.set_gauge("test_extra_multi", 1.0, extra_labels={"cell_id": "cell-0"})
+        collector.set_gauge("test_extra_multi", 0.0, extra_labels={"cell_id": "cell-1"})
+        assert _sample("test_extra_multi", {"run_name": "test-run", "cell_id": "cell-0"}) == 1.0
+        assert _sample("test_extra_multi", {"run_name": "test-run", "cell_id": "cell-1"}) == 0.0
+
+    def test_no_extra_labels_same_as_plain_set_gauge(self, collector: _PrometheusCollector) -> None:
+        collector.set_gauge("test_extra_none", 5.0, extra_labels=None)
+        assert _sample("test_extra_none", {"run_name": "test-run"}) == 5.0
+
+
 class TestUpdate:
     def test_adds_prefix_and_sets_values(self, collector: _PrometheusCollector) -> None:
         collector.update({"loss": 0.5, "mfu": 0.3})
@@ -119,110 +140,3 @@ class TestUpdate:
     def test_empty_dict_is_noop(self, collector: _PrometheusCollector) -> None:
         collector.update({})
         assert len(collector._gauges) == 0
-
-
-class TestSetGaugeWithLabels:
-    def test_value_readable_from_registry(self, collector: _PrometheusCollector) -> None:
-        collector.set_gauge_with_labels(
-            name="test_sgwl_val",
-            label_keys=["session_id", "cell_id"],
-            label_values=["sess-1", "cell-0"],
-            value=1.0,
-        )
-        assert _sample("test_sgwl_val", {"session_id": "sess-1", "cell_id": "cell-0"}) == 1.0
-
-    def test_update_overwrites_previous_value(self, collector: _PrometheusCollector) -> None:
-        collector.set_gauge_with_labels(
-            name="test_sgwl_overwrite",
-            label_keys=["cell_id"],
-            label_values=["cell-0"],
-            value=1.0,
-        )
-        collector.set_gauge_with_labels(
-            name="test_sgwl_overwrite",
-            label_keys=["cell_id"],
-            label_values=["cell-0"],
-            value=0.0,
-        )
-        assert _sample("test_sgwl_overwrite", {"cell_id": "cell-0"}) == 0.0
-
-    def test_different_label_values_independent(self, collector: _PrometheusCollector) -> None:
-        collector.set_gauge_with_labels(
-            name="test_sgwl_multi",
-            label_keys=["cell_id"],
-            label_values=["cell-0"],
-            value=1.0,
-        )
-        collector.set_gauge_with_labels(
-            name="test_sgwl_multi",
-            label_keys=["cell_id"],
-            label_values=["cell-1"],
-            value=0.0,
-        )
-        assert _sample("test_sgwl_multi", {"cell_id": "cell-0"}) == 1.0
-        assert _sample("test_sgwl_multi", {"cell_id": "cell-1"}) == 0.0
-
-    def test_does_not_interfere_with_regular_gauges(self, collector: _PrometheusCollector) -> None:
-        collector.set_gauge("test_sgwl_regular", 1.0)
-        collector.set_gauge_with_labels(
-            name="test_sgwl_custom",
-            label_keys=["k"],
-            label_values=["v"],
-            value=2.0,
-        )
-
-        assert _sample("test_sgwl_regular", {"run_name": "test-run"}) == 1.0
-        assert _sample("test_sgwl_custom", {"k": "v"}) == 2.0
-
-
-class TestSetPrometheusGauge:
-    @patch.object(prometheus_mod, "_collector_handle", None)
-    def test_noop_when_collector_is_none(self) -> None:
-        set_prometheus_gauge(
-            name="miles_rollout_cell_alive",
-            label_keys=["cell_id"],
-            label_values=["cell-0"],
-            value=1.0,
-        )
-
-    def test_happy_path_calls_remote(self) -> None:
-        mock_handle = MagicMock()
-        mock_remote_ref = MagicMock()
-        mock_handle.set_gauge_with_labels.remote.return_value = mock_remote_ref
-
-        with (
-            patch.object(prometheus_mod, "_collector_handle", mock_handle),
-            patch.object(prometheus_mod.ray, "get") as mock_ray_get,
-        ):
-            set_prometheus_gauge(
-                name="miles_rollout_cell_alive",
-                label_keys=["session_id", "cell_id"],
-                label_values=["sess-1", "cell-0"],
-                value=1.0,
-            )
-
-        mock_handle.set_gauge_with_labels.remote.assert_called_once_with(
-            "miles_rollout_cell_alive",
-            ["session_id", "cell_id"],
-            ["sess-1", "cell-0"],
-            1.0,
-        )
-        mock_ray_get.assert_called_once_with(mock_remote_ref)
-
-    def test_swallows_exception_and_logs_warning(self) -> None:
-        mock_handle = MagicMock()
-        mock_handle.set_gauge_with_labels.remote.side_effect = RuntimeError("ray down")
-
-        with (
-            patch.object(prometheus_mod, "_collector_handle", mock_handle),
-            patch.object(prometheus_mod, "logger") as mock_logger,
-        ):
-            set_prometheus_gauge(
-                name="my_gauge",
-                label_keys=["k"],
-                label_values=["v"],
-                value=1.0,
-            )
-
-        mock_logger.warning.assert_called_once()
-        assert "my_gauge" in mock_logger.warning.call_args[0][1]

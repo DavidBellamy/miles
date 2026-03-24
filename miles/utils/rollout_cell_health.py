@@ -3,12 +3,13 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from miles.utils.prometheus_utils import set_prometheus_gauge
+import ray
+
+from miles.utils.prometheus_utils import get_prometheus
 
 logger = logging.getLogger(__name__)
 
 _METRIC_NAME = "miles_rollout_cell_alive"
-_LABEL_KEYS = ["session_id", "run_name", "cell_id"]
 
 
 @dataclass(frozen=True)
@@ -106,9 +107,15 @@ async def _probe_cell(*, engines: list[object], timeout: float) -> bool:
 
 
 def _report(*, session_id: str, run_name: str, cell_id: str, is_healthy: bool) -> None:
-    set_prometheus_gauge(
-        name=_METRIC_NAME,
-        label_keys=_LABEL_KEYS,
-        label_values=[session_id, run_name, cell_id],
-        value=1.0 if is_healthy else 0.0,
-    )
+    handle = get_prometheus()
+    if handle is None:
+        return
+
+    try:
+        ray.get(handle.set_gauge.remote(
+            _METRIC_NAME,
+            1.0 if is_healthy else 0.0,
+            extra_labels={"session_id": session_id, "cell_id": cell_id},
+        ))
+    except Exception:
+        logger.warning("Failed to report cell health for %s", cell_id, exc_info=True)

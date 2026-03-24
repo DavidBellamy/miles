@@ -13,7 +13,6 @@ import miles.utils.prometheus_utils as prometheus_mod
 from miles.utils.prometheus_utils import (
     get_prometheus,
     init_prometheus,
-    set_prometheus_gauge,
 )
 
 
@@ -149,59 +148,28 @@ class TestMetricsViaHttp:
 
         assert 'miles_metric_loss{run_name="test-run"} 0.5' in body
 
-    def test_set_gauge_with_labels_visible_on_http_endpoint(self, prometheus_server: int) -> None:
+    def test_extra_labels_visible_on_http_endpoint(self, prometheus_server: int) -> None:
         handle = get_prometheus()
         assert handle is not None
 
-        ray.get(handle.set_gauge_with_labels.remote(
-            "test_cell_alive", ["cell_id"], ["c0"], 1.0,
+        ray.get(handle.set_gauge.remote(
+            "test_cell_alive", 1.0, extra_labels={"cell_id": "c0"},
         ))
         body = _fetch_metrics(prometheus_server)
 
-        assert 'test_cell_alive{cell_id="c0"} 1.0' in body
+        assert 'test_cell_alive{cell_id="c0",run_name="test-run"} 1.0' in body
 
-    def test_multiple_label_values_all_visible(self, prometheus_server: int) -> None:
+    def test_multiple_extra_label_values_all_visible(self, prometheus_server: int) -> None:
         handle = get_prometheus()
         assert handle is not None
 
-        ray.get(handle.set_gauge_with_labels.remote(
-            "test_cell_alive", ["cell_id"], ["c0"], 1.0,
+        ray.get(handle.set_gauge.remote(
+            "test_multi_cell", 1.0, extra_labels={"cell_id": "c0"},
         ))
-        ray.get(handle.set_gauge_with_labels.remote(
-            "test_cell_alive", ["cell_id"], ["c1"], 0.0,
+        ray.get(handle.set_gauge.remote(
+            "test_multi_cell", 0.0, extra_labels={"cell_id": "c1"},
         ))
         body = _fetch_metrics(prometheus_server)
 
-        assert 'test_cell_alive{cell_id="c0"} 1.0' in body
-        assert 'test_cell_alive{cell_id="c1"} 0.0' in body
-
-
-# ---------------------------------------------------------------------------
-# Tests — set_prometheus_gauge end-to-end
-# ---------------------------------------------------------------------------
-
-
-class TestSetPrometheusGaugeEndToEnd:
-    def test_end_to_end_via_http(self, prometheus_server: int) -> None:
-        set_prometheus_gauge(
-            name="test_e2e_gauge",
-            label_keys=["k"],
-            label_values=["v"],
-            value=99.0,
-        )
-        body = _fetch_metrics(prometheus_server)
-
-        assert 'test_e2e_gauge{k="v"} 99.0' in body
-
-    def test_noop_without_init(self) -> None:
-        original = prometheus_mod._collector_handle
-        try:
-            prometheus_mod._collector_handle = None
-            set_prometheus_gauge(
-                name="should_not_exist",
-                label_keys=["x"],
-                label_values=["y"],
-                value=1.0,
-            )
-        finally:
-            prometheus_mod._collector_handle = original
+        assert 'test_multi_cell{cell_id="c0",run_name="test-run"} 1.0' in body
+        assert 'test_multi_cell{cell_id="c1",run_name="test-run"} 0.0' in body
