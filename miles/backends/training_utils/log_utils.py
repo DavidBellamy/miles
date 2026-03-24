@@ -5,6 +5,7 @@ from math import isclose
 
 import numpy as np
 import psutil
+import ray
 import torch
 import torch.distributed as dist
 
@@ -31,8 +32,8 @@ class TrainingPhase(enum.IntEnum):
 class TrainingPrometheusReporter:
     """Reports training phase and heartbeat to the Prometheus collector actor.
 
-    Owns the heartbeat counter and phase state. Sends gauge updates
-    via fire-and-forget .remote() calls to avoid blocking training.
+    Owns the heartbeat counter and phase state. Only active on rank 0.
+    Calls are synchronous (ray.get) to ensure delivery.
     """
 
     def __init__(self) -> None:
@@ -48,7 +49,7 @@ class TrainingPrometheusReporter:
         """Set phase gauge and bump heartbeat."""
         if self._handle is None:
             return
-        self._handle.set_gauge.remote("miles_training_phase", phase.value)
+        ray.get(self._handle.set_gauge.remote("miles_training_phase", phase.value))
         self._bump_heartbeat()
 
     def bump_heartbeat(self) -> None:
@@ -58,7 +59,7 @@ class TrainingPrometheusReporter:
 
     def _bump_heartbeat(self) -> None:
         self._heartbeat_counter += 1
-        self._handle.set_gauge.remote("miles_training_heartbeat", self._heartbeat_counter)
+        ray.get(self._handle.set_gauge.remote("miles_training_heartbeat", self._heartbeat_counter))
 
 
 def gather_log_data(
