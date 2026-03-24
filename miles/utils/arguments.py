@@ -1668,25 +1668,6 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-def _resolve_ft_mode(args: argparse.Namespace) -> None:
-    if not args.use_fault_tolerance:
-        if args.ft_mode is not None:
-            logger.warning("--ft-mode is ignored without --use-fault-tolerance")
-        args.ft_rollout_enabled = False
-        args.ft_train_enabled = False
-        return
-    if args.ft_mode is not None:
-        if args.ft_mode == "external":
-            args.ft_rollout_enabled = True
-            args.ft_train_enabled = True
-            return
-        args.ft_rollout_enabled = True
-        args.ft_train_enabled = False
-        return
-    args.ft_rollout_enabled = True
-    args.ft_train_enabled = False
-
-
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
@@ -1946,17 +1927,13 @@ def miles_validate_args(args):
             args.use_dynamic_batch_size is False
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
 
-    if getattr(args, "use_fault_tolerance", False) and getattr(args, "placement_persist_path", None) is None:
-        save_dir = getattr(args, "save", None)
-        if save_dir:
+    if args.use_fault_tolerance and args.ft_mode == "external":
+        if (args.placement_persist_path is None) and (save_dir ):
             args.placement_persist_path = os.path.join(save_dir, "pg_snapshot.json")
 
-    if getattr(args, "use_fault_tolerance", False):
         assert (
-            getattr(args, "placement_persist_path", None) is not None
+            args.placement_persist_path is not None
         ), "--use-fault-tolerance requires --placement-persist-path (or --save to auto-derive it)"
-
-    _resolve_ft_mode(args)
 
 
 def hf_validate_args(args, hf_config):
