@@ -88,9 +88,10 @@ class MegatronTrainRayActor(TrainRayActor):
                 logger.info(f"Set torch_memory_saver.memory_margin_bytes to {x}")
                 torch_memory_saver.memory_margin_bytes = x
 
+        self._prometheus_reporter = TrainingPrometheusReporter()
+
         if self.args.debug_rollout_only:
             self.parallel_state = create_megatron_parallel_state(model=None)
-            self._prometheus_reporter = TrainingPrometheusReporter()
             return 0
 
         if role == "critic":
@@ -108,8 +109,6 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         self.parallel_state = create_megatron_parallel_state(model=self.model)
-
-        self._prometheus_reporter = TrainingPrometheusReporter()
 
         if role == "critic":
             if self.args.offload_train:
