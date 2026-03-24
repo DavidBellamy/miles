@@ -3,6 +3,106 @@
 #
 # Supports any task type (SWE-bench, Terminal-Bench, custom) via Harbor.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MILES_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# ── Defaults ────────────────────────────────────────────────────────
+MODE="train"
+NUM_GPUS=4
+TP=1; PP=1; EP=4
+
+HF_CHECKPOINT="zai-org/GLM-4.7-Flash"
+MODEL_SCRIPT="glm4.7-flash.sh"
+REF_LOAD="/root/GLM-4.7-Flash_torch_dist"
+LOAD_DIR=""
+SAVE_DIR="/root/GLM-4.7-Flash_agent_v2/"
+SAVE_INTERVAL=100
+
+PROMPT_DATA="/root/swe_train.jsonl"
+NUM_ROLLOUT=3000
+ROLLOUT_BATCH_SIZE=8
+N_SAMPLES=8
+ROLLOUT_TEMP=0.8
+MAX_RESP_LEN=8192
+GLOBAL_BATCH=64
+MAX_TOKENS_PER_GPU=2048
+
+LR=1e-6
+KL_LOSS_COEF=0.01
+EPS_CLIP=0.2
+EPS_CLIP_HIGH=0.28
+
+AGENT_SERVER_URL="${AGENT_SERVER_URL:-${SWE_AGENT_URL:-http://agent_env:11000}}"
+HARBOR_TASKS_DIR="${HARBOR_TASKS_DIR:-/root/harbor_tasks}"
+ROUTER_EXTERNAL_HOST="${MILES_ROUTER_EXTERNAL_HOST:-$(hostname)}"
+SGLANG_ROUTER_PORT=30000
+SGLANG_TOOL_CALL_PARSER=""
+SGLANG_REASONING_PARSER=""
+NO_WAIT=""
+
+# ── Pre-scan for --mode so debug defaults are set before arg parsing ─
+for arg in "$@"; do
+  if [[ "$prev" == "--mode" ]]; then MODE="$arg"; break; fi
+  prev="$arg"
+done
+
+# ── Debug mode overrides (applied as defaults, CLI args below win) ──
+if [[ "$MODE" == "debug" ]]; then
+  NUM_ROLLOUT=50
+  ROLLOUT_BATCH_SIZE=4
+  N_SAMPLES=4
+  MAX_RESP_LEN=4096
+  GLOBAL_BATCH=16
+  MAX_TOKENS_PER_GPU=1024
+fi
+
+# ── Parse arguments ─────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)               MODE="$2";               shift 2 ;;
+    --num-gpus)           NUM_GPUS="$2";            shift 2 ;;
+    --tp)                 TP="$2";                  shift 2 ;;
+    --pp)                 PP="$2";                  shift 2 ;;
+    --ep)                 EP="$2";                  shift 2 ;;
+    --hf-checkpoint)      HF_CHECKPOINT="$2";       shift 2 ;;
+    --model-script)       MODEL_SCRIPT="$2";        shift 2 ;;
+    --ref-load)           REF_LOAD="$2";            shift 2 ;;
+    --load-dir)           LOAD_DIR="$2";            shift 2 ;;
+    --save-dir)           SAVE_DIR="$2";            shift 2 ;;
+    --save-interval)      SAVE_INTERVAL="$2";       shift 2 ;;
+    --prompt-data)        PROMPT_DATA="$2";         shift 2 ;;
+    --num-rollout)        NUM_ROLLOUT="$2";         shift 2 ;;
+    --rollout-batch-size) ROLLOUT_BATCH_SIZE="$2";  shift 2 ;;
+    --n-samples-per-prompt) N_SAMPLES="$2";         shift 2 ;;
+    --rollout-temperature)  ROLLOUT_TEMP="$2";      shift 2 ;;
+    --rollout-max-response-len) MAX_RESP_LEN="$2";  shift 2 ;;
+    --global-batch-size)  GLOBAL_BATCH="$2";        shift 2 ;;
+    --max-tokens-per-gpu) MAX_TOKENS_PER_GPU="$2";  shift 2 ;;
+    --lr)                 LR="$2";                  shift 2 ;;
+    --kl-loss-coef)       KL_LOSS_COEF="$2";        shift 2 ;;
+    --eps-clip)           EPS_CLIP="$2";            shift 2 ;;
+    --eps-clip-high)      EPS_CLIP_HIGH="$2";       shift 2 ;;
+    --agent-server-url)   AGENT_SERVER_URL="$2";    shift 2 ;;
+    --harbor-tasks-dir)   HARBOR_TASKS_DIR="$2";    shift 2 ;;
+    --router-external-host) ROUTER_EXTERNAL_HOST="$2"; shift 2 ;;
+    --sglang-router-port) SGLANG_ROUTER_PORT="$2";  shift 2 ;;
+    --sglang-tool-call-parser)  SGLANG_TOOL_CALL_PARSER="$2"; shift 2 ;;
+    --sglang-reasoning-parser)  SGLANG_REASONING_PARSER="$2"; shift 2 ;;
+    --no-wait)            NO_WAIT="--no-wait";      shift ;;
+    *) echo "Unknown arg: $1"; exit 1 ;;
+  esac
+done
+
+# ── Source model architecture ────────────────────────────────────────
+MODEL_SCRIPT_PATH="$MILES_ROOT/scripts/models/$MODEL_SCRIPT"
+if [[ ! -f "$MODEL_SCRIPT_PATH" ]]; then
+  echo "ERROR: Model script not found: $MODEL_SCRIPT_PATH"
+  exit 1
+fi
+source "$MODEL_SCRIPT_PATH"
+
+# ── Cleanup stale processes ──────────────────────────────────────────
+echo "Cleaning up stale processes..."
 pkill -9 sglang 2>/dev/null || true
 sleep 3
 ray stop --force 2>/dev/null || true
