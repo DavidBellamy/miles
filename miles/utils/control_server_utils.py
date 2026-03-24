@@ -80,42 +80,33 @@ def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
 
         return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
+    def _get_handle(subsystem_id: str) -> _SubsystemHandle:
+        try:
+            return registry.get(subsystem_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
+
+    async def _call_handle(subsystem_id: str, action: str, coro) -> _OkResponse:
+        try:
+            await coro
+        except NotImplementedError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        except Exception:
+            logger.error("Failed to %s subsystem %s", action, subsystem_id, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to {action} subsystem '{subsystem_id}'") from None
+        return _OkResponse()
+
     @app.post("/subsystems/{subsystem_id}/stop")
     async def stop_subsystem(subsystem_id: str, body: _StopRequest | None = None) -> _OkResponse:
         if body is None:
             body = _StopRequest()
-
-        try:
-            handle = registry.get(subsystem_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
-
-        try:
-            await handle.stop(timeout_seconds=body.timeout_seconds)
-        except NotImplementedError as e:
-            raise HTTPException(status_code=500, detail=str(e)) from e
-        except Exception:
-            logger.error("Failed to stop subsystem %s", subsystem_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to stop subsystem '{subsystem_id}'") from None
-
-        return _OkResponse()
+        handle = _get_handle(subsystem_id)
+        return await _call_handle(subsystem_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
 
     @app.post("/subsystems/{subsystem_id}/start")
     async def start_subsystem(subsystem_id: str) -> _OkResponse:
-        try:
-            handle = registry.get(subsystem_id)
-        except KeyError:
-            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
-
-        try:
-            await handle.start()
-        except NotImplementedError as e:
-            raise HTTPException(status_code=500, detail=str(e)) from e
-        except Exception:
-            logger.error("Failed to start subsystem %s", subsystem_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to start subsystem '{subsystem_id}'") from None
-
-        return _OkResponse()
+        handle = _get_handle(subsystem_id)
+        return await _call_handle(subsystem_id, "start", handle.start())
 
     return app
 
@@ -152,7 +143,7 @@ class _SubsystemRegistry:
     def get(self, subsystem_id: str) -> _SubsystemHandle:
         try:
             return self._handles[subsystem_id]
-        except KeyError:
+        except KeyError as e:
             raise KeyError(f"Subsystem '{subsystem_id}' not found") from None
 
 
