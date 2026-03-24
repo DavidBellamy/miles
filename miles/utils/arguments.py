@@ -34,6 +34,9 @@ def reset_arg(parser, name, **kwargs):
         parser.add_argument(name, **kwargs)
 
 
+_FT_MODE_CHOICES = ["rollout", "external"]
+
+
 def get_miles_extra_args_provider(add_custom_arguments=None):
     def add_miles_arguments(parser):
         # Ray
@@ -475,7 +478,15 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-fault-tolerance",
                 action="store_true",
                 default=False,
-                help="Whether to enable the fault tolerance function during rollout.",
+                help="Enable fault tolerance. Use --ft-mode to select which mode.",
+            )
+            parser.add_argument(
+                "--ft-mode",
+                type=str,
+                default=None,
+                choices=_FT_MODE_CHOICES,
+                help="Fault-tolerance mode to use (requires --use-fault-tolerance). "
+                "Choices: rollout, external. Default when omitted: rollout.",
             )
             parser.add_argument(
                 "--rollout-health-check-interval",
@@ -1655,6 +1666,25 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
         args.eval_prompt_data = None
 
     return eval_datasets
+
+
+def _resolve_ft_mode(args: argparse.Namespace) -> None:
+    if not args.use_fault_tolerance:
+        if args.ft_mode is not None:
+            logger.warning("--ft-mode is ignored without --use-fault-tolerance")
+        args.ft_rollout_enabled = False
+        args.ft_train_enabled = False
+        return
+    if args.ft_mode is not None:
+        if args.ft_mode == "external":
+            args.ft_rollout_enabled = True
+            args.ft_train_enabled = True
+            return
+        args.ft_rollout_enabled = True
+        args.ft_train_enabled = False
+        return
+    args.ft_rollout_enabled = True
+    args.ft_train_enabled = False
 
 
 def miles_validate_args(args):
