@@ -365,7 +365,27 @@ class RolloutManager:
         self.rollout_id = -1
 
         self._metric_checker = MetricChecker.maybe_create(args)
-        self._cell_health = None  # TODO(PR #729): enable when ServerCell / group.cells are available
+        self._cell_health_checker = None
+        if getattr(args, "use_prometheus", False) and not self.args.debug_train_only:
+            from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealthChecker
+
+            cells = [
+                CellEntry(
+                    cell_id=f"{srv_name}-{group.worker_type}",
+                    get_engines=lambda g=group: g.engines,
+                )
+                for srv_name, srv in self.servers.items()
+                for group in srv.server_groups
+            ]
+            if cells:
+                self._cell_health_checker = RolloutCellHealthChecker(
+                    cells=cells,
+                    session_id=getattr(args, "session_id", "unknown"),
+                    check_interval=getattr(args, "rollout_health_check_interval", 30.0),
+                    timeout=getattr(args, "rollout_health_check_timeout", 30.0),
+                )
+                self._cell_health_checker.start()
+
         self._health_monitors = []
         if not self.args.debug_train_only and self.args.use_fault_tolerance:
             for srv in self.servers.values():
@@ -397,8 +417,8 @@ class RolloutManager:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
     async def dispose(self):
-        if self._cell_health is not None:
-            await self._cell_health.shutdown()
+        if self._cell_health_checker is not None:
+            await self._cell_health_checker.shutdown()
         if self._metric_checker is not None:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
@@ -490,14 +510,14 @@ class RolloutManager:
     def health_monitoring_pause(self) -> None:
         for monitor in self._health_monitors:
             monitor.pause()
-        if self._cell_health is not None:
-            self._cell_health.pause()
+        if self._cell_health_checker is not None:
+            self._cell_health_checker.pause()
 
     def health_monitoring_resume(self) -> None:
         for monitor in self._health_monitors:
             monitor.resume()
-        if self._cell_health is not None:
-            self._cell_health.resume()
+        if self._cell_health_checker is not None:
+            self._cell_health_checker.resume()
 
     def onload_weights(self):
         for srv in self.servers.values():
