@@ -4,11 +4,11 @@ import socket
 import time
 from argparse import Namespace
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
 import ray
-from unittest.mock import patch
 
 import miles.utils.prometheus_utils as prometheus_mod
 from miles.utils.prometheus_utils import _PrometheusCollector, get_prometheus, init_prometheus
@@ -122,16 +122,26 @@ def test_extra_labels_merged_and_independent(prometheus_server: int) -> None:
 
 class TestRunNameResolution:
     def test_prefers_prometheus_run_name(self) -> None:
-        with patch("prometheus_client.start_http_server"), patch("miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"):
-            collector = _PrometheusCollector(Namespace(prometheus_port=0, prometheus_run_name="prom", wandb_group="wandb"))
+        with patch("prometheus_client.start_http_server"), patch(
+            "miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"
+        ):
+            collector = _PrometheusCollector(
+                Namespace(prometheus_port=0, prometheus_run_name="prom", wandb_group="wandb")
+            )
         assert collector._run_name == "prom"
 
     def test_falls_back_to_wandb_group(self) -> None:
-        with patch("prometheus_client.start_http_server"), patch("miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"):
-            collector = _PrometheusCollector(Namespace(prometheus_port=0, prometheus_run_name=None, wandb_group="wandb"))
+        with patch("prometheus_client.start_http_server"), patch(
+            "miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"
+        ):
+            collector = _PrometheusCollector(
+                Namespace(prometheus_port=0, prometheus_run_name=None, wandb_group="wandb")
+            )
         assert collector._run_name == "wandb"
 
     def test_defaults_to_miles_training(self) -> None:
-        with patch("prometheus_client.start_http_server"), patch("miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"):
+        with patch("prometheus_client.start_http_server"), patch(
+            "miles.utils.prometheus_utils.get_current_node_ip", return_value="127.0.0.1"
+        ):
             collector = _PrometheusCollector(Namespace(prometheus_port=0, prometheus_run_name=None, wandb_group=None))
         assert collector._run_name == "miles_training"

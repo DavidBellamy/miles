@@ -125,8 +125,10 @@ class TestCheckOneCell:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealthChecker(
-            cells=[cell], session_id="sess-1",
-            check_interval=100.0, timeout=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            check_interval=100.0,
+            timeout=0.01,
         )
         checker.start()
         await asyncio.sleep(0.1)
@@ -144,7 +146,8 @@ class TestCheckOneCell:
         cell_b = _make_cell("cell-b", [engine_b])
 
         checker = RolloutCellHealthChecker(
-            cells=[cell_a, cell_b], session_id="sess-1",
+            cells=[cell_a, cell_b],
+            session_id="sess-1",
             check_interval=100.0,
         )
         checker.start()
