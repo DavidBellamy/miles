@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import socket
 import time
 import urllib.request
@@ -12,13 +11,10 @@ import ray
 
 import miles.utils.prometheus_utils as prometheus_mod
 from miles.utils.prometheus_utils import (
-    _PrometheusCollector,
     get_prometheus,
     init_prometheus,
     set_prometheus_gauge,
 )
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +63,9 @@ def prometheus_port() -> int:
 def prometheus_server(ray_context: Any, prometheus_port: int) -> Any:
     args = _make_args(port=prometheus_port)
     init_prometheus(args, start_server=True)
+
+    _wait_for_server(prometheus_port)
+
     yield prometheus_port
 
     # Teardown: kill the named actor and reset the module-level handle
@@ -133,7 +132,6 @@ class TestInitPrometheus:
 
 class TestMetricsViaHttp:
     def test_set_gauge_visible_on_http_endpoint(self, prometheus_server: int) -> None:
-        _wait_for_server(prometheus_server)
         handle = get_prometheus()
         assert handle is not None
 
@@ -143,7 +141,6 @@ class TestMetricsViaHttp:
         assert 'test_http_sg{run_name="test-run"} 42.0' in body
 
     def test_update_visible_on_http_endpoint(self, prometheus_server: int) -> None:
-        _wait_for_server(prometheus_server)
         handle = get_prometheus()
         assert handle is not None
 
@@ -153,7 +150,6 @@ class TestMetricsViaHttp:
         assert 'miles_metric_loss{run_name="test-run"} 0.5' in body
 
     def test_set_gauge_with_labels_visible_on_http_endpoint(self, prometheus_server: int) -> None:
-        _wait_for_server(prometheus_server)
         handle = get_prometheus()
         assert handle is not None
 
@@ -165,7 +161,6 @@ class TestMetricsViaHttp:
         assert 'test_cell_alive{cell_id="c0"} 1.0' in body
 
     def test_multiple_label_values_all_visible(self, prometheus_server: int) -> None:
-        _wait_for_server(prometheus_server)
         handle = get_prometheus()
         assert handle is not None
 
@@ -188,8 +183,6 @@ class TestMetricsViaHttp:
 
 class TestSetPrometheusGaugeEndToEnd:
     def test_end_to_end_via_http(self, prometheus_server: int) -> None:
-        _wait_for_server(prometheus_server)
-
         set_prometheus_gauge(
             name="test_e2e_gauge",
             label_keys=["k"],
