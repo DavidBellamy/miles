@@ -100,9 +100,7 @@ class _PrometheusCollector:
 
     def set_gauge(self, name: str, value: float, extra_labels: dict[str, str] | None = None) -> None:
         """Set a named gauge. Always includes run_name; extra_labels are merged in."""
-        labels = {"run_name": self._run_name}
-        if extra_labels:
-            labels.update(extra_labels)
+        labels = {"run_name": self._run_name} | (extra_labels or {})
 
         label_keys = sorted(labels.keys())
         cache_key = (name, tuple(label_keys))
