@@ -630,7 +630,7 @@ def train(
 
                     check_mtp_loss(mtp_losses)
 
-        if prometheus_reporter is not None and is_megatron_main_rank():
+        if prometheus_reporter is not None:
             prometheus_reporter.bump_heartbeat()
 
         # per train step log.

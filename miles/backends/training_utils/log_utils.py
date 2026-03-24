@@ -36,12 +36,13 @@ class TrainingPrometheusReporter:
     """
 
     def __init__(self) -> None:
-        self._handle = get_prometheus()
+        self._enabled = dist.get_rank() == 0 and get_prometheus() is not None
+        self._handle = get_prometheus() if self._enabled else None
         self._heartbeat_counter = 0
 
     @property
     def enabled(self) -> bool:
-        return self._handle is not None
+        return self._enabled
 
     def set_phase(self, phase: TrainingPhase) -> None:
         """Set phase gauge and bump heartbeat."""
