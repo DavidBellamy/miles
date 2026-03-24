@@ -24,24 +24,33 @@ logger = logging.getLogger(__name__)
 class TrainingPrometheusReporter:
     """Reports training phase and heartbeat to the Prometheus collector actor.
 
-    All calls are fire-and-forget (.remote(), no ray.get()) to avoid
-    blocking the training loop.
+    Owns the heartbeat counter and phase state. Sends gauge updates
+    via fire-and-forget .remote() calls to avoid blocking training.
     """
 
     def __init__(self) -> None:
         self._handle = get_prometheus()
+        self._heartbeat_counter = 0
 
     @property
     def enabled(self) -> bool:
         return self._handle is not None
 
     def set_phase(self, phase: int) -> None:
-        if self._handle is not None:
-            self._handle.set_training_phase.remote(phase)
+        """Set phase gauge and bump heartbeat."""
+        if self._handle is None:
+            return
+        self._handle.set_gauge.remote("miles_training_phase", phase)
+        self._bump_heartbeat()
 
     def bump_heartbeat(self) -> None:
-        if self._handle is not None:
-            self._handle.bump_heartbeat.remote()
+        if self._handle is None:
+            return
+        self._bump_heartbeat()
+
+    def _bump_heartbeat(self) -> None:
+        self._heartbeat_counter += 1
+        self._handle.set_gauge.remote("miles_training_heartbeat", self._heartbeat_counter)
 
 
 def gather_log_data(

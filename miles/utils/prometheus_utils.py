@@ -68,18 +68,6 @@ class _PrometheusCollector:
         self._label_keys = ["run_name"]
         self._label_vals = [self._run_name]
 
-        self._heartbeat_counter = 0
-        self._ft_training_heartbeat = Gauge(
-            "miles_training_heartbeat",
-            "Monotonically increasing counter, bumped on each training step and phase change",
-            ["run_name"],
-        )
-        self._ft_training_phase = Gauge(
-            "miles_training_phase",
-            "Training phase: 0=idle, 1=training, 2=checkpoint_saving",
-            ["run_name"],
-        )
-
         port = args.prometheus_port
         start_http_server(port)
         logger.info("Prometheus metrics server started on port %d, run_name=%s", port, self._run_name)
@@ -98,15 +86,15 @@ class _PrometheusCollector:
                 )
             self._gauges[safe_key].labels(*self._label_vals).set(value)
 
-    def set_training_phase(self, phase: int):
-        """Set phase gauge and bump heartbeat."""
-        self._ft_training_phase.labels(self._run_name).set(phase)
-        self._heartbeat_counter += 1
-        self._ft_training_heartbeat.labels(self._run_name).set(self._heartbeat_counter)
-
-    def bump_heartbeat(self):
-        self._heartbeat_counter += 1
-        self._ft_training_heartbeat.labels(self._run_name).set(self._heartbeat_counter)
+    def set_gauge(self, name: str, value: float):
+        """Set a named gauge to the given value."""
+        if name not in self._gauges:
+            self._gauges[name] = self._Gauge(
+                name,
+                name,
+                self._label_keys,
+            )
+        self._gauges[name].labels(*self._label_vals).set(value)
 
     def ping(self):
         return True
