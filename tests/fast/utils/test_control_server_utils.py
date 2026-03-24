@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
-import miles.utils.control_server_utils as control_server_mod
 from miles.utils.control_server_utils import (
     _create_control_app,
     _RolloutSubsystemHandle,
@@ -55,9 +56,11 @@ class _MockRemoteCall:
         self._return_value = return_value
         self.calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def remote(self, *args: object, **kwargs: object) -> object:
+    def remote(self, *args: object, **kwargs: object) -> asyncio.Future[object]:
         self.calls.append((args, kwargs))
-        return self._return_value
+        future: asyncio.Future[object] = asyncio.get_event_loop().create_future()
+        future.set_result(self._return_value)
+        return future
 
 
 class _MockRolloutManager:
@@ -288,9 +291,8 @@ class TestStartSubsystem:
 
 class TestRolloutSubsystemHandle:
     @pytest.mark.asyncio
-    async def test_stop_delegates_to_manager(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stop_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
-        monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
         handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
         await handle.stop(timeout_seconds=45)
@@ -298,26 +300,23 @@ class TestRolloutSubsystemHandle:
         assert manager.stop_cell.calls == [(("cell-0", 45), {})]
 
     @pytest.mark.asyncio
-    async def test_start_delegates_to_manager(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_start_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
-        monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
         handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
         await handle.start()
 
     @pytest.mark.asyncio
-    async def test_get_status_delegates_to_manager(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_get_status_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager(status_return="stopped")
-        monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
         handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
         assert await handle.get_status() == "stopped"
 
     @pytest.mark.asyncio
-    async def test_get_node_ids_delegates_to_manager(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_get_node_ids_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
         manager.get_cell_node_ids = _MockRemoteCall(["n0", "n1"])
-        monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
         handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
         assert await handle.get_node_ids() == ["n0", "n1"]
