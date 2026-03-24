@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from argparse import Namespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -259,3 +260,56 @@ class TestLifecycle:
         slow_count = len(mock_prom.set_gauge_calls)
 
         assert fast_count > slow_count
+
+
+class _MockServerGroup:
+    def __init__(self, worker_type: str = "regular") -> None:
+        self.worker_type = worker_type
+        self.all_engines = [MagicMock()]
+
+    @property
+    def engines(self) -> list[MagicMock]:
+        return self.all_engines
+
+
+class _MockServer:
+    def __init__(self, groups: list[_MockServerGroup]) -> None:
+        self.server_groups = groups
+
+
+class TestMaybeCreate:
+    def test_maybe_create_returns_none_when_prometheus_disabled(self) -> None:
+        args = Namespace(
+            use_prometheus=False,
+            session_id="sess",
+            rollout_health_check_interval=30.0,
+            rollout_health_check_timeout=30.0,
+        )
+        result = RolloutCellHealthChecker.maybe_create(servers={"srv0": _MockServer([_MockServerGroup()])}, args=args)
+        assert result is None
+
+    def test_maybe_create_returns_none_when_no_cells(self) -> None:
+        args = Namespace(
+            use_prometheus=True,
+            session_id="sess",
+            rollout_health_check_interval=30.0,
+            rollout_health_check_timeout=30.0,
+        )
+        result = RolloutCellHealthChecker.maybe_create(servers={}, args=args)
+        assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_maybe_create_returns_checker_when_enabled(self, mock_prom: _MockHandle) -> None:
+        args = Namespace(
+            use_prometheus=True,
+            session_id="sess",
+            rollout_health_check_interval=30.0,
+            rollout_health_check_timeout=30.0,
+        )
+        servers = {"srv0": _MockServer([_MockServerGroup()])}
+
+        checker = RolloutCellHealthChecker.maybe_create(servers=servers, args=args)
+        assert isinstance(checker, RolloutCellHealthChecker)
+        assert checker._task is not None
+
+        await checker.shutdown()
