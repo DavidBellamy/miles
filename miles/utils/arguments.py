@@ -1928,7 +1928,7 @@ def miles_validate_args(args):
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
 
     if args.use_fault_tolerance and args.ft_mode == "external":
-        if (args.placement_persist_path is None) and (save_dir ):
+        if (args.placement_persist_path is None) and (save_dir := args.save):
             args.placement_persist_path = os.path.join(save_dir, "pg_snapshot.json")
 
         assert (
