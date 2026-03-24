@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Any
 
 import ray
 
@@ -44,9 +45,23 @@ def init_prometheus(args, start_server: bool = False):
                 time.sleep(_GET_ACTOR_INTERVAL)
 
 
-def get_prometheus():
+def get_prometheus() -> Any:
     """Return the collector actor handle, or ``None``."""
     return _collector_handle
+
+
+def set_prometheus_gauge(
+    name: str, label_keys: list[str], label_values: list[str], value: float
+) -> None:
+    """Set a gauge with custom labels via the collector actor. No-op if Prometheus is not enabled."""
+    handle = get_prometheus()
+    if handle is None:
+        return
+
+    try:
+        ray.get(handle.set_gauge_with_labels.remote(name, label_keys, label_values, value))
+    except Exception:
+        logger.warning("Failed to set prometheus gauge %s", name, exc_info=True)
 
 
 class _PrometheusCollector:
@@ -62,6 +77,7 @@ class _PrometheusCollector:
 
         self._Gauge = Gauge
         self._gauges: dict = {}
+        self._custom_gauges: dict[str, Any] = {}
         self._run_name = (
             getattr(args, "prometheus_run_name", None) or getattr(args, "wandb_group", None) or "miles_training"
         )
@@ -89,6 +105,14 @@ class _PrometheusCollector:
                 self._label_keys,
             )
         self._gauges[name].labels(*self._label_vals).set(value)
+
+    def set_gauge_with_labels(
+        self, name: str, label_keys: list[str], label_values: list[str], value: float
+    ) -> None:
+        """Set a gauge with custom labels (different from the default run_name labels)."""
+        if name not in self._custom_gauges:
+            self._custom_gauges[name] = self._Gauge(name, name, label_keys)
+        self._custom_gauges[name].labels(*label_values).set(value)
 
     def ping(self):
         return True
