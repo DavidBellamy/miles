@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 logger = logging.getLogger(__name__)
 
 
-def start_control_server(actor_model, rollout_manager, port):
+def start_control_server(actor_model: object, rollout_manager: object, port: int) -> None:
     registry = _SubsystemRegistry()
 
     registry.register(_TrainingSubsystemHandle(node_ids=actor_model.get_node_ids()))
@@ -26,7 +26,7 @@ def start_control_server(actor_model, rollout_manager, port):
     _start_control_server_raw(registry=registry, port=port)
 
 
-def _start_control_server_raw(registry: "_SubsystemRegistry", port: int):
+def _start_control_server_raw(registry: "_SubsystemRegistry", port: int) -> None:
     app = _create_control_app(registry)
 
     def _run() -> None:
@@ -37,28 +37,49 @@ def _start_control_server_raw(registry: "_SubsystemRegistry", port: int):
     logger.info("Control server started on port %d", port)
 
 
+class _SubsystemInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subsystem_id: str
+    subsystem_type: str
+    status: str
+    node_ids: list[str]
+
+
+class _StopRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timeout_seconds: int = 30
+
+
+class _OkResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = "ok"
+
+
 def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
     app = FastAPI()
 
     @app.get("/subsystems")
-    async def get_subsystems() -> list[dict]:
+    async def get_subsystems() -> list[_SubsystemInfo]:
         handles = registry.get_all()
 
-        async def _fetch(handle: _SubsystemHandle) -> dict:
+        async def _fetch(handle: _SubsystemHandle) -> _SubsystemInfo:
             status, node_ids = await asyncio.gather(
                 handle.get_status(), handle.get_node_ids()
             )
-            return {
-                "subsystem_id": handle.subsystem_id,
-                "subsystem_type": handle.subsystem_type,
-                "status": status,
-                "node_ids": node_ids,
-            }
+            return _SubsystemInfo(
+                subsystem_id=handle.subsystem_id,
+                subsystem_type=handle.subsystem_type,
+                status=status,
+                node_ids=node_ids,
+            )
 
         return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
     @app.post("/subsystems/{subsystem_id}/stop")
-    async def stop_subsystem(subsystem_id: str, body: _StopRequest | None = None) -> dict:
+    async def stop_subsystem(subsystem_id: str, body: _StopRequest | None = None) -> _OkResponse:
         if body is None:
             body = _StopRequest()
 
@@ -75,10 +96,10 @@ def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
             logger.error("Failed to stop subsystem %s", subsystem_id, exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to stop subsystem '{subsystem_id}'")
 
-        return {"status": "ok"}
+        return _OkResponse()
 
     @app.post("/subsystems/{subsystem_id}/start")
-    async def start_subsystem(subsystem_id: str) -> dict:
+    async def start_subsystem(subsystem_id: str) -> _OkResponse:
         try:
             handle = registry.get(subsystem_id)
         except KeyError:
@@ -92,10 +113,9 @@ def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
             logger.error("Failed to start subsystem %s", subsystem_id, exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to start subsystem '{subsystem_id}'")
 
-        return {"status": "ok"}
+        return _OkResponse()
 
     return app
-
 
 
 @runtime_checkable
@@ -113,12 +133,6 @@ class _SubsystemHandle(Protocol):
     async def get_status(self) -> str: ...
 
     async def get_node_ids(self) -> list[str]: ...
-
-
-class _StopRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    timeout_seconds: int = 30
 
 
 class _SubsystemRegistry:
@@ -195,5 +209,3 @@ class _RolloutSubsystemHandle:
         return await asyncio.to_thread(
             ray.get, self._rollout_manager.get_cell_node_ids.remote(self._cell_id)
         )
-
-
