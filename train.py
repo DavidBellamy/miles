@@ -24,17 +24,17 @@ def train(args):
     if args.use_control_server:
         from miles.utils.control_server_utils import (
             SubsystemRegistry,
-            _RolloutSubsystemHandle,
-            _TrainingSubsystemHandle,
+            RolloutSubsystemHandle,
+            TrainingSubsystemHandle,
             start_control_server,
         )
 
         registry = SubsystemRegistry()
-        registry.register(_TrainingSubsystemHandle(node_ids=[]))
+        registry.register(TrainingSubsystemHandle(node_ids=[]))
 
         cell_infos = ray.get(rollout_manager.list_cells.remote())
         for cell_info in cell_infos:
-            registry.register(_RolloutSubsystemHandle(
+            registry.register(RolloutSubsystemHandle(
                 rollout_manager=rollout_manager,
                 cell_id=cell_info["cell_id"],
                 node_ids=cell_info.get("node_ids", []),

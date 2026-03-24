@@ -110,7 +110,7 @@ def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
     return app
 
 
-class _TrainingSubsystemHandle:
+class TrainingSubsystemHandle:
     def __init__(self, node_ids: list[str]) -> None:
         self._node_ids = node_ids
 
@@ -139,7 +139,7 @@ class _TrainingSubsystemHandle:
         return self._node_ids
 
 
-class _RolloutSubsystemHandle:
+class RolloutSubsystemHandle:
     def __init__(self, rollout_manager: object, cell_id: str, node_ids: list[str]) -> None:
         self._rollout_manager = rollout_manager
         self._cell_id = cell_id
