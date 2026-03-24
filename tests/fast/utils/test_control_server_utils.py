@@ -1,7 +1,14 @@
 import pytest
 import httpx
 
-from miles.utils.control_server_utils import SubsystemRegistry, _StopRequest, _create_control_app
+import miles.utils.control_server_utils as control_server_mod
+from miles.utils.control_server_utils import (
+    SubsystemRegistry,
+    RolloutSubsystemHandle,
+    TrainingSubsystemHandle,
+    _StopRequest,
+    _create_control_app,
+)
 
 
 class _MockHandle:
@@ -289,12 +296,10 @@ class _MockRolloutManager:
 
 @pytest.mark.asyncio
 async def test_rollout_handle_stop_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
-    import miles.utils.control_server_utils as mod
-
     manager = _MockRolloutManager()
-    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+    monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = mod.RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
     await handle.stop(timeout_seconds=45)
 
     assert manager.stop_cell.calls == [(("cell-0", 45), {})]
@@ -302,38 +307,30 @@ async def test_rollout_handle_stop_delegates_to_manager(monkeypatch: pytest.Monk
 
 @pytest.mark.asyncio
 async def test_rollout_handle_start_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
-    import miles.utils.control_server_utils as mod
-
     manager = _MockRolloutManager()
-    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+    monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = mod.RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
     await handle.start()
 
 
 @pytest.mark.asyncio
 async def test_rollout_handle_get_status_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
-    import miles.utils.control_server_utils as mod
-
     manager = _MockRolloutManager(status_return="stopped")
-    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+    monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = mod.RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
     status = await handle.get_status()
     assert status == "stopped"
 
 
 @pytest.mark.asyncio
 async def test_rollout_handle_get_node_ids() -> None:
-    from miles.utils.control_server_utils import RolloutSubsystemHandle
-
     handle = RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=["n0", "n1"])
     assert await handle.get_node_ids() == ["n0", "n1"]
 
 
 def test_rollout_handle_subsystem_type_is_rollout() -> None:
-    from miles.utils.control_server_utils import RolloutSubsystemHandle
-
     handle = RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=[])
     assert handle.subsystem_type == "rollout"
     assert handle.subsystem_id == "cell-0"
@@ -344,8 +341,6 @@ def test_rollout_handle_subsystem_type_is_rollout() -> None:
 
 @pytest.mark.asyncio
 async def test_training_handle_stop_raises() -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     handle = TrainingSubsystemHandle(node_ids=["n0"])
     with pytest.raises(NotImplementedError, match="managed by the platform"):
         await handle.stop(timeout_seconds=30)
@@ -353,8 +348,6 @@ async def test_training_handle_stop_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_training_handle_start_raises() -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     handle = TrainingSubsystemHandle(node_ids=["n0"])
     with pytest.raises(NotImplementedError, match="managed by the platform"):
         await handle.start()
@@ -362,23 +355,17 @@ async def test_training_handle_start_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_training_handle_get_status_always_running() -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     handle = TrainingSubsystemHandle(node_ids=[])
     assert await handle.get_status() == "running"
 
 
 @pytest.mark.asyncio
 async def test_training_handle_get_node_ids() -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     handle = TrainingSubsystemHandle(node_ids=["n0", "n1", "n2"])
     assert await handle.get_node_ids() == ["n0", "n1", "n2"]
 
 
 def test_training_handle_subsystem_type_is_training() -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     handle = TrainingSubsystemHandle(node_ids=[])
     assert handle.subsystem_type == "training"
     assert handle.subsystem_id == "training"
@@ -388,8 +375,6 @@ def test_training_handle_subsystem_type_is_training() -> None:
 async def test_stop_training_subsystem_returns_error(
     registry: SubsystemRegistry, async_client: httpx.AsyncClient
 ) -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     registry.register(TrainingSubsystemHandle(node_ids=["n0"]))
 
     resp = await async_client.post("/subsystems/training/stop")
@@ -401,8 +386,6 @@ async def test_stop_training_subsystem_returns_error(
 async def test_start_training_subsystem_returns_error(
     registry: SubsystemRegistry, async_client: httpx.AsyncClient
 ) -> None:
-    from miles.utils.control_server_utils import TrainingSubsystemHandle
-
     registry.register(TrainingSubsystemHandle(node_ids=["n0"]))
 
     resp = await async_client.post("/subsystems/training/start")
