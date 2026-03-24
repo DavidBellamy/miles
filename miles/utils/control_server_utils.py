@@ -42,17 +42,20 @@ def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
 
     @app.get("/subsystems")
     async def get_subsystems() -> list[dict]:
-        results: list[dict] = []
-        for handle in registry.get_all():
-            status = await handle.get_status()
-            node_ids = await handle.get_node_ids()
-            results.append({
+        handles = registry.get_all()
+
+        async def _fetch(handle: _SubsystemHandle) -> dict:
+            status, node_ids = await asyncio.gather(
+                handle.get_status(), handle.get_node_ids()
+            )
+            return {
                 "subsystem_id": handle.subsystem_id,
                 "subsystem_type": handle.subsystem_type,
                 "status": status,
                 "node_ids": node_ids,
-            })
-        return results
+            }
+
+        return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
     @app.post("/subsystems/{subsystem_id}/stop")
     async def stop_subsystem(subsystem_id: str, body: _StopRequest | None = None) -> dict:
