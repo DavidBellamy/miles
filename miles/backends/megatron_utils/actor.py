@@ -16,7 +16,7 @@ from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
-from miles.backends.training_utils.log_utils import TrainingPrometheusReporter
+from miles.backends.training_utils.log_utils import TrainingPhase, TrainingPrometheusReporter
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
@@ -350,7 +350,7 @@ class MegatronTrainRayActor(TrainRayActor):
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
     def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
-        self._prometheus_reporter.set_phase(1)
+        self._prometheus_reporter.set_phase(TrainingPhase.TRAINING)
 
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
@@ -454,7 +454,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         log_perf_data(rollout_id, self.args, self.parallel_state)
 
-        self._prometheus_reporter.set_phase(0)
+        self._prometheus_reporter.set_phase(TrainingPhase.IDLE)
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
@@ -470,9 +470,9 @@ class MegatronTrainRayActor(TrainRayActor):
 
             maybe_finalize_async_save(blocking=True)
 
-        self._prometheus_reporter.set_phase(2)
+        self._prometheus_reporter.set_phase(TrainingPhase.CHECKPOINT_SAVING)
         save(rollout_id, self.model, self.optimizer, self.opt_param_scheduler)
-        self._prometheus_reporter.set_phase(0)
+        self._prometheus_reporter.set_phase(TrainingPhase.IDLE)
 
         if force_sync and self.args.async_save:
             maybe_finalize_async_save(blocking=True)

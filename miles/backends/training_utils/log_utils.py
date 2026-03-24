@@ -1,3 +1,4 @@
+import enum
 import logging
 from argparse import Namespace
 from math import isclose
@@ -21,6 +22,12 @@ from .parallel import ParallelState
 logger = logging.getLogger(__name__)
 
 
+class TrainingPhase(enum.IntEnum):
+    IDLE = 0
+    TRAINING = 1
+    CHECKPOINT_SAVING = 2
+
+
 class TrainingPrometheusReporter:
     """Reports training phase and heartbeat to the Prometheus collector actor.
 
@@ -36,11 +43,11 @@ class TrainingPrometheusReporter:
     def enabled(self) -> bool:
         return self._handle is not None
 
-    def set_phase(self, phase: int) -> None:
+    def set_phase(self, phase: TrainingPhase) -> None:
         """Set phase gauge and bump heartbeat."""
         if self._handle is None:
             return
-        self._handle.set_gauge.remote("miles_training_phase", phase)
+        self._handle.set_gauge.remote("miles_training_phase", phase.value)
         self._bump_heartbeat()
 
     def bump_heartbeat(self) -> None:
