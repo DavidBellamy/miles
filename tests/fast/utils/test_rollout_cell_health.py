@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -36,7 +36,7 @@ class _MockHandle:
         self.set_gauge_calls: list[dict] = []
 
     class _RemoteProxy:
-        def __init__(self, owner: "_MockHandle") -> None:
+        def __init__(self, owner: _MockHandle) -> None:
             self._owner = owner
 
         def remote(self, name: str, value: float, extra_labels: dict[str, str] | None = None) -> str:
@@ -51,11 +51,7 @@ class _MockHandle:
 @pytest.fixture()
 def mock_prom() -> _MockHandle:
     handle = _MockHandle()
-    with (
-        patch("miles.utils.rollout_cell_health.get_prometheus", return_value=handle),
-        patch("miles.utils.rollout_cell_health.ray") as mock_ray,
-    ):
-        mock_ray.get = lambda ref: ref
+    with patch("miles.utils.rollout_cell_health.get_prometheus", return_value=handle):
         yield handle
 
 
@@ -72,7 +68,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -87,7 +83,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=False)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -100,7 +96,7 @@ class TestCheckOneCell:
     async def test_none_engine_reports_dead(self, mock_prom: _MockHandle) -> None:
         cell = _make_cell("cell-0", [None])  # type: ignore[list-item]
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -113,7 +109,7 @@ class TestCheckOneCell:
     async def test_empty_engines_list_reports_dead(self, mock_prom: _MockHandle) -> None:
         cell = CellEntry(cell_id="cell-0", get_engines=lambda: [])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -128,7 +124,7 @@ class TestCheckOneCell:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
+            cells=[cell], session_id="sess-1",
             check_interval=100.0, timeout=0.01,
         )
         checker.start()
@@ -147,7 +143,7 @@ class TestCheckOneCell:
         cell_b = _make_cell("cell-b", [engine_b])
 
         checker = RolloutCellHealth(
-            cells=[cell_a, cell_b], session_id="sess-1", run_name="run-1",
+            cells=[cell_a, cell_b], session_id="sess-1",
             check_interval=100.0,
         )
         checker.start()
@@ -164,7 +160,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="my-sess", run_name="run-1", check_interval=100.0)
+        checker = RolloutCellHealth(cells=[cell], session_id="my-sess", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -180,10 +176,7 @@ class TestPauseResume:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
-            check_interval=0.01,
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker.pause()
         checker.start()
 
@@ -197,10 +190,7 @@ class TestPauseResume:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
-            check_interval=0.01,
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker.pause()
         checker.start()
         await asyncio.sleep(0.03)
@@ -215,28 +205,38 @@ class TestPauseResume:
 
 class TestLifecycle:
     @pytest.mark.asyncio()
-    async def test_shutdown_cancels_task(self, mock_prom: _MockHandle) -> None:
+    async def test_shutdown_clears_task(self, mock_prom: _MockHandle) -> None:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
-            check_interval=0.01,
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker.start()
         await checker.shutdown()
 
-        assert checker._task is not None and (checker._task.cancelled() or checker._task.done())
+        assert checker._task is None
+
+    @pytest.mark.asyncio()
+    async def test_restart_after_shutdown(self, mock_prom: _MockHandle) -> None:
+        engine = _make_engine(healthy=True)
+        cell = _make_cell("cell-0", [engine])
+
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker.start()
+        await checker.shutdown()
+
+        mock_prom.set_gauge_calls.clear()
+        checker.start()
+        await asyncio.sleep(0.05)
+        await checker.shutdown()
+
+        assert len(mock_prom.set_gauge_calls) > 0
 
     @pytest.mark.asyncio()
     async def test_check_interval_respected(self, mock_prom: _MockHandle) -> None:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker_fast = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
-            check_interval=0.01,
-        )
+        checker_fast = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker_fast.start()
         await asyncio.sleep(0.1)
         await checker_fast.shutdown()
@@ -244,10 +244,7 @@ class TestLifecycle:
 
         mock_prom.set_gauge_calls.clear()
 
-        checker_slow = RolloutCellHealth(
-            cells=[cell], session_id="sess-2", run_name="run-1",
-            check_interval=0.05,
-        )
+        checker_slow = RolloutCellHealth(cells=[cell], session_id="sess-2", check_interval=0.05)
         checker_slow.start()
         await asyncio.sleep(0.1)
         await checker_slow.shutdown()

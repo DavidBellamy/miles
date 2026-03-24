@@ -1,9 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-
-import ray
 
 from miles.utils.prometheus_utils import get_prometheus
 
@@ -30,13 +30,11 @@ class RolloutCellHealth:
         *,
         cells: list[CellEntry],
         session_id: str,
-        run_name: str,
         check_interval: float = 30.0,
         timeout: float = 30.0,
     ) -> None:
         self._cells = {entry.cell_id: entry for entry in cells}
         self._session_id = session_id
-        self._run_name = run_name
         self._check_interval = check_interval
         self._timeout = timeout
         self._paused = False
@@ -55,6 +53,10 @@ class RolloutCellHealth:
     def resume(self) -> None:
         self._paused = False
 
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
     async def shutdown(self) -> None:
         if self._task is None:
             return
@@ -63,35 +65,37 @@ class RolloutCellHealth:
             await self._task
         except asyncio.CancelledError:
             pass
+        self._task = None
 
     async def _loop(self) -> None:
+        while True:
+            if not self._paused:
+                await asyncio.gather(*(self._check_one_cell(e) for e in self._cells.values()))
+
+            await asyncio.sleep(self._check_interval)
+
+    async def _check_one_cell(self, entry: CellEntry) -> None:
+        is_healthy = False
         try:
-            while True:
-                if not self._paused:
-                    await asyncio.gather(
-                        *(
-                            _check_one_cell(
-                                entry=e, session_id=self._session_id, run_name=self._run_name, timeout=self._timeout
-                            )
-                            for e in self._cells.values()
-                        )
-                    )
-                await asyncio.sleep(self._check_interval)
-        except asyncio.CancelledError:
-            raise
+            is_healthy = await _probe_cell(engines=entry.get_engines(), timeout=self._timeout)
+        except Exception:
+            logger.warning("Health probe failed for cell %s", entry.cell_id, exc_info=True)
 
-    async def is_paused(self) -> bool:
-        return self._paused
+        self._report(cell_id=entry.cell_id, is_healthy=is_healthy)
 
+    def _report(self, *, cell_id: str, is_healthy: bool) -> None:
+        handle = get_prometheus()
+        if handle is None:
+            return
 
-async def _check_one_cell(*, entry: CellEntry, session_id: str, run_name: str, timeout: float) -> None:
-    is_healthy = False
-    try:
-        is_healthy = await _probe_cell(engines=entry.get_engines(), timeout=timeout)
-    except Exception:
-        logger.warning("Health probe failed for cell %s", entry.cell_id, exc_info=True)
-
-    _report(session_id=session_id, run_name=run_name, cell_id=entry.cell_id, is_healthy=is_healthy)
+        try:
+            handle.set_gauge.remote(
+                _METRIC_NAME,
+                1.0 if is_healthy else 0.0,
+                extra_labels={"session_id": self._session_id, "cell_id": cell_id},
+            )
+        except Exception:
+            logger.warning("Failed to report cell health for %s", cell_id, exc_info=True)
 
 
 async def _probe_cell(*, engines: list[object], timeout: float) -> bool:
@@ -104,18 +108,3 @@ async def _probe_cell(*, engines: list[object], timeout: float) -> bool:
 
     await asyncio.wait_for(lead_engine.health_generate.remote(), timeout=timeout)  # type: ignore[union-attr]
     return True
-
-
-def _report(*, session_id: str, run_name: str, cell_id: str, is_healthy: bool) -> None:
-    handle = get_prometheus()
-    if handle is None:
-        return
-
-    try:
-        ray.get(handle.set_gauge.remote(
-            _METRIC_NAME,
-            1.0 if is_healthy else 0.0,
-            extra_labels={"session_id": session_id, "cell_id": cell_id},
-        ))
-    except Exception:
-        logger.warning("Failed to report cell health for %s", cell_id, exc_info=True)
