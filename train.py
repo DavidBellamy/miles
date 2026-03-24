@@ -3,7 +3,6 @@ from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_
 
 from miles.ray.placement_group import create_placement_groups, create_rollout_manager, create_training_models
 from miles.utils.arguments import parse_args
-from miles.utils.control_server_utils import start_control_server
 from miles.utils.logging_utils import configure_logger
 from miles.utils.misc import should_run_periodic_action
 from miles.utils.tracking_utils import init_tracking
@@ -21,11 +20,6 @@ def train(args):
 
     # create the actor and critic models
     actor_model, critic_model = create_training_models(args, pgs, rollout_manager)
-
-    if args.use_control_server:
-        start_control_server(
-            actor_model=actor_model, rollout_manager=rollout_manager, port=args.control_server_port,
-        )
 
     if args.offload_rollout:
         ray.get(rollout_manager.onload_weights.remote())
