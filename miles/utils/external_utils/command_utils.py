@@ -93,6 +93,7 @@ class ExecuteTrainConfig:
     extra_env_vars: str = ""
     output_dir: str = "/root/shared_data"
     external_ft_dir: str | None = None
+    session_id: str | None = os.environ.get("MILES_SCRIPT_SESSION_ID")
 
 
 def execute_train(
@@ -170,6 +171,7 @@ def execute_train(
                     if config.cuda_core_dump
                     else {}
                 ),
+                **({"MILES_SCRIPT_SESSION_ID": config.session_id} if config.session_id else {}),
                 **extra_env_vars,
                 **_parse_extra_env_vars(config.extra_env_vars),
             }
