@@ -3,7 +3,7 @@ import socket
 
 import ray
 from ray.util.placement_group import placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy, PlacementGroupSchedulingStrategy
 
 from .actor_group import RayTrainGroup
 from .rollout import RolloutManager
@@ -166,11 +166,26 @@ def create_training_models(args, pgs, rollout_manager):
     return actor_model, critic_model
 
 
+def _get_head_node_id() -> str:
+    from ray.util.state import list_nodes
+
+    for node in list_nodes():
+        if node.is_head_node:
+            return node.node_id
+    raise RuntimeError("Could not find a head node in the Ray cluster")
+
+
 def create_rollout_manager(args, pg):
-    rollout_manager = RolloutManager.options(
-        num_cpus=1,
-        num_gpus=0,
-    ).remote(args, pg)
+    options = {"num_cpus": 1, "num_gpus": 0}
+    if args.pin_rollout_manager_to_head:
+        head_node_id = _get_head_node_id()
+        options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            node_id=head_node_id,
+            soft=False,
+        )
+        logger.info(f"Pinning RolloutManager to head node {head_node_id}")
+
+    rollout_manager = RolloutManager.options(**options).remote(args, pg)
 
     # calculate num_rollout from num_epoch
     num_rollout_per_epoch = None
