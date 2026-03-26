@@ -914,6 +914,8 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
         router_args = copy.copy(args)
         router_args.sglang_router_ip = router_ip
         router_args.sglang_router_port = router_port
+        if os.environ.get("MILES_ROUTER_EXTERNAL_HOST"):
+            router_args.sglang_router_bind_host = "0.0.0.0"
 
     else:
         from sglang_router.launch_router import RouterArgs
