@@ -905,6 +905,8 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
         if router_port is None:
             router_port = find_available_port(random.randint(3000, 4000))
 
+    router_bind_ip = "0.0.0.0"
+
     if args.use_miles_router:
         import copy
 
@@ -913,6 +915,7 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
 
         router_args = copy.copy(args)
         router_args.sglang_router_ip = router_ip
+        router_args.sglang_router_bind_ip = router_bind_ip
         router_args.sglang_router_port = router_port
 
     else:
@@ -921,7 +924,7 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
         from miles.utils.http_utils import run_router
 
         router_args = RouterArgs.from_cli_args(args, use_router_prefix=True)
-        router_args.host = router_ip
+        router_args.host = router_bind_ip
         router_args.port = router_port
         router_args.prometheus_port = find_available_port(random.randint(4000, 5000))
         router_args.log_level = "warn"

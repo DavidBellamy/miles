@@ -23,7 +23,8 @@ def run_router(args):
     miles_router = MilesRouter(args, verbose=False)
 
     # Start the server
-    uvicorn.run(miles_router.app, host=args.sglang_router_ip, port=args.sglang_router_port, log_level="info")
+    bind_host = getattr(args, "sglang_router_bind_ip", None) or args.sglang_router_ip
+    uvicorn.run(miles_router.app, host=bind_host, port=args.sglang_router_port, log_level="info")
 
 
 class MilesRouter:
