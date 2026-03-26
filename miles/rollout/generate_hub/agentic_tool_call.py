@@ -34,6 +34,7 @@ from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
     compute_samples_from_openai_records,
+    truncate_samples_by_total_tokens,
 )
 from miles.rollout.generate_utils.sample_utils import merge_samples
 from miles.utils.misc import load_function
@@ -50,11 +51,17 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         custom_agent_function is not None
     ), f"Custom agent function {input.args.custom_agent_function_path} not found"
 
+    max_seq_len = getattr(input.args, "max_seq_len", None)
+
+    metadata = input.sample.metadata
+    if max_seq_len is not None:
+        metadata = {**metadata, "max_seq_len": max_seq_len}
+
     agent_metadata = await custom_agent_function(
         base_url=tracer.base_url,
         prompt=input.sample.prompt,
         request_kwargs=build_chat_request_kwargs(input.sampling_params),
-        metadata=input.sample.metadata,
+        metadata=metadata,
     )
 
     records = await tracer.collect_records()
@@ -70,6 +77,15 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     for s in samples:
         s.metadata.update(agent_metadata or {})
 
+    if max_seq_len is not None:
+        samples = truncate_samples_by_total_tokens(samples, max_seq_len, input.state.tokenizer)
+
+    if not samples:
+        logger.warning("All samples truncated (prompt already exceeds max_seq_len)")
+        sample = deepcopy(input.sample)
+        sample.status = Sample.Status.ABORTED
+        return GenerateFnOutput(samples=sample)
+
     if not input.args.generate_multi_samples:
         samples = merge_samples(samples, input.state.tokenizer)
     return GenerateFnOutput(samples=samples)
@@ -78,6 +94,15 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 def _add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--custom-agent-function-path", type=str)
     parser.add_argument("--generate-multi-samples", action="store_true", default=False)
+    parser.add_argument(
+        "--max-seq-len",
+        type=int,
+        default=None,
+        dest="max_seq_len",
+        help="Max sequence length in tokens (prompt + completion, including env responses) "
+        "per session. Truncates samples on the Miles side and is forwarded to the "
+        "Harbor agent server (as max_seq_len) to abort the trial early.",
+    )
 
 
 generate.add_arguments = _add_arguments
