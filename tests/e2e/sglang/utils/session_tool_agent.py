@@ -15,8 +15,8 @@ of two retry strategies:
 
 1. **Rollback** — discard the failed assistant message and re-send the
    previous messages, triggering ``_detect_and_rollback`` on the server.
-2. **System-message retry** — keep the failed assistant message and
-   append a system prompt asking the model to try again.
+2. **Tool-message retry** — keep the failed assistant message and
+   append a tool message asking the model to try again.
 
 If no prior assistant checkpoint exists (``total_tool_calls == 0``),
 strategy 2 is used unconditionally since there is nothing to roll back
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_TURNS = 8
 MAX_RETRIES = 2
 
-RETRY_SYSTEM_MESSAGE = (
+RETRY_TOOL_MESSAGE = (
     "Your previous response did not include a valid tool call or a final answer. "
     "Please either call a tool or provide your answer in "
     "<final_answer>...</final_answer> tags."
@@ -82,7 +82,7 @@ def _extract_tool_calls(assistant_msg: dict) -> list[dict] | None:
     Only trusts the structured ``tool_calls`` field populated by sglang's
     tool-call parser.  No fallback parsing — if the parser didn't produce
     structured output, the caller should treat it as a failed parse and
-    retry (via rollback or system message).
+    retry (via rollback or tool message).
     """
     if assistant_msg.get("tool_calls"):
         return assistant_msg["tool_calls"]
@@ -115,8 +115,8 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
 
     Exercises the full TITO pipeline including both retry strategies:
     on tool-call parse failure, randomly chooses rollback (discard
-    assistant, trigger ``_detect_and_rollback``) or system-message
-    retry (append a retry prompt).  Falls back to system-message retry
+    assistant, trigger ``_detect_and_rollback``) or tool-message
+    retry (append a retry prompt).  Falls back to tool-message retry
     when no prior checkpoint exists.
 
     Token-level correctness is validated server-side by the prefix check
@@ -129,7 +129,7 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
     turns_completed = 0
     total_tool_calls = 0
     total_rollbacks = 0
-    total_system_retries = 0
+    total_tool_retries = 0
     consecutive_retries = 0
 
     async with httpx.AsyncClient(timeout=180) as client:
@@ -199,26 +199,26 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
                     )
                 else:
                     messages.append(assistant_msg)
-                    messages.append({"role": "system", "content": RETRY_SYSTEM_MESSAGE})
-                    total_system_retries += 1
+                    messages.append({"role": "tool", "content": RETRY_TOOL_MESSAGE})
+                    total_tool_retries += 1
                     logger.info(
-                        "Turn %d: kept assistant + appended system retry message (%d/%d)",
+                        "Turn %d: kept assistant + appended tool retry message (%d/%d)",
                         turn,
                         consecutive_retries,
                         MAX_RETRIES,
                     )
 
     logger.info(
-        "Agent done: %d turns, %d tool_calls, %d rollbacks, %d system_retries",
+        "Agent done: %d turns, %d tool_calls, %d rollbacks, %d tool_retries",
         turns_completed,
         total_tool_calls,
         total_rollbacks,
-        total_system_retries,
+        total_tool_retries,
     )
 
     return {
         "turns_completed": turns_completed,
         "total_tool_calls": total_tool_calls,
         "total_rollbacks": total_rollbacks,
-        "total_system_retries": total_system_retries,
+        "total_tool_retries": total_tool_retries,
     }
