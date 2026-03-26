@@ -86,6 +86,13 @@ def prepare(args: ScriptArgs):
     _patch_kimi_k25_modeling(f"{args.model_dir}/{args.model_name}")
     U.hf_download_dataset("zhuzilin/dapo-math-17k", data_dir=args.data_dir)
 
+    bf16_dir = f"{args.model_dir}/{args.model_name}_bf16"
+    U.exec_command(
+        f"python tools/convert_kimi_int4_to_bf16.py "
+        f"--model-dir {args.model_dir}/{args.model_name} "
+        f"--output-dir {bf16_dir}"
+    )
+
     if args.rollout_fp8:
         U.exec_command(
             f"python tools/convert_hf_to_fp8.py "
@@ -103,7 +110,7 @@ def prepare(args: ScriptArgs):
 
 def execute(args: ScriptArgs):
     # Kimi K2.5 VL always uses megatron-bridge — no pre-conversion needed.
-    hf_model_dir = f"{args.model_dir}/{args.model_name}"
+    hf_model_dir = f"{args.model_dir}/{args.model_name}_bf16"
     if args.rollout_fp8:
         hf_checkpoint = f"{args.model_dir}/{args.model_name}-FP8"
     elif args.rollout_int4:
@@ -189,6 +196,7 @@ def execute(args: ScriptArgs):
         "--colocate "
         "--use-fault-tolerance "
         f"--dump-details {args.output_dir}/{args.run_id}/dump_details "
+        "--check-weight-update-equal "
     )
     misc_env_vars = {}
 
@@ -219,7 +227,7 @@ def execute(args: ScriptArgs):
         )
         sglang_world_size = min(8, args.num_gpus_per_node)
         perf_args += (
-            "--tensor-model-parallel-size 4 "
+            f"--tensor-model-parallel-size {args.num_gpus_per_node} "
             "--sequence-parallel "
             "--pipeline-model-parallel-size 1 "
             "--context-parallel-size 1 "
@@ -235,6 +243,9 @@ def execute(args: ScriptArgs):
             "--sglang-enable-dp-lm-head "
             f"--sglang-ep-size {sglang_world_size} "
             "--sglang-cuda-graph-max-bs 256 "
+        )
+        optimizer_args += (
+            "--optimizer-cpu-offload " "--overlap-cpu-optimizer-d2h-h2d " "--use-precision-aware-optimizer "
         )
     elif args.num_nodes % 32 == 0:
         # Multi-node full model (same parallelism as kimi-k2-Thinking)

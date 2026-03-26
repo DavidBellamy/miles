@@ -229,6 +229,18 @@ def main():
         ):
             shutil.copy2(src_path, dst_path)
 
+    # Strip quantization_config from config.json since weights are now bf16
+    config_path = os.path.join(output_dir, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            cfg = json.load(f)
+        for key in ("quantization_config",):
+            cfg.pop(key, None)
+            for sub_cfg in (cfg.get("text_config", {}),):
+                sub_cfg.pop(key, None)
+        with open(config_path, "w") as f:
+            json.dump(cfg, f, indent=2)
+
     # Generate new index
     new_index_path = os.path.join(output_dir, "model.safetensors.index.json")
     weight_map = {}
