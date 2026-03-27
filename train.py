@@ -30,7 +30,7 @@ def train(args):
     if args.check_weight_update_equal:
         ray.get(
             rollout_manager.check_weights.remote(
-                action="compare", dequant_mean_err_threshold=args.check_weight_update_dequantized_threshold
+                action="compare", dequant_mean_err_threshold=args.check_weight_update_dequant_mean_err_threshold
             )
         )
 

@@ -104,7 +104,7 @@ def execute():
 
     ci_args = "--ci-test "
     if USE_FP8_ROLLOUT:
-        ci_args += "--check-weight-update-dequantized-threshold 2e-4 "
+        ci_args += "--check-weight-update-dequant-mean-err-threshold 2e-4 "
 
     misc_args = (
         # default dropout in megatron is 0.1
