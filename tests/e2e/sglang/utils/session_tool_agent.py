@@ -199,8 +199,6 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
                     )
                 else:
                     messages.append(assistant_msg)
-                    # tool_call_id is required by some templates (e.g. kimi-k2) that
-                    # render it into the chat markup; omitting it causes a template error.
                     messages.append(
                         {"role": "tool", "content": RETRY_TOOL_MESSAGE, "tool_call_id": "invalid_tool_call"}
                     )
