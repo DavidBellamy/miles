@@ -82,7 +82,7 @@ def execute():
 
     sglang_args = "--rollout-num-gpus-per-engine 2 " "--use-miles-router "
 
-    ci_args = "--ci-test --check-weight-update-equal "
+    ci_args = "--ci-test "
 
     misc_args = (
         # default dropout in megatron is 0.1

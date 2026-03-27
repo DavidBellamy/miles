@@ -85,7 +85,7 @@ def execute():
         "--sglang-max-running-requests 512 "
     )
 
-    ci_args = "--ci-test --check-weight-update-equal "
+    ci_args = "--ci-test "
 
     misc_args = (
         "--attention-dropout 0.0 "

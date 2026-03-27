@@ -121,7 +121,7 @@ def execute():
     if USE_DEEPEP:
         sglang_args += "--sglang-moe-a2a-backend deepep --sglang-deepep-mode auto "
 
-    ci_args = "--ci-test --check-weight-update-equal "
+    ci_args = "--ci-test "
     if USE_FP8_ROLLOUT or USE_INT4_ROLLOUT:
         ci_args += "--check-weight-update-dequantized-threshold 2e-4 "
 

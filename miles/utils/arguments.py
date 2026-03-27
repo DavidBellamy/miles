@@ -1678,6 +1678,9 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 
 
 def miles_validate_args(args):
+    if args.ci_test:
+        args.check_weight_update_equal = True
+
     args.eval_datasets = _resolve_eval_datasets(args)
 
     if args.chat_template_path == "autofix":
