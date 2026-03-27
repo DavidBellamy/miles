@@ -1270,6 +1270,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="torch",
             )
             parser.add_argument("--check-weight-update-equal", action="store_true")
+            parser.add_argument("--check-weight-update-dequantized-threshold", type=float, default=None)
             parser.add_argument(
                 "--env-report",
                 type=str,

@@ -529,8 +529,13 @@ class RolloutManager:
         if srv:
             srv.num_new_engines = 0
 
-    def check_weights(self, action: str):
-        return ray.get([engine.check_weights.remote(action=action) for engine in self.rollout_engines])
+    def check_weights(self, action: str, dequant_mean_err_threshold: float | None = None):
+        return ray.get(
+            [
+                engine.check_weights.remote(action=action, dequant_mean_err_threshold=dequant_mean_err_threshold)
+                for engine in self.rollout_engines
+            ]
+        )
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:

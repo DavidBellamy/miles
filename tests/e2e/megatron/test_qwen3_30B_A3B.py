@@ -122,6 +122,8 @@ def execute():
         sglang_args += "--sglang-moe-a2a-backend deepep --sglang-deepep-mode auto "
 
     ci_args = "--ci-test --check-weight-update-equal "
+    if USE_FP8_ROLLOUT or USE_INT4_ROLLOUT:
+        ci_args += "--check-weight-update-dequantized-threshold 2e-4 "
 
     misc_args = (
         # default dropout in megatron is 0.1
