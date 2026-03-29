@@ -61,7 +61,14 @@ class MegatronTrainRayActor(TrainRayActor):
 
         init(args)
 
-        if is_megatron_main_rank():
+        if args.dumper_enable:
+            from sglang.srt.debug_utils.dumper import dumper
+
+            dumper.apply_source_patches()
+
+        self._is_main_rank = is_megatron_main_rank()
+
+        if self._is_main_rank:
             init_tracking(args, primary=False)
 
         self.prof = TrainProfiler(args)
