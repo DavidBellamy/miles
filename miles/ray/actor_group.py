@@ -37,6 +37,7 @@ class RayTrainGroup:
         role: str = "actor",
     ) -> None:
         self.args = args
+
         num_cells = compute_megatron_dp_size(args) if args.independent_dp else 1
         total_gpus = num_nodes * num_gpus_per_node
         gpus_per_cell = total_gpus // num_cells
@@ -44,8 +45,8 @@ class RayTrainGroup:
             f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
         )
 
-        placement_group, bundle_indices, gpu_ids = pg
         self._cells: list[RayTrainCell] = []
+        placement_group, bundle_indices, gpu_ids = pg
         for cell_id in range(num_cells):
             start = cell_id * gpus_per_cell
             end = start + gpus_per_cell
