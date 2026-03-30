@@ -63,14 +63,13 @@ def save_to_memory(
     _assert_args_for_in_memory_checkpoint(args)
 
     manager = InMemoryCheckpointManager()
-    checkpointing_context = {'local_checkpoint_manager': manager}
     save_checkpoint(
-        iteration,
-        model,
-        optimizer,
-        opt_param_scheduler,
+        iteration=iteration,
+        model=model,
+        optimizer=optimizer,
+        opt_param_scheduler=opt_param_scheduler,
         num_floating_point_operations_so_far=0,
-        checkpointing_context=checkpointing_context,
+        checkpointing_context={'local_checkpoint_manager': manager},
         non_persistent_ckpt=True,
     )
     state, _ = manager.load()
