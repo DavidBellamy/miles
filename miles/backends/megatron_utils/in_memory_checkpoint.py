@@ -18,6 +18,8 @@ class InMemoryCheckpointManager:
         self._state_dict: object = None
         self.local_ckpt_dir: str = "<in-memory>"
 
+        _assert_args_for_in_memory_checkpoint(get_args())
+
     def save(self, state_dict: object, iteration: int, is_async: bool = False) -> None:
         """Store state_dict object reference in memory."""
         assert not is_async
@@ -43,26 +45,13 @@ class InMemoryCheckpointManager:
         return ans, f"in-memory-ckpt-iter-{self.latest_iteration}"
 
 
-def _assert_args_for_in_memory_checkpoint(args: Any) -> None:
-    assert args.non_persistent_ckpt_type == 'local', (
-        f"Expected non_persistent_ckpt_type='local', "
-        f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
-    )
-    assert args.non_persistent_local_ckpt_algo is not None, (
-        "args.non_persistent_local_ckpt_algo must be set"
-    )
-
-
 def save_to_memory(
-    args,
     iteration: int,
     model: Sequence,
     optimizer: object,
     opt_param_scheduler: object,
 ) -> object:
     """Save checkpoint to in-memory manager via Megatron's save_checkpoint."""
-    _assert_args_for_in_memory_checkpoint(args)
-
     manager = InMemoryCheckpointManager()
     save_checkpoint(
         iteration=iteration,
@@ -75,3 +64,13 @@ def save_to_memory(
     )
     state_dict, _ = manager.load()
     return state_dict
+
+
+def _assert_args_for_in_memory_checkpoint(args: Any) -> None:
+    assert args.non_persistent_ckpt_type == 'local', (
+        f"Expected non_persistent_ckpt_type='local', "
+        f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
+    )
+    assert args.non_persistent_local_ckpt_algo is not None, (
+        "args.non_persistent_local_ckpt_algo must be set"
+    )
