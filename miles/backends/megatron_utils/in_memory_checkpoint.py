@@ -6,6 +6,8 @@ import torch
 
 from megatron.training.global_vars import get_args
 
+from miles.backends.megatron_utils.model import save as save_model_checkpoint
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,10 +53,8 @@ def save_to_memory(
     opt_param_scheduler: object,
 ) -> object:
     """Save checkpoint to in-memory manager via model.save (with forward hook protection)."""
-    from miles.backends.megatron_utils.model import save
-
     manager = InMemoryCheckpointManager()
-    save(
+    save_model_checkpoint(
         iteration=iteration,
         model=model,
         optimizer=optimizer,
