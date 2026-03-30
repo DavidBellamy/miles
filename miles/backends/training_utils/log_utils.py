@@ -15,7 +15,7 @@ from miles.utils.types import RolloutBatch
 from ...utils import tracking_utils
 from .cp_utils import get_sum_of_sample_mean
 from .data import DataIterator
-from .parallel import ParallelState
+from .parallel import ParallelState, all_reduce_multi
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,12 @@ def gather_log_data(
     batch sizes. Returns the reduced dict on the DP source rank; returns None on others.
     """
 
-    if parallel_state.intra_dp_cp.rank == 0:
-        dp_size = parallel_state.intra_dp_cp.size
+    effective_dp_cp = parallel_state.effective_dp_cp
+    effective_dp_cp_size = effective_dp_cp.size
 
-        gathered_log_dict = [None] * dp_size
-        # Not sure if this will be a performance bottleneck.
+    if parallel_state.intra_dp_cp.rank == 0:
+        intra_dp_cp_size = parallel_state.intra_dp_cp.size
+        gathered_log_dict = [None] * intra_dp_cp_size
         dist.gather_object(
             log_dict,
             gathered_log_dict,
@@ -48,14 +49,15 @@ def gather_log_data(
         )
 
         reduced_log_dict = {
-            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / dp_size for key in log_dict
+            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / effective_dp_cp_size
+            for key in log_dict
         }
-        logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
 
-        # Calculate step once to avoid duplication
-        step = compute_rollout_step(args, rollout_id)
-        reduced_log_dict["rollout/step"] = step
-        tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
+        if effective_dp_cp.rank == 0:
+            logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
+            step = compute_rollout_step(args, rollout_id)
+            reduced_log_dict["rollout/step"] = step
+            tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
 
         return reduced_log_dict
     else:
@@ -324,7 +326,7 @@ def log_perf_data(rollout_id: int, args: Namespace, parallel_state: ParallelStat
         rollout_id=rollout_id,
         args=args,
         is_primary_rank=(
-            parallel_state.tp.rank == 0 and parallel_state.is_pp_last_stage and parallel_state.intra_dp_cp.rank == 0
+            parallel_state.tp.rank == 0 and parallel_state.is_pp_last_stage and parallel_state.effective_dp_cp.rank == 0
         ),
         compute_total_fwd_flops=lambda seq_lens: calculate_fwd_flops(seqlens=seq_lens, args=args)
         / dist.get_world_size()
@@ -379,7 +381,7 @@ def aggregate_train_losses(
 
     assert len(keys) + 1 == values.numel(), f"Expected {len(keys) + 1} values, got {values.numel()}"
 
-    dist.all_reduce(values, op=dist.ReduceOp.SUM, group=parallel_state.intra_dp_cp.group)
+    all_reduce_multi(values, parallel_state.effective_dp_cp.groups_inner_to_outer, op=dist.ReduceOp.SUM)
 
     loss_reduced = {}
     values = values.tolist()
