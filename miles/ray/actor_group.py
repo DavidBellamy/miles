@@ -51,7 +51,7 @@ class RayTrainGroup:
         gpus_per_cell = total_gpus // num_cells
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
-        self._quorum_id = 0
+        self._indep_dp_quorum_id = 0
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -95,7 +95,7 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         assert args is self.args
-        return self._async_execute("init", args, role, with_ref=with_ref, quorum_id=self._quorum_id)
+        return self._async_execute("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
@@ -147,11 +147,11 @@ class RayTrainGroup:
 
         The flow:
         1. Recreate actors for the stopped cell
-        2. Increment quorum_id for fresh indep_dp PG
+        2. Increment indep_dp_quorum_id for fresh indep_dp PG
         3. In parallel:
-           - New cell: init(recv_ckpt_src_rank=src_cell_id, quorum_id=new)
-           - Src cell: reconfigure_indep_dp(quorum_id=new) then send_ckpt(dst)
-           - Other cells: reconfigure_indep_dp(quorum_id=new)
+           - New cell: init(recv_ckpt_src_rank=src_cell_id, indep_dp_quorum_id=new)
+           - Src cell: reconfigure_indep_dp(indep_dp_quorum_id=new) then send_ckpt(dst)
+           - Other cells: reconfigure_indep_dp(indep_dp_quorum_id=new)
         """
         target_cell = self._cells[cell_id]
         assert not target_cell.is_running, f"Cell {cell_id} is already running"
@@ -159,8 +159,8 @@ class RayTrainGroup:
         src_cell_id = self._pick_healthy_cell(exclude=cell_id)
         target_cell.recreate_actors()
 
-        self._quorum_id += 1
-        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, quorum_id={self._quorum_id}")
+        self._indep_dp_quorum_id += 1
+        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, indep_dp_quorum_id={self._indep_dp_quorum_id}")
 
         futures = []
 
@@ -172,18 +172,18 @@ class RayTrainGroup:
                 role,
                 with_ref=with_ref,
                 recv_ckpt_src_rank=src_cell_id,
-                quorum_id=self._quorum_id,
+                indep_dp_quorum_id=self._indep_dp_quorum_id,
             )
         )
 
         # Step 3b: Src cell reconfigure + send ckpt (must be parallel with 3a)
         src_cell = self._cells[src_cell_id]
-        futures.extend(src_cell.async_execute("reconfigure_indep_dp_and_send_ckpt", self._quorum_id, cell_id))
+        futures.extend(src_cell.async_execute("reconfigure_indep_dp_and_send_ckpt", self._indep_dp_quorum_id, cell_id))
 
         # Step 3c: Other healthy cells just reconfigure
         for cell in self._cells:
             if cell.cell_id != cell_id and cell.cell_id != src_cell_id and cell.is_running:
-                futures.extend(cell.async_execute("reconfigure_indep_dp", self._quorum_id))
+                futures.extend(cell.async_execute("reconfigure_indep_dp", self._indep_dp_quorum_id))
 
         ray.get(futures)
         logger.info(f"Cell {cell_id} started successfully")

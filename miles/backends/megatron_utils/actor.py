@@ -32,10 +32,11 @@ from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollou
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint
+from .checkpoint_transfer import recv_ckpt, send_ckpt as _send_ckpt
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
-from .parallel import verify_megatron_parallel_state
+from .parallel import create_indep_dp_group, verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed import UpdateWeightFromDistributed
@@ -55,7 +56,7 @@ class MegatronTrainRayActor(TrainRayActor):
         *,
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
-        quorum_id: int,
+        indep_dp_quorum_id: int,
     ) -> int | None:
         """Initialize the actor.
 
@@ -65,7 +66,7 @@ class MegatronTrainRayActor(TrainRayActor):
             with_ref: Whether to load a reference model.
             recv_ckpt_src_rank: If not None, receive checkpoint from this cell_id
                 via PGTransport instead of loading from disk.
-            quorum_id: Quorum ID for the indep_dp process group. Incremented on
+            indep_dp_quorum_id: Quorum ID for the indep_dp process group. Incremented on
                 each stop/start cycle to create fresh groups.
         """
         monkey_patch_torch_dist()
@@ -77,7 +78,7 @@ class MegatronTrainRayActor(TrainRayActor):
             cell_id=self._cell_id,
             num_cells=self._num_cells,
             indep_dp_store_addr=self._indep_dp_store_addr,
-            quorum_id=quorum_id,
+            indep_dp_quorum_id=indep_dp_quorum_id,
         )
 
         if args.dumper_enable:
@@ -126,8 +127,6 @@ class MegatronTrainRayActor(TrainRayActor):
 
         checkpointing_context = None
         if recv_ckpt_src_rank is not None:
-            from miles.backends.megatron_utils.checkpoint_transfer import recv_ckpt
-
             ckpt_manager = recv_ckpt(
                 indep_dp=get_parallel_state().indep_dp,
                 src_rank=recv_ckpt_src_rank,
@@ -598,14 +597,12 @@ class MegatronTrainRayActor(TrainRayActor):
         self._active_model_tag = model_tag
 
     def send_ckpt(self, dst_rank: int) -> None:
-        from miles.backends.megatron_utils.checkpoint_transfer import send_ckpt
-
-        send_ckpt(
+        _send_ckpt(
             indep_dp=self.parallel_state.indep_dp,
             model=self.model,
             optimizer=self.optimizer,
             opt_param_scheduler=self.opt_param_scheduler,
-            iteration=self._last_rollout_id if hasattr(self, '_last_rollout_id') else 0,
+            iteration=self._last_rollout_id,
             dst_rank=dst_rank,
         )
 
@@ -632,14 +629,12 @@ class MegatronTrainRayActor(TrainRayActor):
             group_name=group_name,
         )
 
-    def reconfigure_indep_dp(self, quorum_id: int) -> None:
-        """Reconfigure the indep_dp process group with a new quorum_id.
+    def reconfigure_indep_dp(self, indep_dp_quorum_id: int) -> None:
+        """Reconfigure the indep_dp process group with a new indep_dp_quorum_id.
 
         Called on healthy cells after a stop/start cycle to establish
         new PG connections with the restarted cell.
         """
-        from miles.backends.megatron_utils.parallel import create_indep_dp_group
-
         old_indep_dp = self.parallel_state.indep_dp
         if old_indep_dp.group is not None:
             old_indep_dp.group.shutdown()
@@ -652,16 +647,16 @@ class MegatronTrainRayActor(TrainRayActor):
             num_cells=self._num_cells,
             megatron_rank=dist.get_rank(),
             megatron_world_size=dist.get_world_size(),
-            quorum_id=quorum_id,
+            indep_dp_quorum_id=indep_dp_quorum_id,
         )
-        self.parallel_state.update_indep_dp(indep_dp)
-        logger.info(f"Reconfigured indep_dp PG with quorum_id={quorum_id}")
+        self.parallel_state.indep_dp = indep_dp
+        logger.info(f"Reconfigured indep_dp PG with indep_dp_quorum_id={indep_dp_quorum_id}")
 
-    def reconfigure_indep_dp_and_send_ckpt(self, quorum_id: int, dst_cell_id: int) -> None:
+    def reconfigure_indep_dp_and_send_ckpt(self, indep_dp_quorum_id: int, dst_cell_id: int) -> None:
         """Reconfigure indep_dp PG and then send checkpoint to a recovering cell.
 
         Must be called in parallel with the recovering cell's init(recv_ckpt_src_rank=...),
         since NCCL send/recv are blocking and must pair up.
         """
-        self.reconfigure_indep_dp(quorum_id)
+        self.reconfigure_indep_dp(indep_dp_quorum_id)
         self.send_ckpt(dst_rank=dst_cell_id)

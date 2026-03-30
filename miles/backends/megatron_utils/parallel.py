@@ -64,7 +64,7 @@ def create_indep_dp_group(
     num_cells: int,
     megatron_rank: int,
     megatron_world_size: int,
-    quorum_id: int,
+    indep_dp_quorum_id: int,
 ) -> GroupInfo:
     if num_cells <= 1:
         return GroupInfo(rank=0, size=1, group=None)
@@ -74,11 +74,11 @@ def create_indep_dp_group(
     def _create(pg_cls: type, backend_name: str) -> dist.ProcessGroup:
         pg = pg_cls(timeout=timedelta(seconds=60))
         pg.configure(
-            store_addr=f"{store_addr}/indep_dp/{backend_name}/{quorum_id}/{megatron_rank}",
+            store_addr=f"{store_addr}/indep_dp/{backend_name}/{indep_dp_quorum_id}/{megatron_rank}",
             replica_id=str(cell_id),
             rank=cell_id,
             world_size=num_cells,
-            quorum_id=quorum_id,
+            indep_dp_quorum_id=indep_dp_quorum_id,
             group_rank=megatron_rank,
             group_world_size=megatron_world_size,
         )
@@ -89,7 +89,7 @@ def create_indep_dp_group(
     logger.info(
         f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
         f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}, "
-        f"quorum_id={quorum_id}"
+        f"indep_dp_quorum_id={indep_dp_quorum_id}"
     )
     return GroupInfo(rank=cell_id, size=num_cells, group=nccl_pg, gloo_group=gloo_pg)
 

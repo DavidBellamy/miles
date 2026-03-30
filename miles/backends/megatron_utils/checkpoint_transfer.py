@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 import torch
+from torchft.checkpointing.pg_transport import PGTransport
 
 from miles.backends.megatron_utils.in_memory_checkpoint import InMemoryCheckpointManager, save_to_memory
 from miles.utils.process_group_utils import GroupInfo
@@ -88,9 +89,7 @@ def recv_ckpt(
     return manager
 
 
-def _create_transport(indep_dp: GroupInfo, timeout: timedelta):
-    from torchft.checkpointing.pg_transport import PGTransport
-
+def _create_transport(indep_dp: GroupInfo, timeout: timedelta) -> PGTransport:
     return PGTransport(
         pg=indep_dp.group,
         timeout=timeout,
