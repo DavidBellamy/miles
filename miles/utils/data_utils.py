@@ -1,9 +1,9 @@
-from typing import Optional
+from typing import Optional, Any
 
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 
 
-def split_train_data_by_dp(args, data, *, dp_size: int):
+def split_train_data_by_dp(args, data: dict[str, Any], *, dp_size: int) -> list[dict[str, Any]]:
     """Split the train data by data parallel size."""
     rollout_data = {}
 
