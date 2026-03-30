@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import ray
 from ray.util.placement_group import PlacementGroup
@@ -34,7 +35,7 @@ class RayTrainGroup:
         num_gpus_per_actor: float = 1,
         role: str = "actor",
     ) -> None:
-        self._cell_kwargs = dict(
+        self._cell_kwargs: dict[str, Any] = dict(
             args=args,
             num_nodes=num_nodes,
             num_gpus_per_node=num_gpus_per_node,
@@ -45,9 +46,8 @@ class RayTrainGroup:
         num_cells = compute_megatron_dp_size() if args.independent_dp else 1
         self._cells = [self._create_cell(cell_id=cell_id) for cell_id in range(num_cells)]
 
-
-    def _create_cell(self):
-        return RayTrainCell(**self._cell_kwargs)
+    def _create_cell(self, cell_id: int) -> "RayTrainCell":
+        return RayTrainCell(**self._cell_kwargs, cell_id=cell_id)
 
 
 class RayTrainCell:
@@ -59,6 +59,7 @@ class RayTrainCell:
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float,
         role: str,
+        cell_id: int,
     ) -> None:
         self.args = args
         self._num_nodes = num_nodes
