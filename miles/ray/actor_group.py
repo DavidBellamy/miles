@@ -1,5 +1,4 @@
 import os
-from typing import Any
 
 import ray
 from ray.util.placement_group import PlacementGroup
@@ -31,26 +30,35 @@ class RayTrainGroup:
     def __init__(
         self,
         args,
-        num_nodes,
-        num_gpus_per_node,
+        num_nodes: int,
+        num_gpus_per_node: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float = 1,
         role: str = "actor",
     ) -> None:
         self.args = args
-        self._cell_kwargs: dict[str, Any] = dict(
-            args=args,
-            num_nodes=num_nodes,
-            num_gpus_per_node=num_gpus_per_node,
-            pg=pg,
-            num_gpus_per_actor=num_gpus_per_actor,
-            role=role,
-        )
         num_cells = compute_megatron_dp_size(args) if args.independent_dp else 1
-        self._cells = [self._create_cell(cell_id=cell_id) for cell_id in range(num_cells)]
+        total_gpus = num_nodes * num_gpus_per_node
+        gpus_per_cell = total_gpus // num_cells
+        assert total_gpus % num_cells == 0, (
+            f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
+        )
 
-    def _create_cell(self, cell_id: int) -> "RayTrainCell":
-        return RayTrainCell(**self._cell_kwargs, cell_id=cell_id)
+        placement_group, bundle_indices, gpu_ids = pg
+        self._cells: list[RayTrainCell] = []
+        for cell_id in range(num_cells):
+            start = cell_id * gpus_per_cell
+            end = start + gpus_per_cell
+            cell_pg = (placement_group, bundle_indices[start:end], gpu_ids[start:end])
+            self._cells.append(RayTrainCell(
+                args=args,
+                gpus_per_cell=gpus_per_cell,
+                pg=cell_pg,
+                num_gpus_per_actor=num_gpus_per_actor,
+                role=role,
+                cell_id=cell_id,
+                num_cells=num_cells,
+            ))
 
     def _execute(self, fn_name, *args, **kwargs):
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
@@ -105,23 +113,22 @@ class RayTrainCell:
     def __init__(
         self,
         args,
-        num_nodes,
-        num_gpus_per_node,
+        gpus_per_cell: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float,
         role: str,
         cell_id: int,
+        num_cells: int,
     ) -> None:
         self.args = args
-        self._num_nodes = num_nodes
-        self._num_gpus_per_node = num_gpus_per_node
+        self.cell_id = cell_id
+        self.num_cells = num_cells
         self.role = role
 
-        # Allocate the GPUs for actors w/o instantiating them
-        self._allocate_gpus_for_actor(pg, num_gpus_per_actor)
+        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor)
 
-    def _allocate_gpus_for_actor(self, pg, num_gpus_per_actor):
-        world_size = self._num_nodes * self._num_gpus_per_node
+    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor):
+        world_size = gpus_per_cell
 
         # Use placement group to lock resources for models of same type
         assert pg is not None
