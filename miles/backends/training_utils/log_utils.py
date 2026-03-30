@@ -10,7 +10,7 @@ import torch.distributed as dist
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import calculate_fwd_flops
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
-from miles.utils.process_group_utils import MultiPGUtil
+from miles.utils.process_group_utils import MultiPGUtil, GeneralPGUtil
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
@@ -36,16 +36,18 @@ def gather_log_data(
     batch sizes. Returns the reduced dict on the DP source rank; returns None on others.
     """
 
-    if parallel_state.intra_dp_cp.rank == 0:
-        dp_size = parallel_state.intra_dp_cp.size
+    pg = parallel_state.effective_dp_cp
+
+    if pg.rank == 0:
+        dp_size = pg.size
 
         gathered_log_dict = [None] * dp_size
         # Not sure if this will be a performance bottleneck.
-        dist.gather_object(
+        GeneralPGUtil.create(pg).gather_object(
             log_dict,
             gathered_log_dict,
-            dst=parallel_state.intra_dp_cp.src_rank,
-            group=parallel_state.intra_dp_cp.gloo_group,
+            dst=pg.src_rank,
+            group=pg.gloo_group,
         )
 
         reduced_log_dict = {
@@ -60,11 +62,11 @@ def gather_log_data(
 
         return reduced_log_dict
     else:
-        dist.gather_object(
+        GeneralPGUtil.create(pg).gather_object(
             log_dict,
             None,
-            dst=parallel_state.intra_dp_cp.src_rank,
-            group=parallel_state.intra_dp_cp.gloo_group,
+            dst=pg.src_rank,
+            group=pg.gloo_group,
         )
         return None
 
