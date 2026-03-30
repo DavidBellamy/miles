@@ -21,7 +21,7 @@ class InMemoryCheckpointManager:
 
         _assert_args_for_in_memory_checkpoint(get_args())
 
-    def save(self, state_dict: object, iteration: int, is_async: bool = False) -> None:
+    def save(self, state_dict: object, iteration: int, is_async: bool = False, skip_barrier: bool = False) -> None:
         """Store state_dict object reference in memory."""
         assert not is_async
 
@@ -29,7 +29,7 @@ class InMemoryCheckpointManager:
         self._state_dict = state_dict
         self.latest_iteration = iteration
 
-        if torch.distributed.is_initialized():
+        if not skip_barrier and torch.distributed.is_initialized():
             torch.distributed.barrier()
 
         return None

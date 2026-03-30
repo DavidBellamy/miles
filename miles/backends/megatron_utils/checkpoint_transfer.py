@@ -12,16 +12,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = timedelta(seconds=120)
 
 
-def _create_transport(indep_dp: GroupInfo, timeout: timedelta):
-    from torchft.checkpointing.pg_transport import PGTransport
-
-    return PGTransport(
-        pg=indep_dp.group,
-        timeout=timeout,
-        device=torch.device("cuda"),
-    )
-
-
 def send_ckpt(
     *,
     indep_dp: GroupInfo,
@@ -94,6 +84,15 @@ def recv_ckpt(
     logger.info(f"Received checkpoint (iteration={iteration}) from cell {src_rank}")
 
     manager = InMemoryCheckpointManager()
-    manager._state_dict = state_dict
-    manager.latest_iteration = iteration
+    manager.save(state_dict, iteration=iteration, skip_barrier=True)
     return manager
+
+
+def _create_transport(indep_dp: GroupInfo, timeout: timedelta):
+    from torchft.checkpointing.pg_transport import PGTransport
+
+    return PGTransport(
+        pg=indep_dp.group,
+        timeout=timeout,
+        device=torch.device("cuda"),
+    )
