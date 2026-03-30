@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
@@ -317,6 +318,22 @@ def forward_only(
     return rollout_data
 
 
+def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
+    """AllReduce gradients across independent DP replicas via torchft PG.
+
+    Called after forward_backward_func (which completes intra-replica TP/PP/EP
+    grad sync) and before prepare_grads. Uses SUM because the loss function
+    already applies 1/global_batch_size scaling.
+    """
+    from miles.utils.process_group_utils import GeneralPGUtil
+
+    pg = parallel_state.indep_dp.group
+    util = GeneralPGUtil.create(pg)
+    for model_chunk in model:
+        for buffer in model_chunk.buffers:
+            util.all_reduce(buffer.grad_data, pg, op=dist.ReduceOp.SUM)
+
+
 def train_one_step(
     args: Namespace,
     rollout_id: int,
@@ -454,6 +471,9 @@ def train_one_step(
         decoder_seq_length=args.decoder_seq_length,
         forward_only=False,
     )
+
+    if parallel_state.indep_dp.size > 1:
+        _allreduce_grads_across_replicas(model, parallel_state)
 
     valid_step = True
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
