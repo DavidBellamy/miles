@@ -36,7 +36,8 @@ from .checkpoint_transfer import recv_ckpt, send_ckpt as _send_ckpt
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
-from .parallel import reconfigure_indep_dp_group, verify_megatron_parallel_state
+from .indep_dp import reconfigure_indep_dp_group
+from .parallel import verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed import UpdateWeightFromDistributed

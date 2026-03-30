@@ -11,7 +11,8 @@ from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
 
-from .parallel import create_indep_dp_group, create_megatron_parallel_state
+from .indep_dp import create_indep_dp_group
+from .parallel import create_megatron_parallel_state
 
 logger = logging.getLogger(__name__)
 
