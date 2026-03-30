@@ -10,15 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryCheckpointManager:
-    """In-memory replacement for nvidia_resiliency_ext's LocalCheckpointManager.
-
-    Stores TensorAwareStateDict object reference directly in memory.
-    No serialization, no copy — caller is responsible for cloning if needed.
-
-    Implements the interface expected by
-    checkpointing_context['local_checkpoint_manager'] in Megatron's
-    save_checkpoint / load_checkpoint.
-    """
+    """ref: nvidia_resiliency_ext's LocalCheckpointManager."""
 
     def __init__(self) -> None:
         self.latest_iteration: int = -1
@@ -65,12 +57,12 @@ def save_to_memory(
     model: Sequence,
     optimizer: object,
     opt_param_scheduler: object,
-    manager: InMemoryCheckpointManager,
-) -> None:
+) -> object:
     """Save checkpoint to in-memory manager via Megatron's save_checkpoint."""
     args = get_args()
     _assert_args_for_in_memory_checkpoint(args)
 
+    manager = InMemoryCheckpointManager()
     checkpointing_context = {'local_checkpoint_manager': manager}
     save_checkpoint(
         iteration,
@@ -81,3 +73,5 @@ def save_to_memory(
         checkpointing_context=checkpointing_context,
         non_persistent_ckpt=True,
     )
+    state, _ = manager.load()
+    return state
