@@ -62,14 +62,11 @@ class ParallelState:
 
     @property
     def effective_dp_rank(self) -> int:
-        return {
-            _DPMode.INDEP: self.indep_dp_rank,
-            _DPMode.INTRA: self.intra_dp_rank,
-        }[self._dp_mode]
+        return {_DPMode.INTRA: self.intra_dp_rank, _DPMode.INDEP: self.indep_dp_rank}[self._dp_mode]
 
     @property
     def effective_dp_size(self) -> int:
-        return self.indep_dp_size if self.indep_dp_size > 1 else self.intra_dp_size
+        return {_DPMode.INTRA: self.intra_dp_size, _DPMode.INDEP: self.indep_dp_size}[self._dp_mode]
 
     @property
     def effective_dp_cp_rank(self) -> int:
@@ -80,19 +77,19 @@ class ParallelState:
         return self.indep_dp_size * self.intra_dp_cp_size
 
     @property
-    def effective_dp_cp_group(self) -> list["dist.ProcessGroup"]:
+    def effective_dp_group(self) -> list["dist.ProcessGroup"]:
         groups: list[dist.ProcessGroup] = []
-        if self.intra_dp_cp_size > 1:
-            groups.append(self.intra_dp_cp_group)
+        if self.intra_dp_size > 1:
+            groups.append(self.intra_dp_group)
         if self.indep_dp_size > 1:
             groups.append(self.indep_dp_group)
         return groups
 
     @property
-    def effective_dp_group(self) -> list["dist.ProcessGroup"]:
+    def effective_dp_cp_group(self) -> list["dist.ProcessGroup"]:
         groups: list[dist.ProcessGroup] = []
-        if self.intra_dp_size > 1:
-            groups.append(self.intra_dp_group)
+        if self.intra_dp_cp_size > 1:
+            groups.append(self.intra_dp_cp_group)
         if self.indep_dp_size > 1:
             groups.append(self.indep_dp_group)
         return groups
