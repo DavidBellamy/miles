@@ -42,7 +42,6 @@ class TestGroupInfo:
         assert info.rank == 0
         assert info.size == 4
         assert info.gloo_group is None
-        assert info.src_rank is None
 
 
 class TestGroupsInfo:
@@ -52,6 +51,15 @@ class TestGroupsInfo:
         assert result.rank == 2
         assert result.size == 4
         assert result.groups_inner_to_outer == [None]
+        assert result.gloo_groups_inner_to_outer == [None]
+
+    def test_from_single_with_gloo(self) -> None:
+        sentinel_group = object()
+        sentinel_gloo = object()
+        info = GroupInfo(rank=0, size=2, group=sentinel_group, gloo_group=sentinel_gloo)
+        result = GroupsInfo.from_single(info)
+        assert result.groups_inner_to_outer == [sentinel_group]
+        assert result.gloo_groups_inner_to_outer == [sentinel_gloo]
 
     def test_from_pair(self) -> None:
         inner = GroupInfo(rank=1, size=3, group=None)
@@ -59,6 +67,15 @@ class TestGroupsInfo:
         result = GroupsInfo.from_pair(inner=inner, outer=outer)
         assert result.rank == 2 * 3 + 1  # 7
         assert result.size == 4 * 3  # 12
+        assert result.gloo_groups_inner_to_outer == [None, None]
+
+    def test_from_pair_with_gloo(self) -> None:
+        inner_gloo = object()
+        outer_gloo = object()
+        inner = GroupInfo(rank=0, size=2, group=None, gloo_group=inner_gloo)
+        outer = GroupInfo(rank=0, size=3, group=None, gloo_group=outer_gloo)
+        result = GroupsInfo.from_pair(inner=inner, outer=outer)
+        assert result.gloo_groups_inner_to_outer == [inner_gloo, outer_gloo]
 
     def test_from_pair_rank_zero_only_when_both_zero(self) -> None:
         result = GroupsInfo.from_pair(
