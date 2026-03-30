@@ -43,11 +43,11 @@ class InMemoryCheckpointManager:
 
 
 def _assert_args_for_in_memory_checkpoint(args: object) -> None:
-    assert getattr(args, 'non_persistent_ckpt_type', None) == 'local', (
+    assert args.non_persistent_ckpt_type == 'local', (
         f"Expected non_persistent_ckpt_type='local', "
         f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
     )
-    assert getattr(args, 'non_persistent_local_ckpt_algo', None) is not None, (
+    assert args.non_persistent_local_ckpt_algo is not None, (
         "args.non_persistent_local_ckpt_algo must be set"
     )
 
