@@ -195,6 +195,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--log-probs-chunk-size", type=int, default=-1, help="Chunk size to compute log probs to save memory"
             )
             parser.add_argument(
+                # TODO will change to a better name
+                "--trainer-ft",
+                action="store_true",
+                default=False,
+            )
+            parser.add_argument(
                 "--independent-dp",
                 action="store_true",
                 default=False,
@@ -1736,9 +1742,10 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
-    if args.independent_dp:
+    if args.trainer_ft:
+        args.independent_dp = True
         args.delay_split_train_data_by_dp = True
-        logger.info("independent_dp is enabled. Auto set delay_split_train_data_by_dp=True")
+        logger.info("trainer_ft is enabled. Auto set independent_dp=True, delay_split_train_data_by_dp=True")
 
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
