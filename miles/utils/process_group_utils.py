@@ -22,8 +22,9 @@ class GroupInfo:
     def _verify_group(self, group: dist.ProcessGroup | None, name: str) -> None:
         if group is None:
             return
-        actual_rank = GeneralPGUtil.get_rank(group)
-        actual_size = GeneralPGUtil.get_size(group)
+        util = GeneralPGUtil.create(group)
+        actual_rank = util.get_rank(group)
+        actual_size = util.get_size(group)
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
@@ -48,80 +49,123 @@ class GroupsInfo:
 
 
 class GeneralPGUtil:
-    """Support both native ProcessGroup and torchft's custom process groups."""
+    """Process group operations that work with both native and torchft PGs.
 
-    @classmethod
-    def is_native(cls, group: dist.ProcessGroup) -> bool:
-        return not hasattr(group, "_replica_id")
+    Use GeneralPGUtil.create(group) to get the appropriate implementation.
+    """
 
-    @classmethod
-    def get_rank(cls, group: dist.ProcessGroup) -> int:
-        if cls.is_native(group):
-            return dist.get_rank(group)
-        return group._rank
+    @staticmethod
+    def create(group: dist.ProcessGroup) -> "GeneralPGUtil":
+        if not hasattr(group, "_replica_id"):
+            return _NativePGUtil()
+        return _RawPGUtil()
 
-    @classmethod
-    def get_size(cls, group: dist.ProcessGroup) -> int:
-        if cls.is_native(group):
-            return dist.get_world_size(group)
-        return group.size()
+    def get_rank(self, group: dist.ProcessGroup) -> int:
+        raise NotImplementedError
 
-    @classmethod
-    def all_reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        if cls.is_native(group):
-            dist.all_reduce(tensor, op=op, group=group)
-        else:
-            group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
+    def get_size(self, group: dist.ProcessGroup) -> int:
+        raise NotImplementedError
 
-    @classmethod
-    def reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        if cls.is_native(group):
-            dist.reduce(tensor, dst=0, op=op, group=group)
-        else:
-            group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
+    def all_reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        raise NotImplementedError
 
-    @classmethod
-    def broadcast(cls, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        if cls.is_native(group):
-            dist.broadcast(tensor, src=0, group=group)
-        else:
-            group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
+    def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        raise NotImplementedError
 
-    @classmethod
+    def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+        raise NotImplementedError
+
     def all_gather(
-        cls, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
+        self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
     ) -> None:
-        if cls.is_native(group):
-            dist.all_gather(output_tensors, input_tensor, group=group)
-        else:
-            group.allgather([output_tensors], [[input_tensor]]).wait()
+        raise NotImplementedError
 
-    @classmethod
     def gather(
-        cls,
+        self,
         input_tensor: torch.Tensor,
         gather_list: list[torch.Tensor] | None,
         dst: int,
         group: dist.ProcessGroup,
     ) -> None:
-        if cls.is_native(group):
-            dist.gather(input_tensor, gather_list=gather_list, dst=dst, group=group)
-        else:
-            output = [gather_list] if gather_list is not None else []
-            group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+        raise NotImplementedError
 
-    @classmethod
     def gather_object(
-        cls,
-        obj: Any,
-        object_gather_list: list[Any] | None,
+        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+    ) -> None:
+        raise NotImplementedError
+
+
+class _NativePGUtil(GeneralPGUtil):
+    def get_rank(self, group: dist.ProcessGroup) -> int:
+        return dist.get_rank(group)
+
+    def get_size(self, group: dist.ProcessGroup) -> int:
+        return dist.get_world_size(group)
+
+    def all_reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        dist.all_reduce(tensor, op=op, group=group)
+
+    def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        dist.reduce(tensor, dst=0, op=op, group=group)
+
+    def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+        dist.broadcast(tensor, src=0, group=group)
+
+    def all_gather(
+        self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
+    ) -> None:
+        dist.all_gather(output_tensors, input_tensor, group=group)
+
+    def gather(
+        self,
+        input_tensor: torch.Tensor,
+        gather_list: list[torch.Tensor] | None,
         dst: int,
         group: dist.ProcessGroup,
     ) -> None:
-        if cls.is_native(group):
-            dist.gather_object(obj, object_gather_list, dst=dst, group=group)
-        else:
-            _gather_object_non_native(obj, object_gather_list, dst=dst, group=group)
+        dist.gather(input_tensor, gather_list=gather_list, dst=dst, group=group)
+
+    def gather_object(
+        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+    ) -> None:
+        dist.gather_object(obj, object_gather_list, dst=dst, group=group)
+
+
+class _RawPGUtil(GeneralPGUtil):
+    def get_rank(self, group: dist.ProcessGroup) -> int:
+        return group._rank
+
+    def get_size(self, group: dist.ProcessGroup) -> int:
+        return group.size()
+
+    def all_reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
+
+    def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
+
+    def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+        group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
+
+    def all_gather(
+        self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
+    ) -> None:
+        group.allgather([output_tensors], [[input_tensor]]).wait()
+
+    def gather(
+        self,
+        input_tensor: torch.Tensor,
+        gather_list: list[torch.Tensor] | None,
+        dst: int,
+        group: dist.ProcessGroup,
+    ) -> None:
+        output = [gather_list] if gather_list is not None else []
+        group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+
+    def gather_object(
+        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+    ) -> None:
+        _gather_object_via_util(self, obj, object_gather_list, dst=dst, group=group)
 
 
 class MultiPGUtil:
@@ -141,10 +185,10 @@ class MultiPGUtil:
         floating-point non-determinism in the reduce path.
         """
         for group in groups_inner_to_outer:
-            GeneralPGUtil.reduce(tensor, group, op)
+            GeneralPGUtil.create(group).reduce(tensor, group, op)
 
         for group in reversed(groups_inner_to_outer):
-            GeneralPGUtil.broadcast(tensor, group)
+            GeneralPGUtil.create(group).broadcast(tensor, group)
 
     @staticmethod
     def gather_object(
@@ -154,41 +198,41 @@ class MultiPGUtil:
         """Gather objects across multiple groups. Returns full list on rank 0, None on others."""
         objects = [obj]
         for group in groups_inner_to_outer:
-            rank = GeneralPGUtil.get_rank(group)
-            size = GeneralPGUtil.get_size(group)
+            util = GeneralPGUtil.create(group)
+            rank = util.get_rank(group)
+            size = util.get_size(group)
             if rank == 0:
                 gathered: list[Any] = [None] * size
-                GeneralPGUtil.gather_object(objects, gathered, dst=0, group=group)
+                util.gather_object(objects, gathered, dst=0, group=group)
                 objects = [item for sublist in gathered for item in sublist]
             else:
-                GeneralPGUtil.gather_object(objects, None, dst=0, group=group)
+                util.gather_object(objects, None, dst=0, group=group)
                 return None
 
         return objects
 
 
-def _gather_object_non_native(
+def _gather_object_via_util(
+    util: GeneralPGUtil,
     obj: Any,
     object_gather_list: list[Any] | None,
     dst: int,
     group: dist.ProcessGroup,
 ) -> None:
-    """gather_object for non-native (e.g. torchft) process groups.
+    """gather_object implemented using GeneralPGUtil primitives.
 
     Copied from torch.distributed.distributed_c10d.gather_object (PyTorch v2.11.0)
-    (source code: https://github.com/pytorch/pytorch/blob/v2.11.0/torch/distributed/distributed_c10d.py)
+    (https://github.com/pytorch/pytorch/blob/v2.11.0/torch/distributed/distributed_c10d.py)
     with the following modifications:
-    - Replaced dist.get_rank()/get_world_size() with GeneralPGUtil (torchft PG
-      returns wrong values from the C++ base class)
-    - Replaced dist.all_gather()/dist.gather() with GeneralPGUtil.all_gather()/
-      GeneralPGUtil.gather()
+    - Replaced dist.get_rank()/get_world_size() with util.get_rank()/get_size()
+    - Replaced dist.all_gather()/dist.gather() with util.all_gather()/util.gather()
     - Removed _rank_not_in_group check, group_dst parameter
     - Hardcoded cpu device (was: _get_object_coll_device)
     - Inlined _validate_output_list_for_rank as simple assert
     """
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
 
-    my_group_rank = GeneralPGUtil.get_rank(group)  # was: group.rank()
+    my_group_rank = util.get_rank(group)  # was: group.rank()
     if my_group_rank == dst:
         assert object_gather_list is not None
     else:
@@ -199,13 +243,13 @@ def _gather_object_non_native(
 
     # Gather all local sizes. This is so that we can find the max size, and index
     # until the correct size when deserializing the tensors.
-    group_size = GeneralPGUtil.get_size(group)  # was: get_world_size(group=group)
+    group_size = util.get_size(group)  # was: get_world_size(group=group)
     object_sizes_tensor = torch.zeros(group_size, dtype=torch.long, device=current_device)
     object_size_list = [object_sizes_tensor[i].unsqueeze(dim=0) for i in range(group_size)]
     # Allgather tensor sizes. An all-gather is needed here despite this being a
     # gather, since each rank needs to broadcast a tensor of the same (maximal)
     # size.
-    GeneralPGUtil.all_gather(object_size_list, local_size, group=group)  # was: all_gather(..., group=group)
+    util.all_gather(object_size_list, local_size, group=group)  # was: all_gather(..., group=group)
     max_object_size = int(max(object_size_list).item())
     # Resize tensor to max size across all ranks.
     input_tensor.resize_(max_object_size)
@@ -218,13 +262,12 @@ def _gather_object_non_native(
         ]
     # All ranks call gather with equal-sized tensors.
     # was: gather(input_tensor, gather_list=..., group_dst=dst, group=group)
-    GeneralPGUtil.gather(
+    util.gather(
         input_tensor,
         gather_list=output_tensors if my_group_rank == dst else None,
         dst=dst,
         group=group,
     )
-
     if my_group_rank != dst:
         return
 

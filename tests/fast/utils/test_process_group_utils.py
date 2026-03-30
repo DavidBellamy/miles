@@ -4,18 +4,18 @@ import os
 from typing import Any
 
 import pytest
-
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.distributed.device_mesh import init_device_mesh
 
 from miles.utils.process_group_utils import (
-    GeneralPGUtil,
     GroupInfo,
     GroupsInfo,
     MultiPGUtil,
-    _gather_object_non_native,
+    _gather_object_via_util,
+    _NativePGUtil,
+    _RawPGUtil,
 )
 
 
@@ -83,48 +83,118 @@ class TestGroupsInfo:
         assert result.rank == 2
 
 
-# -- Distributed tests (one spawn per class) --
+# -- Parameterized GeneralPGUtil tests (native vs torchft code paths) --
 
 
-def _worker_general_pg_util(rank: int, world_size: int) -> None:
+UTIL_CLASSES = [_NativePGUtil, _RawPGUtil]
+
+
+def _worker_pg_util_ops(rank: int, world_size: int) -> None:
+    """Test all GeneralPGUtil operations with both native and torchft code paths."""
     _init_gloo(rank, world_size)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
 
-        # Step 1: get_rank / get_size / is_native
-        assert GeneralPGUtil.get_rank(group) == rank
-        assert GeneralPGUtil.get_size(group) == world_size
-        assert GeneralPGUtil.is_native(group)
+        for util_cls in UTIL_CLASSES:
+            util = util_cls()
 
-        # Step 2: GroupInfo verification passes with correct rank/size
+            # get_rank / get_size
+            assert util.get_rank(group) == rank
+            assert util.get_size(group) == world_size
+
+            # all_reduce SUM
+            tensor = torch.tensor([float(rank + 1)])
+            util.all_reduce(tensor, group, op=dist.ReduceOp.SUM)
+            assert tensor.item() == 1.0 + 2.0 + 3.0 + 4.0
+
+            # reduce to root
+            tensor = torch.tensor([float(rank + 1)])
+            util.reduce(tensor, group, op=dist.ReduceOp.SUM)
+            if rank == 0:
+                assert tensor.item() == 1.0 + 2.0 + 3.0 + 4.0
+
+            # broadcast from root
+            tensor = torch.tensor([99.0]) if rank == 0 else torch.tensor([0.0])
+            util.broadcast(tensor, group)
+            assert tensor.item() == 99.0
+
+            # all_gather
+            input_t = torch.tensor([float(rank)])
+            output_t = [torch.zeros(1) for _ in range(world_size)]
+            util.all_gather(output_t, input_t, group=group)
+            assert [t.item() for t in output_t] == [0.0, 1.0, 2.0, 3.0]
+
+            # gather
+            input_t = torch.tensor([float(rank)])
+            if rank == 0:
+                gather_list = [torch.zeros(1) for _ in range(world_size)]
+                util.gather(input_t, gather_list=gather_list, dst=0, group=group)
+                assert [t.item() for t in gather_list] == [0.0, 1.0, 2.0, 3.0]
+            else:
+                util.gather(input_t, gather_list=None, dst=0, group=group)
+
+        # GroupInfo verification
         GroupInfo(rank=rank, size=world_size, group=group)
-
-        # Step 3: GroupInfo verification fails with wrong rank
         wrong_rank = (rank + 1) % world_size
         with pytest.raises(AssertionError):
             GroupInfo(rank=wrong_rank, size=world_size, group=group)
-
-        # Step 4: all_reduce SUM
-        tensor = torch.tensor([float(rank + 1)])
-        GeneralPGUtil.all_reduce(tensor, group, op=dist.ReduceOp.SUM)
-        assert tensor.item() == 1.0 + 2.0 + 3.0 + 4.0
-
-        # Step 5: reduce to root
-        tensor = torch.tensor([float(rank + 1)])
-        GeneralPGUtil.reduce(tensor, group, op=dist.ReduceOp.SUM)
-        if rank == 0:
-            assert tensor.item() == 1.0 + 2.0 + 3.0 + 4.0
-
-        # Step 6: broadcast from root
-        tensor = torch.tensor([99.0]) if rank == 0 else torch.tensor([0.0])
-        GeneralPGUtil.broadcast(tensor, group)
-        assert tensor.item() == 99.0
     finally:
         dist.destroy_process_group()
 
 
-def test_general_pg_util() -> None:
-    _run(_worker_general_pg_util)
+def test_pg_util_ops() -> None:
+    _run(_worker_pg_util_ops)
+
+
+def _worker_gather_object_native_vs_torchft(rank: int, world_size: int) -> None:
+    """Verify _NativePGUtil.gather_object and _RawPGUtil.gather_object produce identical results."""
+    _init_gloo(rank, world_size)
+    try:
+        group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
+
+        test_objects = [
+            {"rank": rank, "value": rank * 10},
+            [rank, rank + 1, "hello"],
+            f"string_from_rank_{rank}",
+            (rank, {"nested": True}),
+        ]
+
+        for obj in test_objects:
+            for util_cls in UTIL_CLASSES:
+                util = util_cls()
+                if rank == 0:
+                    result: list[Any] = [None] * world_size
+                    util.gather_object(obj, result, dst=0, group=group)
+                else:
+                    util.gather_object(obj, None, dst=0, group=group)
+
+            # Both paths ran; on rank 0, verify they produced the same result
+            # (We can't easily compare across util_cls in the loop since gather
+            # is collective, but we verify each path individually succeeds and
+            # produces correct content)
+            if rank == 0:
+                expected_result: list[Any] = [None] * world_size
+                _NativePGUtil().gather_object(obj, expected_result, dst=0, group=group)
+
+                actual_result: list[Any] = [None] * world_size
+                _gather_object_via_util(_RawPGUtil(), obj, actual_result, dst=0, group=group)
+            else:
+                _NativePGUtil().gather_object(obj, None, dst=0, group=group)
+                _gather_object_via_util(_RawPGUtil(), obj, None, dst=0, group=group)
+
+            if rank == 0:
+                assert (
+                    expected_result == actual_result
+                ), f"Mismatch for obj={obj}: native={expected_result}, torchft={actual_result}"
+    finally:
+        dist.destroy_process_group()
+
+
+def test_gather_object_native_vs_torchft() -> None:
+    _run(_worker_gather_object_native_vs_torchft)
+
+
+# -- MultiPGUtil tests --
 
 
 def _worker_multi_pg_util_all_reduce(rank: int, world_size: int) -> None:
@@ -205,44 +275,3 @@ def _worker_multi_pg_util_gather_object(rank: int, world_size: int) -> None:
 
 def test_multi_pg_util_gather_object() -> None:
     _run(_worker_multi_pg_util_gather_object)
-
-
-def _worker_gather_object_native_vs_non_native(rank: int, world_size: int) -> None:
-    """Verify _gather_object_non_native produces identical results to dist.gather_object."""
-    _init_gloo(rank, world_size)
-    try:
-        group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
-
-        test_objects = [
-            {"rank": rank, "value": rank * 10},
-            [rank, rank + 1, "hello"],
-            f"string_from_rank_{rank}",
-            (rank, {"nested": True}),
-        ]
-
-        for obj in test_objects:
-            # Step 1: native gather
-            if rank == 0:
-                native_result: list[Any] = [None] * world_size
-                dist.gather_object(obj, native_result, dst=0, group=group)
-            else:
-                dist.gather_object(obj, None, dst=0, group=group)
-
-            # Step 2: non-native gather
-            if rank == 0:
-                non_native_result: list[Any] = [None] * world_size
-                _gather_object_non_native(obj, non_native_result, dst=0, group=group)
-            else:
-                _gather_object_non_native(obj, None, dst=0, group=group)
-
-            # Step 3: compare on root
-            if rank == 0:
-                assert (
-                    native_result == non_native_result
-                ), f"Mismatch for obj={obj}: native={native_result}, non_native={non_native_result}"
-    finally:
-        dist.destroy_process_group()
-
-
-def test_gather_object_native_vs_non_native() -> None:
-    _run(_worker_gather_object_native_vs_non_native)
