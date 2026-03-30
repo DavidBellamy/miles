@@ -30,9 +30,9 @@ from ..training_utils.log_utils import (
     log_train_step,
 )
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, loss_function
+from ..training_utils.parallel import set_parallel_state
 from . import checkpoint
 from .lr_scheduler import get_lr_scheduler
-from ..training_utils.parallel import set_parallel_state
 from .parallel import create_fsdp_parallel_state
 from .update_weight_utils import UpdateWeightFromDistributed, UpdateWeightFromTensor
 

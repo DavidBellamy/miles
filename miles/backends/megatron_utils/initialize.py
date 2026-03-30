@@ -4,11 +4,11 @@ import random
 import numpy as np
 import torch
 from megatron.core import mpu, tensor_parallel
-
-from miles.backends.training_utils.parallel import get_parallel_state
 from megatron.core.config import set_experimental_flag
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.training.global_vars import _build_tokenizer, set_args
+
+from miles.backends.training_utils.parallel import get_parallel_state
 
 logger = logging.getLogger(__name__)
 
