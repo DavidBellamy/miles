@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
@@ -317,6 +318,20 @@ def forward_only(
     return rollout_data
 
 
+def _allreduce_grads_across_replicas(model: Sequence[DDP], pg: "ProcessGroup") -> None:
+    """AllReduce gradients across independent DP replicas via torchft PG.
+
+    Called after forward_backward_func (which completes intra-replica TP/PP/EP
+    grad sync) and before prepare_grads. Uses SUM because the loss function
+    already applies 1/global_batch_size scaling.
+    """
+    opts = dist.AllreduceOptions()
+    opts.reduceOp = dist.ReduceOp.SUM
+    for model_chunk in model:
+        for buffer in model_chunk.buffers:
+            pg.allreduce([buffer.grad_data], opts).wait()
+
+
 def train_one_step(
     args: Namespace,
     rollout_id: int,
@@ -327,6 +342,7 @@ def train_one_step(
     opt_param_scheduler: OptimizerParamScheduler,
     num_microbatches: int,
     parallel_state: ParallelState,
+    indep_dp_pg: "ProcessGroup | None" = None,
 ) -> tuple[dict[str, float], float]:
     """Execute a single pipeline-parallel training step.
 
@@ -455,6 +471,9 @@ def train_one_step(
         forward_only=False,
     )
 
+    if indep_dp_pg is not None:
+        _allreduce_grads_across_replicas(model, indep_dp_pg)
+
     valid_step = True
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
         found_inf_flag = optimizer.prepare_grads()
@@ -513,6 +532,7 @@ def train(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
+    indep_dp_pg: "ProcessGroup | None" = None,
 ) -> None:
     """Run training over a rollout consisting of multiple steps.
 
@@ -607,6 +627,7 @@ def train(
             opt_param_scheduler,
             num_microbatches[step_id],
             parallel_state,
+            indep_dp_pg=indep_dp_pg,
         )
 
         if step_id == 0:

@@ -82,8 +82,9 @@ class MegatronTrainRayActor(TrainRayActor):
                 )
             dist.barrier(group=get_gloo_group())
 
+        effective_dp_size = self._num_cells if self._num_cells > 1 else mpu.get_data_parallel_world_size(with_context_parallel=False)
         self.train_parallel_config = {
-            "dp_size": mpu.get_data_parallel_world_size(with_context_parallel=False),
+            "dp_size": effective_dp_size,
         }
         dist.barrier(group=get_gloo_group())
 
@@ -93,8 +94,10 @@ class MegatronTrainRayActor(TrainRayActor):
                 logger.info(f"Set torch_memory_saver.memory_margin_bytes to {x}")
                 torch_memory_saver.memory_margin_bytes = x
 
+        indep_dp_kwargs = dict(indep_dp_rank=self._cell_id, indep_dp_size=self._num_cells) if self._num_cells > 1 else {}
+
         if self.args.debug_rollout_only:
-            self.parallel_state = create_megatron_parallel_state(model=None)
+            self.parallel_state = create_megatron_parallel_state(model=None, **indep_dp_kwargs)
             return 0
 
         if role == "critic":
@@ -111,7 +114,7 @@ class MegatronTrainRayActor(TrainRayActor):
             args, role
         )
 
-        self.parallel_state = create_megatron_parallel_state(model=self.model)
+        self.parallel_state = create_megatron_parallel_state(model=self.model, **indep_dp_kwargs)
 
         if role == "critic":
             if self.args.offload_train:
@@ -353,6 +356,7 @@ class MegatronTrainRayActor(TrainRayActor):
             data_iterator,
             num_microbatches,
             self.parallel_state,
+            indep_dp_pg=self._indep_dp_pg,
         )
 
     def _use_rollout_replay(self, m) -> bool:
@@ -434,6 +438,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     data_iterator,
                     num_microbatches,
                     self.parallel_state,
+                    indep_dp_pg=self._indep_dp_pg,
                 )
 
             self.prof.step(rollout_id=rollout_id)
