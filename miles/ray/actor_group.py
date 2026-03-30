@@ -7,6 +7,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 
+
 class RayTrainGroup:
     """
     A group of ray actors
@@ -62,7 +63,7 @@ class RayTrainGroup:
 
     def async_init(self, args, role: str, with_ref: bool = False):
         """
-        Allocate GPU resources and initialize model, optimizer, local ckpt, etc.
+        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         Returns list of object refs (caller is responsible for ray.get).
         """
         assert args is self.args
