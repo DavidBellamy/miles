@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 def create_megatron_parallel_state(
     model: torch.nn.Module | Sequence[torch.nn.Module] | None = None,
-    indep_dp_rank: int | None = None,
-    indep_dp_size: int | None = None,
 ) -> ParallelState:
     vpp_size_value = mpu.get_virtual_pipeline_model_parallel_world_size()
     if vpp_size_value is None:
@@ -31,13 +29,10 @@ def create_megatron_parallel_state(
         vpp_size = 1
         microbatch_group_size_per_vp_stage = None
 
-    dp_rank = indep_dp_rank if indep_dp_rank is not None else mpu.get_data_parallel_rank(with_context_parallel=False)
-    dp_size = indep_dp_size if indep_dp_size is not None else mpu.get_data_parallel_world_size(with_context_parallel=False)
-
     parallel_state = ParallelState(
-        dp_rank=dp_rank,
+        dp_rank=mpu.get_data_parallel_rank(with_context_parallel=False),
         dp_src_rank=mpu.get_data_parallel_src_rank(with_context_parallel=True),
-        dp_size=dp_size,
+        dp_size=mpu.get_data_parallel_world_size(with_context_parallel=False),
         cp_rank=mpu.get_context_parallel_rank(),
         cp_size=mpu.get_context_parallel_world_size(),
         dp_cp_rank=mpu.get_data_parallel_rank(with_context_parallel=True),
