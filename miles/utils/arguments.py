@@ -8,6 +8,7 @@ import yaml
 from sglang_router.launch_router import RouterArgs
 from transformers import AutoConfig
 
+from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.backends.sglang_utils.arguments import add_sglang_arguments
 from miles.backends.sglang_utils.arguments import validate_args as sglang_validate_args
 from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
@@ -1750,9 +1751,7 @@ def miles_validate_args(args):
         logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
     if args.indep_dp:
-        from miles.utils.megatron_args_utils import compute_megatron_world_size_per_replica
-
-        per_replica = compute_megatron_world_size_per_replica(args)
+        per_replica = compute_megatron_world_size_except_dp(args)
         logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica} (per-cell)")
         args.world_size = per_replica
 

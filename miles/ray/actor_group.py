@@ -7,7 +7,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.megatron_args_utils import compute_megatron_world_size_per_replica
+from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
 if TYPE_CHECKING:
     import torch
@@ -47,7 +47,7 @@ class RayTrainGroup:
         self.args = args
 
         total_gpus = num_nodes * num_gpus_per_node
-        num_cells = total_gpus // compute_megatron_world_size_per_replica(args) if args.indep_dp else 1
+        num_cells = (total_gpus // compute_megatron_world_size_except_dp(args)) if args.indep_dp else 1
         gpus_per_cell = total_gpus // num_cells
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
