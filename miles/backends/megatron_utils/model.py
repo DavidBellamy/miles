@@ -458,7 +458,7 @@ def train_one_step(
     )
 
     if parallel_state.indep_dp.size > 1:
-        _allreduce_grads_across_replicas(model, parallel_state)
+        _allreduce_grads_across_replicas(args, model, parallel_state)
 
     valid_step = True
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
@@ -501,7 +501,9 @@ def train_one_step(
     return {}, grad_norm
 
 
-def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
+def _allreduce_grads_across_replicas(args, model: Sequence[DDP], parallel_state: ParallelState) -> None:
+    assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported yet"
+
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)
 
