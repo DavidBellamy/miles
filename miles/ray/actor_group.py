@@ -69,7 +69,7 @@ class RayTrainGroup:
         return self._async_execute("init", args, role, with_ref=with_ref)
 
     def async_train(self, rollout_id: int, rollout_data_ref):
-        """Do one rollout training. Returns list of object refs."""
+        """Do one rollout training"""
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
