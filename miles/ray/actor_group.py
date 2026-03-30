@@ -50,16 +50,26 @@ class RayTrainGroup:
     def _create_cell(self, cell_id: int) -> "RayTrainCell":
         return RayTrainCell(**self._cell_kwargs, cell_id=cell_id)
 
+    def _execute(self, fn_name, *args, **kwargs):
+        return ray.get(self._async_execute(fn_name, *args, **kwargs))
+
+    def _async_execute(self, fn_name, *args, **kwargs):
+        return [
+            future
+            for cell in self._cells
+            for future in cell.async_execute(fn_name, *args, **kwargs)
+        ]
+
     def async_init(self, args, role, with_ref=False):
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         assert args is self.args
-        TODO
+        return self._execute("async_init", args, role, with_ref=with_ref)
 
     def async_train(self, rollout_id, rollout_data_ref):
         """Do one rollout training"""
-        TODO
+        return self._execute("async_train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id, force_sync=False):
         """Save actor model"""
