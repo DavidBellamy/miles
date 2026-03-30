@@ -199,8 +199,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
             )
-            reset_arg(
-                parser,
+            parser.add_argument(
                 "--low-memory-resume",
                 action="store_true",
                 default=False,
