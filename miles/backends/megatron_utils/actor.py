@@ -640,12 +640,3 @@ class MegatronTrainRayActor(TrainRayActor):
             megatron_world_size=dist.get_world_size(),
             indep_dp_quorum_id=indep_dp_quorum_id,
         )
-
-    def reconfigure_indep_dp_and_send_ckpt(self, indep_dp_quorum_id: int, dst_cell_id: int) -> None:
-        """Reconfigure indep_dp PG and then send checkpoint to a recovering cell.
-
-        Must be called in parallel with the recovering cell's init(recv_ckpt_src_rank=...),
-        since NCCL send/recv are blocking and must pair up.
-        """
-        self.reconfigure_indep_dp(indep_dp_quorum_id)
-        self.send_ckpt(dst_rank=dst_cell_id)
