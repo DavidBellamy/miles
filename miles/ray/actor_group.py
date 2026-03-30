@@ -1,14 +1,16 @@
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Union
 
 import ray
+from pydantic import ConfigDict
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
+from miles.utils.pydantic_utils import StrictBaseModel
 
 if TYPE_CHECKING:
     import torch
@@ -173,6 +175,21 @@ class RayTrainGroup:
                 return cell.cell_id
         raise RuntimeError(f"No healthy cell available (excluding cell {exclude})")
 
+
+class _StatePending(StrictBaseModel):
+    type: Literal["pending"] = "pending"
+
+
+class _StateRunning(StrictBaseModel):
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    type: Literal["running"] = "running"
+    actor_handles: list[ray.actor.ActorHandle]
+
+
+class _StateStopped(StrictBaseModel):
+    type: Literal["stopped"] = "stopped"
+
+_CellState = Union[what]
 
 class RayTrainCell:
     def __init__(
