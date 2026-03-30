@@ -229,6 +229,8 @@ def _gather_object_via_util(
     - Removed _rank_not_in_group check, group_dst parameter
     - Hardcoded cpu device (was: _get_object_coll_device)
     - Inlined _validate_output_list_for_rank as simple assert
+    - Dropped group arg from _object_to_tensor/_tensor_to_object (only used for NCCL debug logging, irrelevant on cpu)
+    - Removed redundant post-gather None check on object_gather_list (already asserted at function entry)
     """
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
 

@@ -384,7 +384,7 @@ def get_data_iterator(
             )
 
         num_microbatches = torch.tensor(num_microbatches, dtype=torch.int, device=torch.cuda.current_device())
-        GeneralPGUtil.create(dp_group.group).all_reduce(num_microbatches, dp_group.group, op=dist.ReduceOp.MAX)
+        GeneralPGUtil.create(dp_group).all_reduce(num_microbatches, dp_group, op=dist.ReduceOp.MAX)
 
         if vpp_size > 1:
             # vpp requies the number of microbatches to be divisible by vpp_size
