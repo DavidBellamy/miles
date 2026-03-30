@@ -11,6 +11,7 @@ from megatron.core import mpu
 from ray.actor import ActorHandle
 from torch_memory_saver import torch_memory_saver
 from transformers import AutoConfig
+from datetime import timedelta
 
 from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
@@ -610,15 +611,12 @@ def _create_indep_dp_pg(
     if num_cells <= 1:
         return None
 
-    from datetime import timedelta
-
     from torchft.process_group import ProcessGroupNCCL
 
     pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
     quorum_id = 0
-    prefixed_store_addr = f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}"
     pg.configure(
-        store_addr=prefixed_store_addr,
+        store_addr=f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}",
         replica_id=str(cell_id),
         rank=cell_id,
         world_size=num_cells,
