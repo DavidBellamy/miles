@@ -6,29 +6,11 @@ import torch
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_model_config
+from megatron.training.global_vars import get_args
 
 from ..training_utils.parallel import ParallelState
 
 logger = logging.getLogger(__name__)
-
-
-def _compute_vpp_fields() -> tuple[int, int | None]:
-    """Compute VPP fields without requiring model instance.
-
-    microbatch_group_size_per_vp_stage defaults to pipeline_model_parallel_size
-    in Megatron's ModelParallelConfig.__post_init__.
-    """
-    from megatron.training.global_vars import get_args
-
-    vpp_size_value = mpu.get_virtual_pipeline_model_parallel_world_size()
-    if vpp_size_value is None or vpp_size_value <= 1:
-        return 1, None
-
-    args = get_args()
-    microbatch_group_size = getattr(args, "microbatch_group_size_per_vp_stage", None)
-    if microbatch_group_size is None:
-        microbatch_group_size = args.pipeline_model_parallel_size
-    return vpp_size_value, microbatch_group_size
 
 
 def create_megatron_parallel_state() -> ParallelState:
@@ -53,6 +35,18 @@ def create_megatron_parallel_state() -> ParallelState:
         vpp_size=vpp_size,
         microbatch_group_size_per_vp_stage=microbatch_group_size_per_vp_stage,
     )
+
+
+def _compute_vpp_fields() -> tuple[int, int | None]:
+    vpp_size_value = mpu.get_virtual_pipeline_model_parallel_world_size()
+    if vpp_size_value is None or vpp_size_value <= 1:
+        return 1, None
+
+    args = get_args()
+    microbatch_group_size = getattr(args, "microbatch_group_size_per_vp_stage", None)
+    if microbatch_group_size is None:
+        microbatch_group_size = args.pipeline_model_parallel_size
+    return vpp_size_value, microbatch_group_size
 
 
 def verify_megatron_parallel_state(
