@@ -36,12 +36,10 @@ def gather_log_data(
     batch sizes. Returns the reduced dict on the DP source rank; returns None on others.
     """
 
-    effective_dp_cp = parallel_state.effective_dp_cp
-    effective_dp_cp_size = effective_dp_cp.size
-
     if parallel_state.intra_dp_cp.rank == 0:
-        intra_dp_cp_size = parallel_state.intra_dp_cp.size
-        gathered_log_dict = [None] * intra_dp_cp_size
+        dp_size = parallel_state.intra_dp_cp.size
+
+        gathered_log_dict = [None] * dp_size
         dist.gather_object(
             log_dict,
             gathered_log_dict,
@@ -50,10 +48,10 @@ def gather_log_data(
         )
 
         reduced_log_dict = {
-            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / effective_dp_cp_size for key in log_dict
+            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / dp_size for key in log_dict
         }
 
-        if effective_dp_cp.rank == 0:
+        if parallel_state.effective_dp_cp.rank == 0:
             logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
             step = compute_rollout_step(args, rollout_id)
             reduced_log_dict["rollout/step"] = step
