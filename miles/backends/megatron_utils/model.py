@@ -741,7 +741,7 @@ def save(
             optimizer,
             opt_param_scheduler,
             num_floating_point_operations_so_far=0,
-            checkpointing_context=checkpointing_context,
+            checkpointing_context=checkpointing_context or {},
             non_persistent_ckpt=non_persistent_ckpt,
         )
 
