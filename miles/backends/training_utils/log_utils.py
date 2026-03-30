@@ -36,20 +36,18 @@ def gather_log_data(
     batch sizes. Returns the reduced dict on the DP source rank; returns None on others.
     """
 
-    pg = parallel_state.effective_dp_cp
+    pg = parallel_state.intra_dp_cp
+    dp_size = pg.size
+    gathered_log_dict = [None] * dp_size
+    # Not sure if this will be a performance bottleneck.
+    dist.gather_object(
+        log_dict,
+        gathered_log_dict if pg.rank == 0 else None,
+        dst=dist.get_global_rank(pg.gloo_group, 0),
+        group=pg.gloo_group,
+    )
 
     if pg.rank == 0:
-        dp_size = pg.size
-
-        gathered_log_dict = [None] * dp_size
-        # Not sure if this will be a performance bottleneck.
-        GeneralPGUtil.create(pg).gather_object(
-            log_dict,
-            gathered_log_dict,
-            dst=pg.src_rank,
-            group=pg.gloo_group,
-        )
-
         reduced_log_dict = {
             f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / dp_size for key in log_dict
         }
@@ -62,12 +60,7 @@ def gather_log_data(
 
         return reduced_log_dict
     else:
-        GeneralPGUtil.create(pg).gather_object(
-            log_dict,
-            None,
-            dst=pg.src_rank,
-            group=pg.gloo_group,
-        )
+
         return None
 
 
