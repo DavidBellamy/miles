@@ -58,7 +58,7 @@ def _compute_vpp_fields() -> tuple[int, int | None]:
     return vpp_size_value, get_args().pipeline_model_parallel_size
 
 
-def _create_indep_dp_group(
+def create_indep_dp_group(
     store_addr: str | None,
     cell_id: int,
     num_cells: int,

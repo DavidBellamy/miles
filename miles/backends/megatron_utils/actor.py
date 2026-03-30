@@ -637,7 +637,7 @@ class MegatronTrainRayActor(TrainRayActor):
         Called on healthy cells after a stop/start cycle to establish
         new PG connections with the restarted cell.
         """
-        from miles.backends.megatron_utils.parallel import _create_indep_dp_group
+        from miles.backends.megatron_utils.parallel import create_indep_dp_group
 
         old_indep_dp = self.parallel_state.indep_dp
         if old_indep_dp.group is not None:
@@ -645,7 +645,7 @@ class MegatronTrainRayActor(TrainRayActor):
         if old_indep_dp.gloo_group is not None:
             old_indep_dp.gloo_group.shutdown()
 
-        indep_dp = _create_indep_dp_group(
+        indep_dp = create_indep_dp_group(
             store_addr=self._indep_dp_store_addr,
             cell_id=self._cell_id,
             num_cells=self._num_cells,

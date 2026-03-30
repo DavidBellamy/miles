@@ -11,7 +11,7 @@ from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
 
-from .parallel import _create_indep_dp_group, create_megatron_parallel_state
+from .parallel import create_indep_dp_group, create_megatron_parallel_state
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def init(
     # Pytorch distributed.
     _initialize_distributed(args)
 
-    indep_dp = _create_indep_dp_group(
+    indep_dp = create_indep_dp_group(
         store_addr=indep_dp_store_addr,
         cell_id=cell_id,
         num_cells=num_cells,
