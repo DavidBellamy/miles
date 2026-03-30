@@ -124,17 +124,18 @@ class MegatronTrainRayActor(TrainRayActor):
                 m.enabled = getattr(self.args, f"use_{m.name}_replay")
                 m.enable_check_replay_result = m.enabled and self.args.ci_test
 
-        in_memory_ckpt_manager = None
+        checkpointing_context = None
         if recv_ckpt_src_rank is not None:
             from miles.backends.megatron_utils.checkpoint_transfer import recv_ckpt
 
-            in_memory_ckpt_manager = recv_ckpt(
+            ckpt_manager = recv_ckpt(
                 indep_dp=get_parallel_state().indep_dp,
                 src_rank=recv_ckpt_src_rank,
             )
+            checkpointing_context = {'local_checkpoint_manager': ckpt_manager}
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
-            args, role, in_memory_ckpt_manager=in_memory_ckpt_manager
+            args, role, checkpointing_context=checkpointing_context
         )
 
         self.parallel_state = get_parallel_state()
