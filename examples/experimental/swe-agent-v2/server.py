@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -259,13 +259,21 @@ async def _run_trial(request: RunRequest) -> dict[str, Any]:
 
 
 @app.post("/run")
-async def run_instance(request: RunRequest) -> RunResponse:
+async def run_instance(request: RunRequest, raw_request: Request) -> RunResponse:
     """Run an agent on a single task instance via Harbor."""
-    logger.info(f"Running instance: {request.instance_id}")
+    client_host = raw_request.client.host if raw_request.client else "unknown"
+    client_port = raw_request.client.port if raw_request.client else "unknown"
+    payload = request.model_dump()
+    logger.info(
+        f"Running instance: {request.instance_id} | "
+        f"from={client_host}:{client_port} | "
+        f"payload={payload}"
+    )
     async with get_semaphore():
         result = await _run_trial(request)
     logger.info(
-        f"Instance {request.instance_id} finished: exit_status={result['exit_status']}, reward={result['reward']}"
+        f"Instance {request.instance_id} finished: exit_status={result['exit_status']}, reward={result['reward']} | "
+        f"from={client_host}:{client_port}"
     )
     return RunResponse(**result)
 
