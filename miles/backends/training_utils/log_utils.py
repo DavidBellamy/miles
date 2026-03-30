@@ -36,8 +36,8 @@ def gather_log_data(
     """
 
     effective_dp_cp = parallel_state.effective_dp_cp
-    effective_dp_cp_size = effective_dp_cp.size
 
+    # Step 1: gather within intra_dp_cp group
     if parallel_state.intra_dp_cp.rank == 0:
         intra_dp_cp_size = parallel_state.intra_dp_cp.size
         gathered_log_dict = [None] * intra_dp_cp_size
@@ -48,9 +48,20 @@ def gather_log_data(
             group=parallel_state.intra_dp_cp.gloo_group,
         )
 
+        # Step 2: sum locally, then allreduce across indep_dp to get global sum
+        keys = list(log_dict.keys())
+        local_sums = torch.tensor(
+            [sum(d[key] for d in gathered_log_dict) for key in keys],
+            dtype=torch.float64,
+            device="cpu",
+        )
+        if parallel_state.indep_dp.size > 1:
+            parallel_state.indep_dp.all_reduce(local_sums, op=dist.ReduceOp.SUM)
+
+        # Step 3: divide by global size
         reduced_log_dict = {
-            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / effective_dp_cp_size
-            for key in log_dict
+            f"{metric_name}/{key}": (local_sums[i] / effective_dp_cp.size).item()
+            for i, key in enumerate(keys)
         }
 
         if effective_dp_cp.rank == 0:
