@@ -201,7 +201,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=False,
             )
             parser.add_argument(
-                "--independent-dp",
+                "--indep-dp",
                 action="store_true",
                 default=False,
                 help="Launch each DP replica as an independent Megatron instance instead of using Megatron-internal data parallelism.",
@@ -1743,9 +1743,9 @@ def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
     if args.trainer_ft:
-        args.independent_dp = True
+        args.indep_dp = True
         args.delay_split_train_data_by_dp = True
-        logger.info("trainer_ft is enabled. Auto set independent_dp=True, delay_split_train_data_by_dp=True")
+        logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
