@@ -47,7 +47,7 @@ class GroupInfo:
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        _all_reduce_on_group(tensor, self.group, op)
+        all_reduce_multi(tensor, [self.group], op)
 
 
 def _is_native_process_group(group: dist.ProcessGroup) -> bool:
@@ -73,9 +73,6 @@ class GroupsInfo:
             groups_inner_to_outer=[inner.group, outer.group],
         )
 
-    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        for group in self.groups_inner_to_outer:
-            _all_reduce_on_group(tensor, group, op)
 
 
 @dataclass
@@ -113,10 +110,17 @@ class ParallelState:
         }[self._dp_mode]
 
 
-def _all_reduce_on_group(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-    opts = dist.AllreduceOptions()
+def _reduce_on_group(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+    opts = dist.ReduceOptions()
     opts.reduceOp = op
-    group.allreduce([tensor], opts).wait()
+    opts.rootRank = 0
+    group.reduce([tensor], opts).wait()
+
+
+def _broadcast_on_group(tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+    opts = dist.BroadcastOptions()
+    opts.rootRank = 0
+    group.broadcast([tensor], opts).wait()
 
 
 def all_reduce_multi(
@@ -124,5 +128,15 @@ def all_reduce_multi(
     groups_inner_to_outer: Sequence[dist.ProcessGroup],
     op: dist.ReduceOp,
 ) -> None:
+    """Reduce then broadcast across multiple groups for bitwise-equal results.
+
+    Inner-to-outer reduce collapses values to the global root (rank 0 in every
+    group). Outer-to-inner broadcast fans the result back out. Because broadcast
+    is a pure copy, all ranks receive a bitwise-identical result regardless of
+    floating-point non-determinism in the reduce path.
+    """
     for group in groups_inner_to_outer:
-        _all_reduce_on_group(tensor, group, op)
+        _reduce_on_group(tensor, group, op)
+
+    for group in reversed(groups_inner_to_outer):
+        _broadcast_on_group(tensor, group)
