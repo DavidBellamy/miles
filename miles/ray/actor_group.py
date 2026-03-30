@@ -60,39 +60,44 @@ class RayTrainGroup:
             for future in cell.async_execute(fn_name, *args, **kwargs)
         ]
 
-    def async_init(self, args, role, with_ref=False):
+    def async_init(self, args, role: str, with_ref: bool = False):
         """
-        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
+        Allocate GPU resources and initialize model, optimizer, local ckpt, etc.
+        Returns list of object refs (caller is responsible for ray.get).
         """
         assert args is self.args
-        return self._execute("async_init", args, role, with_ref=with_ref)
+        return self._async_execute("init", args, role, with_ref=with_ref)
 
-    def async_train(self, rollout_id, rollout_data_ref):
-        """Do one rollout training"""
-        return self._execute("async_train", rollout_id, rollout_data_ref)
+    def async_train(self, rollout_id: int, rollout_data_ref):
+        """Do one rollout training. Returns list of object refs."""
+        return self._async_execute("train", rollout_id, rollout_data_ref)
 
-    def save_model(self, rollout_id, force_sync=False):
-        """Save actor model"""
-        TODO
+    def save_model(self, rollout_id: int, force_sync: bool = False):
+        """Save actor model."""
+        self._execute("save_model", rollout_id, force_sync=force_sync)
 
     def update_weights(self):
         """Broadcast weights from rank 0 to all other ranks."""
-        TODO
+        self._execute("update_weights")
 
     def onload(self):
-        TODO
+        self._execute("wake_up")
 
     def offload(self):
-        TODO
+        self._execute("sleep")
 
     def clear_memory(self):
-        TODO
+        self._execute("clear_memory")
 
-    def connect(self, critic_group):
-        TODO
+    def connect(self, critic_group: "RayTrainGroup"):
+        ray.get([
+            future
+            for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
+            for future in cell.async_connect(critic_cell)
+        ])
 
     def set_rollout_manager(self, rollout_manager):
-        TODO
+        self._execute("set_rollout_manager", rollout_manager)
 
 
 class RayTrainCell:
