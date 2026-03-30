@@ -195,6 +195,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--log-probs-chunk-size", type=int, default=-1, help="Chunk size to compute log probs to save memory"
             )
             parser.add_argument(
+                "--independent-dp",
+                action="store_true",
+                default=False,
+                help="Launch each DP replica as an independent Megatron instance instead of using Megatron-internal data parallelism.",
+            )
+            parser.add_argument(
                 "--allgather-cp",
                 action="store_true",
                 default=False,
