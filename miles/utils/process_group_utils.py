@@ -112,21 +112,19 @@ class MultiPGUtil:
     @staticmethod
     def gather_object(
         obj: Any,
-        group_infos_inner_to_outer: list[GroupInfo],
+        groups_inner_to_outer: Sequence[dist.ProcessGroup],
     ) -> list[Any] | None:
-        """Gather objects across multiple groups. Returns full list on rank 0, None on others.
-
-        Uses gloo_group from each GroupInfo for gather_object (which requires gloo).
-        """
+        """Gather objects across multiple groups. Returns full list on rank 0, None on others."""
         objects = [obj]
-        for info in group_infos_inner_to_outer:
-            assert info.gloo_group is not None, f"gloo_group required for gather_object, but {info} has None"
-            if info.rank == 0:
-                gathered: list[Any] = [None] * info.size
-                dist.gather_object(objects, gathered, dst=0, group=info.gloo_group)
+        for group in groups_inner_to_outer:
+            rank = GeneralPGUtil.get_rank(group)
+            size = GeneralPGUtil.get_size(group)
+            if rank == 0:
+                gathered: list[Any] = [None] * size
+                dist.gather_object(objects, gathered, dst=0, group=group)
                 objects = [item for sublist in gathered for item in sublist]
             else:
-                dist.gather_object(objects, None, dst=0, group=info.gloo_group)
+                dist.gather_object(objects, None, dst=0, group=group)
                 return None
 
         return objects
