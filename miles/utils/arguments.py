@@ -1736,6 +1736,10 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
+    if args.independent_dp:
+        args.delay_split_train_data_by_dp = True
+        logger.info("independent_dp is enabled. Auto set delay_split_train_data_by_dp=True")
+
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
 
