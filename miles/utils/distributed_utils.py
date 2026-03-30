@@ -3,6 +3,8 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
+
+from miles.backends.training_utils.parallel import GeneralProcessGroupUtil
 from torch.distributed.distributed_c10d import (
     Backend,
     PrefixStore,
@@ -128,9 +130,7 @@ def distributed_masked_whiten(
     )
 
     # Aggregate via all_reduce within the DP group
-    opts = dist.AllreduceOptions()
-    opts.reduceOp = dist.ReduceOp.SUM
-    process_group.allreduce([stats_tensor], opts).wait()
+    GeneralProcessGroupUtil.all_reduce(stats_tensor, process_group, op=dist.ReduceOp.SUM)
 
     # Calculate global stats from aggregated results
     global_sum, global_sum_sq, global_mask_sum = stats_tensor

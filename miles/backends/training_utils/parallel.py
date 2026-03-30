@@ -39,13 +39,13 @@ class GroupInfo:
     def _verify_group(self, group: dist.ProcessGroup | None, name: str) -> None:
         if group is None:
             return
-        actual_rank = _GeneralProcessGroupUtil.get_rank(group)
-        actual_size = _GeneralProcessGroupUtil.get_size(group)
+        actual_rank = GeneralProcessGroupUtil.get_rank(group)
+        actual_size = GeneralProcessGroupUtil.get_size(group)
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp) -> None:
-        _GeneralProcessGroupUtil.all_reduce(tensor, self.group, op)
+        GeneralProcessGroupUtil.all_reduce(tensor, self.group, op)
 
 
 @dataclass(frozen=True)
@@ -119,13 +119,13 @@ def _all_reduce_multi(
     floating-point non-determinism in the reduce path.
     """
     for group in groups_inner_to_outer:
-        _GeneralProcessGroupUtil.reduce(tensor, group, op)
+        GeneralProcessGroupUtil.reduce(tensor, group, op)
 
     for group in reversed(groups_inner_to_outer):
-        _GeneralProcessGroupUtil.broadcast(tensor, group)
+        GeneralProcessGroupUtil.broadcast(tensor, group)
 
 
-class _GeneralProcessGroupUtil:
+class GeneralProcessGroupUtil:
     """Support both native ProcessGroup and torchft's custom process groups."""
 
     @classmethod
