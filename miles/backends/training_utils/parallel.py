@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum, auto
 
 import torch
 import torch.distributed as dist
@@ -16,6 +17,12 @@ def set_parallel_state(state: "ParallelState") -> None:
 def get_parallel_state() -> "ParallelState":
     assert _parallel_state is not None, "ParallelState not initialized. Call set_parallel_state() first."
     return _parallel_state
+
+
+class _DPMode(StrEnum):
+    INTRA = auto()
+    INDEP = auto()
+
 
 
 @dataclass
@@ -45,18 +52,20 @@ class ParallelState:
     vpp_size: int | None = 1
     microbatch_group_size_per_vp_stage: int | None = None
 
-    def __post_init__(self) -> None:
+    @property
+    def _dp_mode(self):
         intra_trivial = self.intra_dp_rank == 0 and self.intra_dp_size == 1
         indep_trivial = self.indep_dp_rank == 0 and self.indep_dp_size == 1
-        assert intra_trivial or indep_trivial, (
-            f"intra_dp and indep_dp cannot both be non-trivial: "
-            f"intra_dp=({self.intra_dp_rank}/{self.intra_dp_size}), "
-            f"indep_dp=({self.indep_dp_rank}/{self.indep_dp_size})"
-        )
+        assert intra_trivial or indep_trivial, "intra_dp and indep_dp cannot both be non-trivial"
+
+        return _DPMode.INTRA if indep_trivial else _DPMode.INDEP
 
     @property
     def effective_dp_rank(self) -> int:
-        return self.indep_dp_rank if self.indep_dp_size > 1 else self.intra_dp_rank
+        return {
+            _DPMode.INDEP: self.indep_dp_rank,
+            _DPMode.INTRA: self.intra_dp_rank,
+        }[self._dp_mode]
 
     @property
     def effective_dp_size(self) -> int:
