@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Literal, Union
+from typing import Literal
 
 import ray
 from pydantic import ConfigDict
@@ -27,7 +27,7 @@ class _StateStopped(StrictBaseModel):
     type: Literal["stopped"] = "stopped"
 
 
-_CellState = Union[_StatePending, _StateRunning, _StateStopped]
+_CellState = _StatePending | _StateRunning | _StateStopped
 
 
 class RayTrainCell:
