@@ -49,6 +49,39 @@ class RayTrainGroup:
     def _create_cell(self, cell_id: int) -> "RayTrainCell":
         return RayTrainCell(**self._cell_kwargs, cell_id=cell_id)
 
+    def async_init(self, args, role, with_ref=False):
+        """
+        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
+        """
+        TODO
+
+    def async_train(self, rollout_id, rollout_data_ref):
+        """Do one rollout training"""
+        TODO
+
+    def save_model(self, rollout_id, force_sync=False):
+        """Save actor model"""
+        TODO
+
+    def update_weights(self):
+        """Broadcast weights from rank 0 to all other ranks."""
+        TODO
+
+    def onload(self):
+        TODO
+
+    def offload(self):
+        TODO
+
+    def clear_memory(self):
+        TODO
+
+    def connect(self, critic_group):
+        TODO
+
+    def set_rollout_manager(self, rollout_manager):
+        TODO
+
 
 class RayTrainCell:
     def __init__(
