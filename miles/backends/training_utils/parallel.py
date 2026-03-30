@@ -46,6 +46,9 @@ class GroupInfo:
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
+    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
+        _all_reduce_on_group(tensor, self.group, op)
+
 
 def _is_native_process_group(group: dist.ProcessGroup) -> bool:
     # torchft's ProcessGroup
@@ -69,6 +72,10 @@ class GroupsInfo:
             size=outer.size * inner.size,
             groups_inner_to_outer=[inner.group, outer.group],
         )
+
+    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
+        for group in self.groups_inner_to_outer:
+            _all_reduce_on_group(tensor, group, op)
 
 
 @dataclass
@@ -106,10 +113,16 @@ class ParallelState:
         }[self._dp_mode]
 
 
+def _all_reduce_on_group(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+    opts = dist.AllreduceOptions()
+    opts.reduceOp = op
+    group.allreduce([tensor], opts).wait()
+
+
 def all_reduce_multi(
     tensor: torch.Tensor,
     groups_inner_to_outer: Sequence[dist.ProcessGroup],
     op: dist.ReduceOp,
 ) -> None:
     for group in groups_inner_to_outer:
-        dist.all_reduce(tensor, op=op, group=group)
+        _all_reduce_on_group(tensor, group, op)
