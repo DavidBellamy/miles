@@ -39,6 +39,18 @@ class GroupsInfo:
     size: int
     groups: list[dist.ProcessGroup]
 
+    @classmethod
+    def from_single(cls, info: GroupInfo) -> "GroupsInfo":
+        return cls(rank=info.rank, size=info.size, groups=[info.group])
+
+    @classmethod
+    def from_pair(cls, inner: GroupInfo, outer: GroupInfo) -> "GroupsInfo":
+        return cls(
+            rank=outer.rank * inner.size + inner.rank,
+            size=outer.size * inner.size,
+            groups=[inner.group, outer.group],
+        )
+
 
 @dataclass
 class ParallelState:
@@ -70,19 +82,8 @@ class ParallelState:
     @property
     def effective_dp_cp(self) -> GroupsInfo:
         return {
-            _DPMode.INTRA: GroupsInfo(
-                rank=self.intra_dp_cp.rank,
-                size=self.intra_dp_cp.size,
-                groups=[self.intra_dp_cp.group] if self.intra_dp_cp.size > 1 else [],
-            ),
-            _DPMode.INDEP: GroupsInfo(
-                rank=self.indep_dp.rank * self.intra_dp_cp.size + self.intra_dp_cp.rank,
-                size=self.indep_dp.size * self.intra_dp_cp.size,
-                groups=[g for g in [
-                    self.intra_dp_cp.group if self.intra_dp_cp.size > 1 else None,
-                    self.indep_dp.group,
-                ] if g is not None],
-            ),
+            _DPMode.INTRA: GroupsInfo.from_single(self.intra_dp_cp),
+            _DPMode.INDEP: GroupsInfo.from_pair(inner=self.intra_dp_cp, outer=self.indep_dp),
         }[self._dp_mode]
 
 
