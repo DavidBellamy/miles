@@ -33,9 +33,9 @@ class TrainRayActor(RayActor):
         rank: int,
         master_addr,
         master_port,
-        cell_id: int = 0,
-        num_cells: int = 1,
-        cross_replica_store_addr: str = "",
+        cell_id: int,
+        num_cells: int,
+        cross_replica_store_addr: str,
     ):
         configure_logger()
 
