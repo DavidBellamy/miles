@@ -10,7 +10,7 @@ import torch.distributed as dist
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import calculate_fwd_flops
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
-from miles.utils.process_group_utils import MultiPGUtil, GeneralPGUtil
+from miles.utils.process_group_utils import MultiPGUtil
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
@@ -37,19 +37,15 @@ def gather_log_data(
     """
 
     pg = parallel_state.effective_dp_cp
-    dp_size = pg.size
-    gathered_log_dict = [None] * dp_size
     # Not sure if this will be a performance bottleneck.
-    GeneralPGUtil.create(pg).gather_object(
-        log_dict,
-        gathered_log_dict if pg.rank == 0 else None,
-        dst=dist.get_global_rank(pg.gloo_group, 0),
-        group=pg.gloo_group,
+    gathered_log_dict = MultiPGUtil.gather_object(
+        obj=log_dict,
+        groups_inner_to_outer=pg.gloo_groups_inner_to_outer,
     )
 
     if pg.rank == 0:
         reduced_log_dict = {
-            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / dp_size for key in log_dict
+            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / pg.size for key in log_dict
         }
         logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
 
