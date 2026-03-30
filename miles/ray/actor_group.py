@@ -7,6 +7,13 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.megatron_args_utils import compute_megatron_dp_size
 
+PGTuple = tuple[PlacementGroup, list[int], list[int]]
+
+
+def _slice_pg(pg: PGTuple, start: int, end: int) -> PGTuple:
+    placement_group, bundle_indices, gpu_ids = pg
+    return (placement_group, bundle_indices[start:end], gpu_ids[start:end])
+
 
 class RayTrainGroup:
     """
@@ -46,11 +53,8 @@ class RayTrainGroup:
         )
 
         self._cells: list[RayTrainCell] = []
-        placement_group, bundle_indices, gpu_ids = pg
         for cell_id in range(num_cells):
-            start = cell_id * gpus_per_cell
-            end = start + gpus_per_cell
-            cell_pg = (placement_group, bundle_indices[start:end], gpu_ids[start:end])
+            cell_pg = _slice_pg(pg, start=cell_id * gpus_per_cell, end=(cell_id + 1) * gpus_per_cell)
             self._cells.append(RayTrainCell(
                 args=args,
                 gpus_per_cell=gpus_per_cell,
