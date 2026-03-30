@@ -50,17 +50,6 @@ class GroupInfo:
         _all_reduce(tensor, self.group, op)
 
 
-def _is_native_process_group(group: dist.ProcessGroup) -> bool:
-    return not hasattr(group, "_replica_id")
-
-
-def _all_reduce(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-    if _is_native_process_group(group):
-        dist.all_reduce(tensor, op=op, group=group)
-    else:
-        group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
-
-
 @dataclass(frozen=True)
 class GroupsInfo:
     rank: int
@@ -119,14 +108,6 @@ class ParallelState:
         }[self._dp_mode]
 
 
-def _reduce_on_group(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-    group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
-
-
-def _broadcast_on_group(tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-    group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
-
-
 def all_reduce_multi(
     tensor: torch.Tensor,
     groups_inner_to_outer: Sequence[dist.ProcessGroup],
@@ -144,3 +125,30 @@ def all_reduce_multi(
 
     for group in reversed(groups_inner_to_outer):
         _broadcast_on_group(tensor, group)
+
+
+class _GeneralProcessGroupUtil:
+    """Support both native ProcessGroup and torchft's custom process groups"""
+
+    @classmethod
+    def _is_native(cls, group: dist.ProcessGroup) -> bool:
+        return not hasattr(group, "_replica_id")
+
+    @classmethod
+    def _all_reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        if cls._is_native(group):
+            dist.all_reduce(tensor, op=op, group=group)
+        else:
+            group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
+
+    @classmethod
+    def _reduce_on_group(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        TODO
+        group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
+
+    @classmethod
+    def _broadcast_on_group(cls, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+        TODO
+        group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
+
+
