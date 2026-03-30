@@ -448,8 +448,7 @@ class RolloutManager:
         if self.args.delay_split_train_data_by_dp:
             data = Box(ray.put(data))
         else:
-            data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"],
-                                          dynamic_global_batch_size=getattr(self, "_dynamic_global_batch_size", None))
+            data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"])
             data = [Box(ray.put(x)) for x in data]
 
         return data

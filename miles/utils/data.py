@@ -274,7 +274,7 @@ def get_minimum_num_micro_batch_size(total_lengths, max_tokens_per_gpu):
 def process_rollout_data(args, rollout_data_ref, dp_rank, dp_size):
     if args.delay_split_train_data_by_dp:
         raw = ray.get(rollout_data_ref).inner
-        raw = split_train_data_by_dp(args, raw, dp_size=dp_size, dynamic_global_batch_size=TODO)
+        raw = split_train_data_by_dp(args, raw, dp_size=dp_size)
         rollout_data = raw[dp_rank]
     else:
         assert len(rollout_data_ref) == dp_size

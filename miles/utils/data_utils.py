@@ -3,7 +3,7 @@ from typing import Optional
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 
 
-def split_train_data_by_dp(args, data, *, dp_size: int, dynamic_global_batch_size: Optional[int]):
+def split_train_data_by_dp(args, data, *, dp_size: int):
     """Split the train data by data parallel size."""
     rollout_data = {}
 
@@ -50,8 +50,5 @@ def split_train_data_by_dp(args, data, *, dp_size: int, dynamic_global_batch_siz
             if key not in data:
                 continue
             rollout_data[key] = data[key]
-        # Pass dynamic global_batch_size to training side
-        if (x := dynamic_global_batch_size) is not None:
-            rollout_data["dynamic_global_batch_size"] = x
         ans.append(rollout_data)
     return ans
