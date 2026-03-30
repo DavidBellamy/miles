@@ -10,6 +10,8 @@ from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
 
+from .parallel import create_megatron_parallel_state
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,8 +65,6 @@ def init(args):
 
     # Pytorch distributed.
     _initialize_distributed(args)
-
-    from .parallel import create_megatron_parallel_state
 
     set_parallel_state(create_megatron_parallel_state())
 
