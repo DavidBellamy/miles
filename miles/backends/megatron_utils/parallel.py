@@ -78,7 +78,7 @@ def create_indep_dp_group(
             replica_id=str(cell_id),
             rank=cell_id,
             world_size=num_cells,
-            indep_dp_quorum_id=indep_dp_quorum_id,
+            quorum_id=indep_dp_quorum_id,
             group_rank=megatron_rank,
             group_world_size=megatron_world_size,
         )
@@ -92,6 +92,33 @@ def create_indep_dp_group(
         f"indep_dp_quorum_id={indep_dp_quorum_id}"
     )
     return GroupInfo(rank=cell_id, size=num_cells, group=nccl_pg, gloo_group=gloo_pg)
+
+
+def reconfigure_indep_dp_group(
+    parallel_state: ParallelState,
+    store_addr: str | None,
+    cell_id: int,
+    num_cells: int,
+    megatron_rank: int,
+    megatron_world_size: int,
+    indep_dp_quorum_id: int,
+) -> None:
+    """Shutdown old indep_dp PGs and create new ones with a fresh quorum_id."""
+    old = parallel_state.indep_dp
+    if old.group is not None:
+        old.group.shutdown()
+    if old.gloo_group is not None:
+        old.gloo_group.shutdown()
+
+    parallel_state.indep_dp = create_indep_dp_group(
+        store_addr=store_addr,
+        cell_id=cell_id,
+        num_cells=num_cells,
+        megatron_rank=megatron_rank,
+        megatron_world_size=megatron_world_size,
+        indep_dp_quorum_id=indep_dp_quorum_id,
+    )
+    logger.info(f"Reconfigured indep_dp PG with indep_dp_quorum_id={indep_dp_quorum_id}")
 
 
 def verify_megatron_parallel_state(

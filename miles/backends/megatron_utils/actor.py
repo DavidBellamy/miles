@@ -36,7 +36,7 @@ from .checkpoint_transfer import recv_ckpt, send_ckpt as _send_ckpt
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
-from .parallel import create_indep_dp_group, verify_megatron_parallel_state
+from .parallel import reconfigure_indep_dp_group, verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed import UpdateWeightFromDistributed
@@ -630,18 +630,8 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def reconfigure_indep_dp(self, indep_dp_quorum_id: int) -> None:
-        """Reconfigure the indep_dp process group with a new indep_dp_quorum_id.
-
-        Called on healthy cells after a stop/start cycle to establish
-        new PG connections with the restarted cell.
-        """
-        old_indep_dp = self.parallel_state.indep_dp
-        if old_indep_dp.group is not None:
-            old_indep_dp.group.shutdown()
-        if old_indep_dp.gloo_group is not None:
-            old_indep_dp.gloo_group.shutdown()
-
-        indep_dp = create_indep_dp_group(
+        reconfigure_indep_dp_group(
+            parallel_state=self.parallel_state,
             store_addr=self._indep_dp_store_addr,
             cell_id=self._cell_id,
             num_cells=self._num_cells,
@@ -649,8 +639,6 @@ class MegatronTrainRayActor(TrainRayActor):
             megatron_world_size=dist.get_world_size(),
             indep_dp_quorum_id=indep_dp_quorum_id,
         )
-        self.parallel_state.indep_dp = indep_dp
-        logger.info(f"Reconfigured indep_dp PG with indep_dp_quorum_id={indep_dp_quorum_id}")
 
     def reconfigure_indep_dp_and_send_ckpt(self, indep_dp_quorum_id: int, dst_cell_id: int) -> None:
         """Reconfigure indep_dp PG and then send checkpoint to a recovering cell.
