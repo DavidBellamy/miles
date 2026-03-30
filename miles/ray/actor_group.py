@@ -48,11 +48,11 @@ class RayTrainGroup:
             f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
         )
 
-        self._independent_dp_store = None
-        independent_dp_store_addr = ""
         if num_cells > 1:
             self._independent_dp_store, independent_dp_store_addr = _create_tcp_store()
             logger.info(f"Created TCPStore for independent DP at {independent_dp_store_addr}")
+        else:
+            self._independent_dp_store, independent_dp_store_addr = None, None
 
         self._cells: list[RayTrainCell] = []
         for cell_id in range(num_cells):
