@@ -154,6 +154,14 @@ class MegatronTrainRayActor(TrainRayActor):
             is_lora=is_lora_enabled(args),
         )
 
+        self._independent_dp_pg = _create_independent_dp_pg(
+            store_addr=self._independent_dp_store_addr,
+            cell_id=self._cell_id,
+            num_cells=self._num_cells,
+            megatron_rank=self._rank,
+            megatron_world_size=self._world_size,
+        )
+
         # empty cache after initialization
         clear_memory()
 
@@ -590,3 +598,35 @@ class MegatronTrainRayActor(TrainRayActor):
             rank=0 if self.role == "actor" else 1,
             group_name=group_name,
         )
+
+
+def _create_independent_dp_pg(
+    store_addr: str | None,
+    cell_id: int,
+    num_cells: int,
+    megatron_rank: int,
+    megatron_world_size: int,
+) -> "ProcessGroupNCCL | None":
+    if num_cells <= 1:
+        return None
+
+    from datetime import timedelta
+
+    from torchft.process_group import ProcessGroupNCCL
+
+    pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
+    prefixed_store_addr = f"{store_addr}/independent_dp/0/{megatron_rank}"
+    pg.configure(
+        store_addr=prefixed_store_addr,
+        replica_id=str(cell_id),
+        rank=cell_id,
+        world_size=num_cells,
+        quorum_id=0,
+        group_rank=megatron_rank,
+        group_world_size=megatron_world_size,
+    )
+    logger.info(
+        f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
+        f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
+    )
+    return pg
