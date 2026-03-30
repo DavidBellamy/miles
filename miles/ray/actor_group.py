@@ -165,38 +165,11 @@ class RayTrainCell:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
             self._actor_handles.append(actor)
 
-    def async_init(self, args, role, with_ref=False):
-        """
-        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
-        """
-        return [actor.init.remote(args, role, with_ref=with_ref) for actor in self._actor_handles]
-
-    def async_train(self, rollout_id, rollout_data_ref):
-        """Do one rollout training"""
-        return [actor.train.remote(rollout_id, rollout_data_ref) for actor in self._actor_handles]
-
-    def save_model(self, rollout_id, force_sync=False):
-        """Save actor model"""
-        return ray.get([actor.save_model.remote(rollout_id, force_sync=force_sync) for actor in self._actor_handles])
-
-    def update_weights(self):
-        """Broadcast weights from rank 0 to all other ranks."""
-        return ray.get([actor.update_weights.remote() for actor in self._actor_handles])
-
-    def onload(self):
-        return ray.get([actor.wake_up.remote() for actor in self._actor_handles])
-
-    def offload(self):
-        return ray.get([actor.sleep.remote() for actor in self._actor_handles])
-
-    def clear_memory(self):
-        return ray.get([actor.clear_memory.remote() for actor in self._actor_handles])
+    def async_execute(self, fn_name, *args, **kwargs):
+        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
 
     def async_connect(self, critic_group):
         return [
             actor.connect_actor_critic.remote(critic)
             for actor, critic in zip(self._actor_handles, critic_group._actor_handles, strict=False)
         ]
-
-    def set_rollout_manager(self, rollout_manager):
-        return ray.get([actor.set_rollout_manager.remote(rollout_manager) for actor in self._actor_handles])
