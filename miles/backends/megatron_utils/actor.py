@@ -631,3 +631,31 @@ class MegatronTrainRayActor(TrainRayActor):
             rank=0 if self.role == "actor" else 1,
             group_name=group_name,
         )
+
+    def reconfigure_indep_dp(self, quorum_id: int) -> None:
+        """Reconfigure the indep_dp process group with a new quorum_id.
+
+        Called on healthy cells after a stop/start cycle to establish
+        new PG connections with the restarted cell.
+        """
+        from miles.backends.megatron_utils.parallel import _create_indep_dp_group
+
+        indep_dp = _create_indep_dp_group(
+            store_addr=self._indep_dp_store_addr,
+            cell_id=self._cell_id,
+            num_cells=self._num_cells,
+            megatron_rank=dist.get_rank(),
+            megatron_world_size=dist.get_world_size(),
+            quorum_id=quorum_id,
+        )
+        self.parallel_state = self.parallel_state.replace_indep_dp(indep_dp)
+        logger.info(f"Reconfigured indep_dp PG with quorum_id={quorum_id}")
+
+    def reconfigure_indep_dp_and_send_ckpt(self, quorum_id: int, dst_cell_id: int) -> None:
+        """Reconfigure indep_dp PG and then send checkpoint to a recovering cell.
+
+        Must be called in parallel with the recovering cell's init(recv_ckpt_src_rank=...),
+        since NCCL send/recv are blocking and must pair up.
+        """
+        self.reconfigure_indep_dp(quorum_id)
+        self.send_ckpt(dst_rank=dst_cell_id)

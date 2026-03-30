@@ -75,13 +75,20 @@ class RayTrainGroup:
                 )
             )
 
+    def _assert_all_running(self) -> None:
+        for cell in self._cells:
+            assert cell.is_running, f"Cell {cell.cell_id} is stopped, all cells must be running"
+
     def _execute(self, fn_name, *args, **kwargs):
+        self._assert_all_running()
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
     def _execute_first_cell(self, fn_name, *args, **kwargs):
+        self._assert_all_running()
         return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
 
     def _async_execute(self, fn_name, *args, **kwargs):
+        self._assert_all_running()
         return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     def async_init(self, args, role: str, with_ref: bool = False):
@@ -113,6 +120,7 @@ class RayTrainGroup:
         self._execute("clear_memory")
 
     def connect(self, critic_group: "RayTrainGroup"):
+        self._assert_all_running()
         assert len(self._cells) == len(critic_group._cells), (
             f"Actor and critic must have the same number of cells: "
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
@@ -127,6 +135,65 @@ class RayTrainGroup:
 
     def set_rollout_manager(self, rollout_manager):
         self._execute("set_rollout_manager", rollout_manager)
+
+    def stop(self, cell_id: int) -> None:
+        """Stop a cell by killing all its actors."""
+        cell = self._cells[cell_id]
+        assert cell.is_running, f"Cell {cell_id} is already stopped"
+        cell.stop()
+        logger.info(f"Stopped cell {cell_id}")
+
+    def start(self, cell_id: int, role: str, with_ref: bool = False) -> None:
+        """Restart a stopped cell, recovering checkpoint from a healthy cell.
+
+        The flow:
+        1. Recreate actors for the stopped cell
+        2. Increment quorum_id for fresh indep_dp PG
+        3. In parallel:
+           - New cell: init(recv_ckpt_src_rank=src_cell_id, quorum_id=new)
+           - Src cell: reconfigure_indep_dp(quorum_id=new) then send_ckpt(dst)
+           - Other cells: reconfigure_indep_dp(quorum_id=new)
+        """
+        target_cell = self._cells[cell_id]
+        assert not target_cell.is_running, f"Cell {cell_id} is already running"
+
+        src_cell_id = self._pick_healthy_cell(exclude=cell_id)
+        target_cell.recreate_actors()
+
+        self._quorum_id += 1
+        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, quorum_id={self._quorum_id}")
+
+        futures = []
+
+        # Step 3a: New cell init (will recv ckpt from src_cell during init)
+        futures.extend(
+            target_cell.async_execute(
+                "init",
+                self.args,
+                role,
+                with_ref=with_ref,
+                recv_ckpt_src_rank=src_cell_id,
+                quorum_id=self._quorum_id,
+            )
+        )
+
+        # Step 3b: Src cell reconfigure + send ckpt (must be parallel with 3a)
+        src_cell = self._cells[src_cell_id]
+        futures.extend(src_cell.async_execute("reconfigure_indep_dp_and_send_ckpt", self._quorum_id, cell_id))
+
+        # Step 3c: Other healthy cells just reconfigure
+        for cell in self._cells:
+            if cell.cell_id != cell_id and cell.cell_id != src_cell_id and cell.is_running:
+                futures.extend(cell.async_execute("reconfigure_indep_dp", self._quorum_id))
+
+        ray.get(futures)
+        logger.info(f"Cell {cell_id} started successfully")
+
+    def _pick_healthy_cell(self, exclude: int) -> int:
+        for cell in self._cells:
+            if cell.cell_id != exclude and cell.is_running:
+                return cell.cell_id
+        raise RuntimeError(f"No healthy cell available (excluding cell {exclude})")
 
 
 class RayTrainCell:
@@ -147,18 +214,36 @@ class RayTrainCell:
         self.num_cells = num_cells
         self.role = role
 
-        self._actor_handles = self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, indep_dp_store_addr)
+        self._gpus_per_cell = gpus_per_cell
+        self._pg = pg
+        self._num_gpus_per_actor = num_gpus_per_actor
+        self._indep_dp_store_addr = indep_dp_store_addr
 
-    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, indep_dp_store_addr: str):
-        world_size = gpus_per_cell
+        self._actor_handles: list | None = self._create_actors()
 
-        # Use placement group to lock resources for models of same type
-        assert pg is not None
-        pg, reordered_bundle_indices, _reordered_gpu_ids = pg
+    @property
+    def is_running(self) -> bool:
+        return self._actor_handles is not None
+
+    def stop(self) -> None:
+        assert self._actor_handles is not None
+        for actor in self._actor_handles:
+            ray.kill(actor)
+        self._actor_handles = None
+        logger.info(f"Killed all actors in cell {self.cell_id}")
+
+    def recreate_actors(self) -> None:
+        assert self._actor_handles is None, "Cannot recreate actors while cell is running"
+        self._actor_handles = self._create_actors()
+        logger.info(f"Recreated actors for cell {self.cell_id}")
+
+    def _create_actors(self) -> list:
+        world_size = self._gpus_per_cell
+
+        assert self._pg is not None
+        pg, reordered_bundle_indices, _reordered_gpu_ids = self._pg
 
         env_vars = {
-            # because sglang will always set NCCL_CUMEM_ENABLE to 0
-            # we need also set it to 0 to prevent nccl error.
             "NCCL_CUMEM_ENABLE": os.environ.get("NCCL_CUMEM_ENABLE", "0"),
             "NVTE_FP8_BLOCK_SCALING_FP32_SCALES": "1",
             **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
@@ -194,13 +279,12 @@ class RayTrainCell:
 
         TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
 
-        # Create worker actors
         actor_handles = []
         master_addr, master_port = None, None
         for rank in range(world_size):
             actor = TrainRayActor.options(
-                num_cpus=num_gpus_per_actor,
-                num_gpus=num_gpus_per_actor,
+                num_cpus=self._num_gpus_per_actor,
+                num_gpus=self._num_gpus_per_actor,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg,
                     placement_group_bundle_index=reordered_bundle_indices[rank],
@@ -212,7 +296,7 @@ class RayTrainCell:
                 master_port,
                 cell_id=self.cell_id,
                 num_cells=self.num_cells,
-                indep_dp_store_addr=indep_dp_store_addr,
+                indep_dp_store_addr=self._indep_dp_store_addr,
             )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
@@ -221,6 +305,7 @@ class RayTrainCell:
         return actor_handles
 
     def async_execute(self, fn_name, *args, **kwargs):
+        assert self._actor_handles is not None, f"Cell {self.cell_id} is stopped"
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
 
     def async_connect(self, critic_group):

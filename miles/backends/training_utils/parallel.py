@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum, auto
 
 
@@ -56,3 +56,8 @@ class ParallelState:
             _DPMode.INTRA: GroupsInfo.from_single(self.intra_dp_cp),
             _DPMode.INDEP: GroupsInfo.from_pair(inner=self.intra_dp_cp, outer=self.indep_dp),
         }[self._dp_mode]
+
+    def replace_indep_dp(self, indep_dp: GroupInfo) -> "ParallelState":
+        new_state = replace(self, indep_dp=indep_dp)
+        set_parallel_state(new_state)
+        return new_state
