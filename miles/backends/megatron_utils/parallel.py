@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_model_config
