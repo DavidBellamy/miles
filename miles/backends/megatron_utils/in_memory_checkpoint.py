@@ -44,7 +44,7 @@ class InMemoryCheckpointManager:
         assert self._state_dict is not None
         ans = self._state_dict
         self._state_dict = None
-        return ans, f"<in-memory-iter-{self.latest_iteration}>"
+        return ans, f"in-memory-ckpt-iter-{self.latest_iteration}"
 
 
 def _assert_args_for_in_memory_checkpoint(args: object) -> None:
