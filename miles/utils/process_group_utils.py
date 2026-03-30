@@ -88,6 +88,29 @@ class GeneralPGUtil:
             group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
 
     @classmethod
+    def all_gather(
+        cls, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
+    ) -> None:
+        if cls.is_native(group):
+            dist.all_gather(output_tensors, input_tensor, group=group)
+        else:
+            group.allgather([output_tensors], [[input_tensor]]).wait()
+
+    @classmethod
+    def gather(
+        cls,
+        input_tensor: torch.Tensor,
+        gather_list: list[torch.Tensor] | None,
+        dst: int,
+        group: dist.ProcessGroup,
+    ) -> None:
+        if cls.is_native(group):
+            dist.gather(input_tensor, gather_list=gather_list, dst=dst, group=group)
+        else:
+            output = [gather_list] if gather_list is not None else []
+            group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+
+    @classmethod
     def gather_object(
         cls,
         obj: Any,
@@ -156,12 +179,11 @@ def _gather_object_non_native(
     with the following modifications:
     - Replaced dist.get_rank()/get_world_size() with GeneralPGUtil (torchft PG
       returns wrong values from the C++ base class)
-    - Replaced dist.all_gather()/dist.gather() with direct group.allgather()/
-      group.gather() calls
-    - Removed _rank_not_in_group check, _get_object_coll_device (use cpu),
-      _validate_output_list_for_rank (inline assert), group_dst parameter
-    - Simplified _object_to_tensor/_tensor_to_object calls (no group param
-      needed since we always use cpu device)
+    - Replaced dist.all_gather()/dist.gather() with GeneralPGUtil.all_gather()/
+      GeneralPGUtil.gather()
+    - Removed _rank_not_in_group check, group_dst parameter
+    - Hardcoded cpu device (was: _get_object_coll_device)
+    - Inlined _validate_output_list_for_rank as simple assert
     """
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
 
@@ -182,7 +204,7 @@ def _gather_object_non_native(
     # Allgather tensor sizes. An all-gather is needed here despite this being a
     # gather, since each rank needs to broadcast a tensor of the same (maximal)
     # size.
-    group.allgather([object_size_list], [[local_size]]).wait()  # was: all_gather(..., group=group)
+    GeneralPGUtil.all_gather(object_size_list, local_size, group=group)  # was: all_gather(..., group=group)
     max_object_size = int(max(object_size_list).item())
     # Resize tensor to max size across all ranks.
     input_tensor.resize_(max_object_size)
@@ -195,10 +217,12 @@ def _gather_object_non_native(
         ]
     # All ranks call gather with equal-sized tensors.
     # was: gather(input_tensor, gather_list=..., group_dst=dst, group=group)
-    if my_group_rank == dst:
-        group.gather([output_tensors], [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
-    else:
-        group.gather([], [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+    GeneralPGUtil.gather(
+        input_tensor,
+        gather_list=output_tensors if my_group_rank == dst else None,
+        dst=dst,
+        group=group,
+    )
 
     if my_group_rank != dst:
         return

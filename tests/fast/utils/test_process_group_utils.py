@@ -3,6 +3,8 @@
 import os
 from typing import Any
 
+import pytest
+
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -99,12 +101,8 @@ def _worker_general_pg_util(rank: int, world_size: int) -> None:
 
         # Step 3: GroupInfo verification fails with wrong rank
         wrong_rank = (rank + 1) % world_size
-        raised = False
-        try:
+        with pytest.raises(AssertionError):
             GroupInfo(rank=wrong_rank, size=world_size, group=group)
-        except AssertionError:
-            raised = True
-        assert raised, "Should have raised AssertionError"
 
         # Step 4: all_reduce SUM
         tensor = torch.tensor([float(rank + 1)])
