@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Sequence
+from typing import Any
 
 import torch
 
@@ -42,7 +43,7 @@ class InMemoryCheckpointManager:
         return ans, f"in-memory-ckpt-iter-{self.latest_iteration}"
 
 
-def _assert_args_for_in_memory_checkpoint(args: object) -> None:
+def _assert_args_for_in_memory_checkpoint(args: Any) -> None:
     assert args.non_persistent_ckpt_type == 'local', (
         f"Expected non_persistent_ckpt_type='local', "
         f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
@@ -53,13 +54,13 @@ def _assert_args_for_in_memory_checkpoint(args: object) -> None:
 
 
 def save_to_memory(
+    args,
     iteration: int,
     model: Sequence,
     optimizer: object,
     opt_param_scheduler: object,
 ) -> object:
     """Save checkpoint to in-memory manager via Megatron's save_checkpoint."""
-    args = get_args()
     _assert_args_for_in_memory_checkpoint(args)
 
     manager = InMemoryCheckpointManager()
