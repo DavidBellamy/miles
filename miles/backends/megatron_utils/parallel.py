@@ -105,10 +105,9 @@ def reconfigure_indep_dp_group(
 ) -> None:
     """Shutdown old indep_dp PGs and create new ones with a fresh quorum_id."""
     old = parallel_state.indep_dp
-    if old.group is not None:
-        old.group.shutdown()
-    if old.gloo_group is not None:
-        old.gloo_group.shutdown()
+    for g in [old.group, old.gloo_group]:
+        if g is not None:
+            g.shutdown()
 
     parallel_state.indep_dp = create_indep_dp_group(
         store_addr=store_addr,
