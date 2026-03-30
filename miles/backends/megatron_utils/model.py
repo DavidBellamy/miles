@@ -502,7 +502,11 @@ def train_one_step(
 
 
 def _allreduce_grads_across_replicas(args, model: Sequence[DDP], parallel_state: ParallelState) -> None:
-    assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported yet"
+    assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
+    assert parallel_state.intra_dp.size == 1, (
+        f"indep_dp requires intra_dp.size == 1, got {parallel_state.intra_dp.size}. "
+        "Simultaneous intra and indep DP is not supported."
+    )
 
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)

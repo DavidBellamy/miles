@@ -91,12 +91,20 @@ class RayTrainGroup:
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
-        """Save actor model."""
-        self._execute("save_model", rollout_id, force_sync=force_sync)
+        """Save actor model.
+
+        In indep_dp mode, all cells have identical weights, so only cell 0
+        saves to avoid file write conflicts.
+        """
+        ray.get(self._cells[0].async_execute("save_model", rollout_id, force_sync=force_sync))
 
     def update_weights(self):
-        """Broadcast weights from rank 0 to all other ranks."""
-        self._execute("update_weights")
+        """Broadcast weights from rank 0 to all other ranks.
+
+        In indep_dp mode, all cells have identical weights after gradient
+        allreduce, so only cell 0 pushes to rollout engines.
+        """
+        ray.get(self._cells[0].async_execute("update_weights"))
 
     def onload(self):
         self._execute("wake_up")
@@ -108,6 +116,10 @@ class RayTrainGroup:
         self._execute("clear_memory")
 
     def connect(self, critic_group: "RayTrainGroup"):
+        assert len(self._cells) == len(critic_group._cells), (
+            f"Actor and critic must have the same number of cells: "
+            f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
+        )
         ray.get(
             [
                 future
