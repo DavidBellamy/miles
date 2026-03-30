@@ -97,9 +97,23 @@ logger = logging.getLogger(__name__)
 __all__ = ["save_checkpoint", "save_checkpoint_with_lora", "load_checkpoint"]
 
 
-def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_context, skip_load_to_model_and_opt):
+def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_context, skip_load_to_model_and_opt, *, in_memory: bool = False):
     # ref: how megatron `load_checkpoint` gets directory
     args = get_args()
+
+    if in_memory:
+        from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
+
+        _assert_args_for_in_memory_checkpoint(args)
+        assert 'local_checkpoint_manager' in checkpointing_context
+        return _load_checkpoint_megatron(
+            ddp_model=ddp_model,
+            optimizer=optimizer,
+            opt_param_scheduler=opt_param_scheduler,
+            checkpointing_context=checkpointing_context,
+            skip_load_to_model_and_opt=skip_load_to_model_and_opt,
+        )
+
     load_path = args.load
 
     assert Path(load_path).exists() and _is_dir_nonempty(
