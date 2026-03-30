@@ -104,11 +104,12 @@ class RayTrainGroup:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
             self._actor_handles.append(actor)
 
-    def async_init(self, role, with_ref=False):
+    def async_init(self, args, role, with_ref=False):
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        return [actor.init.remote(self.args, role, with_ref=with_ref) for actor in self._actor_handles]
+        assert args is self.args
+        return [actor.init.remote(args, role, with_ref=with_ref) for actor in self._actor_handles]
 
     def async_train(self, rollout_id, rollout_data_ref):
         """Do one rollout training"""
