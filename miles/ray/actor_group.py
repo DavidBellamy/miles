@@ -6,6 +6,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
+from miles.utils.megatron_args_utils import compute_megatron_dp_size
 
 
 class RayTrainGroup:
@@ -45,7 +46,7 @@ class RayTrainGroup:
             num_gpus_per_actor=num_gpus_per_actor,
             role=role,
         )
-        num_cells = compute_megatron_dp_size() if args.independent_dp else 1
+        num_cells = compute_megatron_dp_size(args) if args.independent_dp else 1
         self._cells = [self._create_cell(cell_id=cell_id) for cell_id in range(num_cells)]
 
     def _create_cell(self, cell_id: int) -> "RayTrainCell":
