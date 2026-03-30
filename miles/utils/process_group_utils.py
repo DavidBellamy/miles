@@ -176,6 +176,7 @@ def _gather_object_non_native(
     """gather_object for non-native (e.g. torchft) process groups.
 
     Copied from torch.distributed.distributed_c10d.gather_object (PyTorch v2.11.0)
+    (source code: https://github.com/pytorch/pytorch/blob/v2.11.0/torch/distributed/distributed_c10d.py)
     with the following modifications:
     - Replaced dist.get_rank()/get_world_size() with GeneralPGUtil (torchft PG
       returns wrong values from the C++ base class)
