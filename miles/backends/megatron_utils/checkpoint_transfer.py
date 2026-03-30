@@ -84,7 +84,7 @@ def recv_ckpt(
     logger.info(f"Received checkpoint (iteration={iteration}) from cell {src_rank}")
 
     manager = InMemoryCheckpointManager()
-    manager.save(state_dict, iteration=iteration, skip_barrier=True)
+    manager.save(state_dict, iteration=iteration)
     return manager
 
 
