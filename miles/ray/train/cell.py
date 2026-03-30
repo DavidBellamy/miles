@@ -71,10 +71,21 @@ class RayTrainCell:
         self._state = _StateStopped()
         logger.info(f"Killed all actors in cell {self.cell_id}")
 
+    def mark_pending(self) -> None:
+        assert isinstance(self._state, _StateStopped), (
+            f"Cannot mark pending for cell {self.cell_id} (state={self._state.type})"
+        )
+        self._state = _StatePending()
+        logger.info(f"Cell {self.cell_id} marked as pending")
+
+    @property
+    def is_pending(self) -> bool:
+        return isinstance(self._state, _StatePending)
+
     def recreate_actors(self) -> None:
-        assert isinstance(
-            self._state, _StateStopped
-        ), f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
+        assert isinstance(self._state, _StatePending), (
+            f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
+        )
         actor_handles = self._create_actors()
         self._state = _StateRunning(actor_handles=actor_handles)
         logger.info(f"Recreated actors for cell {self.cell_id}")

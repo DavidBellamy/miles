@@ -59,9 +59,18 @@ class RayTrainGroup:
                 )
             )
 
+    def _assert_all_running_or_pending(self) -> None:
+        for cell in self._cells:
+            assert cell.is_running or cell.is_pending, (
+                f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
+            )
+
     def _assert_all_running(self) -> None:
         for cell in self._cells:
-            assert cell.is_running, f"Cell {cell.cell_id} is stopped, all cells must be running"
+            assert cell.is_running, f"Cell {cell.cell_id} is not running (state={cell._state.type})"
+
+    def _has_pending_cells(self) -> bool:
+        return any(cell.is_pending for cell in self._cells)
 
     def _refs_all_cells(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
         self._assert_all_running()
@@ -75,9 +84,13 @@ class RayTrainGroup:
 
     def async_init(self, args, role: str, with_ref: bool = False) -> list[ray.ObjectRef]:
         assert args is self.args
+        self._init_with_ref = with_ref
         return self._refs_all_cells("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
 
     def async_train(self, rollout_id: int, rollout_data_ref) -> list[ray.ObjectRef]:
+        self._assert_all_running_or_pending()
+        if self._has_pending_cells():
+            asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
         return self._refs_all_cells("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
@@ -118,58 +131,60 @@ class RayTrainGroup:
         cell.stop()
         logger.info(f"Stopped cell {cell_id}")
 
-    def start(self, cell_id: int, role: str, with_ref: bool = False) -> None:
-        coro = self._start_async(cell_id, role, with_ref)
-        asyncio.get_event_loop().run_until_complete(coro)
+    def start(self, cell_id: int) -> None:
+        """Mark a stopped cell as pending. Actual startup happens in async_train()."""
+        cell = self._cells[cell_id]
+        cell.mark_pending()
 
-    async def _start_async(self, cell_id: int, role: str, with_ref: bool) -> None:
-        """Restart a stopped cell, recovering checkpoint from a healthy cell.
+    async def _materialize_pending_cells(self) -> None:
+        """Materialize all pending cells: recreate actors, reconfigure PGs, transfer ckpt.
 
         Flow:
-        1. Recreate actors for the stopped cell
-        2. All healthy cells reconfigure indep_dp PG (new quorum_id)
-        3. In parallel:
+        1. Recreate actors for each pending cell
+        2. All running cells reconfigure indep_dp PG (new quorum_id)
+        3. In parallel per pending cell:
            - Src cell sends ckpt
-           - New cell init (blocks on recv until send arrives)
-        4. Wait for everything to complete
+           - Pending cell init (blocks on recv until send arrives)
         """
-        target_cell = self._cells[cell_id]
-        assert not target_cell.is_running, f"Cell {cell_id} is already running"
+        pending_cells = [cell for cell in self._cells if cell.is_pending]
+        assert pending_cells, "No pending cells to materialize"
 
-        src_cell_id = self._pick_healthy_cell(exclude=cell_id)
-        target_cell.recreate_actors()
+        for cell in pending_cells:
+            cell.recreate_actors()
 
         self._indep_dp_quorum_id += 1
         qid = self._indep_dp_quorum_id
-        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, indep_dp_quorum_id={qid}")
 
-        # Step 2: All healthy cells reconfigure indep_dp PG (must complete before send/recv)
+        running_cells = [cell for cell in self._cells if cell.is_running]
+        assert running_cells, "No running cells to serve as checkpoint source"
+
+        logger.info(
+            f"Materializing pending cells {[c.cell_id for c in pending_cells]}, "
+            f"indep_dp_quorum_id={qid}"
+        )
+
+        # Step 2: All previously-running cells reconfigure indep_dp PG
         reconfigure_refs = []
-        for cell in self._cells:
-            if cell.cell_id != cell_id and cell.is_running:
-                reconfigure_refs.extend(cell.refs("reconfigure_indep_dp", qid))
+        for cell in running_cells:
+            reconfigure_refs.extend(cell.refs("reconfigure_indep_dp", qid))
         await asyncio.gather(*reconfigure_refs)
 
-        # Step 3: Send + recv in parallel
-        src_cell = self._cells[src_cell_id]
-        send_refs = src_cell.refs("send_ckpt", cell_id)
-        init_refs = target_cell.refs(
-            "init",
-            self.args,
-            role,
-            with_ref=with_ref,
-            recv_ckpt_src_rank=src_cell_id,
-            indep_dp_quorum_id=qid,
-        )
-        await asyncio.gather(*send_refs, *init_refs)
+        # Step 3: For each pending cell, send ckpt from a running cell + init with recv
+        transfer_refs: list[ray.ObjectRef] = []
+        for cell in pending_cells:
+            src_cell = running_cells[0]
+            transfer_refs.extend(src_cell.refs("send_ckpt", cell.cell_id))
+            transfer_refs.extend(cell.refs(
+                "init",
+                self.args,
+                cell.role,
+                with_ref=self._init_with_ref,
+                recv_ckpt_src_rank=src_cell.cell_id,
+                indep_dp_quorum_id=qid,
+            ))
+        await asyncio.gather(*transfer_refs)
 
-        logger.info(f"Cell {cell_id} started successfully")
-
-    def _pick_healthy_cell(self, exclude: int) -> int:
-        for cell in self._cells:
-            if cell.cell_id != exclude and cell.is_running:
-                return cell.cell_id
-        raise RuntimeError(f"No healthy cell available (excluding cell {exclude})")
+        logger.info(f"All pending cells materialized successfully")
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
