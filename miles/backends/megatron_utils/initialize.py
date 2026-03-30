@@ -63,7 +63,7 @@ def init(
     cell_id: int,
     num_cells: int,
     indep_dp_store_addr: str | None,
-    quorum_id: int = 0,
+    quorum_id: int,
 ):
     set_args(args)
     if args.enable_experimental:

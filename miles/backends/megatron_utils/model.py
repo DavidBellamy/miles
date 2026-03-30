@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import gc
 import logging
@@ -6,6 +8,7 @@ from argparse import Namespace
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
@@ -42,6 +45,9 @@ from .initialize import is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
 from .model_provider import get_model_provider_func
 from .parallel import get_packed_seq_params
+
+if TYPE_CHECKING:
+    from .in_memory_checkpoint import InMemoryCheckpointManager
 
 logger = logging.getLogger(__name__)
 
@@ -811,13 +817,18 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
 
 
 def initialize_model_and_optimizer(
-    args: Namespace, role: str = "actor"
+    args: Namespace,
+    role: str = "actor",
+    in_memory_ckpt_manager: "InMemoryCheckpointManager | None" = None,
 ) -> tuple[list[DDP], MegatronOptimizer, OptimizerParamScheduler, int]:
     """Initialize model(s), optimizer, scheduler, and load from checkpoint.
 
     Args:
         args (Namespace): Runtime arguments.
         role (str): Logical role of the model (e.g., "actor", "critic").
+        in_memory_ckpt_manager: If provided, load checkpoint from this in-memory
+            manager instead of from disk. Used during stop/start recovery when
+            receiving checkpoint from a healthy cell.
 
     Returns:
         tuple[list[DDP], MegatronOptimizer, OptimizerParamScheduler, int]:
@@ -834,13 +845,26 @@ def initialize_model_and_optimizer(
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(args, role)
     model[0].role = role
     clear_memory()
-    iteration, _ = load_checkpoint(
-        model,
-        optimizer,
-        opt_param_scheduler,
-        checkpointing_context={'local_checkpoint_manager': TODO} if TODO else {},
-        skip_load_to_model_and_opt=False,
-    )
+
+    if in_memory_ckpt_manager is not None:
+        checkpointing_context = {'local_checkpoint_manager': in_memory_ckpt_manager}
+        iteration, _ = load_checkpoint(
+            model,
+            optimizer,
+            opt_param_scheduler,
+            checkpointing_context=checkpointing_context,
+            skip_load_to_model_and_opt=False,
+            in_memory=True,
+        )
+    else:
+        iteration, _ = load_checkpoint(
+            model,
+            optimizer,
+            opt_param_scheduler,
+            checkpointing_context={},
+            skip_load_to_model_and_opt=False,
+        )
+
     check_peak_gpu_memory_after_load(args)
     clear_memory()
 

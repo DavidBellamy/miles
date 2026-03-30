@@ -51,6 +51,8 @@ class RayTrainGroup:
         gpus_per_cell = total_gpus // num_cells
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
+        self._quorum_id = 0
+
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
             logger.info(f"Created TCPStore for independent DP at {indep_dp_store_addr}")
@@ -87,7 +89,7 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         assert args is self.args
-        return self._async_execute("init", args, role, with_ref=with_ref)
+        return self._async_execute("init", args, role, with_ref=with_ref, quorum_id=self._quorum_id)
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""

@@ -64,7 +64,7 @@ def _create_indep_dp_group(
     num_cells: int,
     megatron_rank: int,
     megatron_world_size: int,
-    quorum_id: int = 0,
+    quorum_id: int,
 ) -> GroupInfo:
     if num_cells <= 1:
         return GroupInfo(rank=0, size=1, group=None)
