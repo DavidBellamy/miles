@@ -47,16 +47,16 @@ class RayTrainGroup:
     ) -> None:
         self.args = args
 
-        num_cells = compute_megatron_dp_size(args) if args.independent_dp else 1
+        num_cells = compute_megatron_dp_size(args) if args.indep_dp else 1
         total_gpus = num_nodes * num_gpus_per_node
         gpus_per_cell = total_gpus // num_cells
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         if num_cells > 1:
-            self._independent_dp_store, independent_dp_store_addr = _create_tcp_store()
-            logger.info(f"Created TCPStore for independent DP at {independent_dp_store_addr}")
+            self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
+            logger.info(f"Created TCPStore for independent DP at {indep_dp_store_addr}")
         else:
-            self._independent_dp_store, independent_dp_store_addr = None, None
+            self._indep_dp_store, indep_dp_store_addr = None, None
 
         self._cells: list[RayTrainCell] = []
         for cell_id in range(num_cells):
@@ -70,7 +70,7 @@ class RayTrainGroup:
                     role=role,
                     cell_id=cell_id,
                     num_cells=num_cells,
-                    independent_dp_store_addr=independent_dp_store_addr,
+                    indep_dp_store_addr=indep_dp_store_addr,
                 )
             )
 
@@ -132,16 +132,16 @@ class RayTrainCell:
         role: str,
         cell_id: int,
         num_cells: int,
-        independent_dp_store_addr: str,
+        indep_dp_store_addr: str,
     ) -> None:
         self.args = args
         self.cell_id = cell_id
         self.num_cells = num_cells
         self.role = role
 
-        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, independent_dp_store_addr)
+        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, indep_dp_store_addr)
 
-    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, independent_dp_store_addr: str):
+    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, indep_dp_store_addr: str):
         world_size = gpus_per_cell
 
         # Use placement group to lock resources for models of same type
@@ -204,7 +204,7 @@ class RayTrainCell:
                 master_port,
                 cell_id=self.cell_id,
                 num_cells=self.num_cells,
-                independent_dp_store_addr=independent_dp_store_addr,
+                indep_dp_store_addr=indep_dp_store_addr,
             )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())

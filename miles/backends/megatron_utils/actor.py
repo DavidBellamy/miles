@@ -154,8 +154,8 @@ class MegatronTrainRayActor(TrainRayActor):
             is_lora=is_lora_enabled(args),
         )
 
-        self._independent_dp_pg = _create_independent_dp_pg(
-            store_addr=self._independent_dp_store_addr,
+        self._indep_dp_pg = _create_indep_dp_pg(
+            store_addr=self._indep_dp_store_addr,
             cell_id=self._cell_id,
             num_cells=self._num_cells,
             megatron_rank=self._rank,
@@ -600,7 +600,7 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
 
-def _create_independent_dp_pg(
+def _create_indep_dp_pg(
     store_addr: str | None,
     cell_id: int,
     num_cells: int,
@@ -616,7 +616,7 @@ def _create_independent_dp_pg(
 
     pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
     quorum_id = 0
-    prefixed_store_addr = f"{store_addr}/independent_dp/{quorum_id}/{megatron_rank}"
+    prefixed_store_addr = f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}"
     pg.configure(
         store_addr=prefixed_store_addr,
         replica_id=str(cell_id),
