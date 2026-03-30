@@ -27,11 +27,23 @@ def get_local_gpu_id():
 
 
 class TrainRayActor(RayActor):
-    def __init__(self, world_size, rank, master_addr, master_port):
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        master_addr,
+        master_port,
+        cell_id: int = 0,
+        num_cells: int = 1,
+        cross_replica_store_addr: str = "",
+    ):
         configure_logger()
 
         self._world_size = world_size
         self._rank = rank
+        self._cell_id = cell_id
+        self._num_cells = num_cells
+        self._cross_replica_store_addr = cross_replica_store_addr
         if master_addr:
             self.master_addr, self.master_port = master_addr, master_port
         else:

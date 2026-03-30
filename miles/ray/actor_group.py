@@ -1,3 +1,4 @@
+import logging
 import os
 
 import ray
@@ -6,6 +7,8 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.megatron_args_utils import compute_megatron_dp_size
+
+logger = logging.getLogger(__name__)
 
 
 class RayTrainGroup:
@@ -45,6 +48,12 @@ class RayTrainGroup:
             f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
         )
 
+        self._store = None
+        store_addr = ""
+        if num_cells > 1:
+            self._store, store_addr = _create_tcp_store()
+            logger.info(f"Created TCPStore for independent DP at {store_addr}")
+
         self._cells: list[RayTrainCell] = []
         for cell_id in range(num_cells):
             cell_pg = _slice_pg(pg, start=cell_id * gpus_per_cell, end=(cell_id + 1) * gpus_per_cell)
@@ -56,6 +65,7 @@ class RayTrainGroup:
                 role=role,
                 cell_id=cell_id,
                 num_cells=num_cells,
+                cross_replica_store_addr=store_addr,
             ))
 
     def _execute(self, fn_name, *args, **kwargs):
@@ -118,15 +128,16 @@ class RayTrainCell:
         role: str,
         cell_id: int,
         num_cells: int,
+        cross_replica_store_addr: str,
     ) -> None:
         self.args = args
         self.cell_id = cell_id
         self.num_cells = num_cells
         self.role = role
 
-        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor)
+        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, cross_replica_store_addr)
 
-    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor):
+    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, cross_replica_store_addr: str):
         world_size = gpus_per_cell
 
         # Use placement group to lock resources for models of same type
@@ -182,7 +193,11 @@ class RayTrainCell:
                     placement_group=pg,
                     placement_group_bundle_index=reordered_bundle_indices[rank],
                 ),
-            ).remote(world_size, rank, master_addr, master_port)
+            ).remote(
+                world_size, rank, master_addr, master_port,
+                cell_id=self.cell_id, num_cells=self.num_cells,
+                cross_replica_store_addr=cross_replica_store_addr,
+            )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
             self._actor_handles.append(actor)
@@ -203,3 +218,17 @@ PGTuple = tuple[PlacementGroup, list[int], list[int]]
 def _slice_pg(pg: PGTuple, start: int, end: int) -> PGTuple:
     placement_group, bundle_indices, gpu_ids = pg
     return (placement_group, bundle_indices[start:end], gpu_ids[start:end])
+
+
+def _create_tcp_store() -> tuple["torch.distributed.TCPStore", str]:
+    import torch.distributed
+
+    store = torch.distributed.TCPStore(
+        host_name="0.0.0.0",
+        port=0,
+        is_master=True,
+        wait_for_workers=False,
+    )
+    host = ray.util.get_node_ip_address()
+    port = store.port
+    return store, f"{host}:{port}"
