@@ -4,6 +4,8 @@ import random
 import numpy as np
 import torch
 from megatron.core import mpu, tensor_parallel
+
+from miles.backends.training_utils.parallel import get_parallel_state
 from megatron.core.config import set_experimental_flag
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.training.global_vars import _build_tokenizer, set_args
@@ -107,7 +109,7 @@ def init(args):
 # TODO shall we use a simpler method to determine which rank to init wandb?
 def is_megatron_main_rank():
     return (
-        mpu.get_data_parallel_rank(with_context_parallel=True) == 0
+        get_parallel_state().intra_dp_cp_rank == 0
         and mpu.get_tensor_model_parallel_rank() == 0
         and mpu.get_pipeline_model_parallel_rank() == mpu.get_pipeline_model_parallel_world_size() - 1
     )
