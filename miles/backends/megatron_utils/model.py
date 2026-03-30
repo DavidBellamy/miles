@@ -24,6 +24,7 @@ from megatron.training.training import get_model
 
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
+from miles.utils.process_group_utils import GeneralPGUtil
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
 from ..training_utils.data import DataIterator, get_batch
@@ -501,19 +502,13 @@ def train_one_step(
 
 
 def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
-    """AllReduce gradients across independent DP replicas via torchft PG.
-
-    Called after forward_backward_func (which completes intra-replica TP/PP/EP
-    grad sync) and before prepare_grads. Uses SUM because the loss function
-    already applies 1/global_batch_size scaling.
-    """
-    from miles.utils.process_group_utils import GeneralPGUtil
-
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)
     for model_chunk in model:
-        for buffer in model_chunk.buffers:
-            util.all_reduce(buffer.grad_data, pg, op=dist.ReduceOp.SUM)
+        # mimic: DistributedDataParallel.start_grad_sync
+        for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
+            for bucket in bucket_group.buckets:
+                util.all_reduce(bucket.grad_data, pg, op=dist.ReduceOp.SUM)
 
 
 def finalize_model_grads_with_empty_cache(*args, **kwargs):
