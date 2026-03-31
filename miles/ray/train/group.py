@@ -171,17 +171,26 @@ class RayTrainGroup:
             *[
                 (
                     cell.prepare_indep_dp_mode_initialized(
-                        indep_dp_quorum_id=self._indep_dp_quorum_id,
+                        indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
                         send_ckpt_dst_ranks=was_pending_ids if cell.cell_index == src_cell_index else [],
                     )
                     if cell.cell_index in was_running_ids
                     else cell.prepare_indep_dp_mode_healing(
-                        indep_dp_quorum_id=self._indep_dp_quorum_id,
+                        indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
                         recv_ckpt_src_rank=src_cell_index if cell.cell_index in was_pending_ids else None,
                     )
                 )
                 for cell in self._cells
             ]
+        )
+
+    def _compute_indep_dp_info(self, cell_index: int) -> IndepDPInfo:
+        return IndepDPInfo(
+            cell_index=cell_index,
+            num_cells=len(self._cells),
+            alive_rank=alive_mapping[cell_index],
+            alive_size=len(alive_mapping),
+            quorum_id=self._indep_dp_quorum_id,
         )
 
     def _assert_all_running(self) -> None:
