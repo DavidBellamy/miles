@@ -79,15 +79,7 @@ class RayTrainGroup:
                 )
             )
 
-    def _execute(self, fn_name, *args, **kwargs):
-        return ray.get(self._async_execute(fn_name, *args, **kwargs))
-
-    def _execute_first_cell(self, fn_name, *args, **kwargs):
-        return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
-
-    def _async_execute(self, fn_name, *args, **kwargs):
-        self._assert_all_running()
-        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+    # ------------------------ APIs ------------------------
 
     def async_init(self):
         """
@@ -143,6 +135,18 @@ class RayTrainGroup:
     def start(self, cell_id: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
         self._cells[cell_id].mark_as_pending()
+
+    # ------------------------ utils to forward calls to cells ------------------------
+
+    def _execute(self, fn_name, *args, **kwargs):
+        return ray.get(self._async_execute(fn_name, *args, **kwargs))
+
+    def _execute_first_cell(self, fn_name, *args, **kwargs):
+        return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
+
+    def _async_execute(self, fn_name, *args, **kwargs):
+        self._assert_all_running()
+        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     # ------------------------ internals for stop/start ------------------------
 
