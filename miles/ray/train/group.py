@@ -164,6 +164,7 @@ class RayTrainGroup:
         src_cell_id = running_cell_ids[0]
         await asyncio.gather(*[
             cell.cooperatively_prepare_indep_dp_world(
+                is_initialized=cell.cell_id in running_cell_ids,
                 indep_dp_quorum_id=self._indep_dp_quorum_id,
                 send_ckpt_dst_ranks=pending_cell_ids if cell.cell_id == src_cell_id else [],
             )

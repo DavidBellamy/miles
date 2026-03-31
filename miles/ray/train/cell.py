@@ -103,6 +103,7 @@ class RayTrainCell:
 
     async def cooperatively_prepare_indep_dp_world(
         self,
+        is_initialized: bool,
         indep_dp_quorum_id: int,
         send_ckpt_dst_ranks: list[int],
     ):
