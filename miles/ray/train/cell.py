@@ -57,7 +57,7 @@ class RayTrainCell:
         self._state: _CellState = _StatePending()
         self.allocate_for_pending()
 
-    # ------------------------ lifecycle management ------------------------
+    # ------------------------ state transition ------------------------
 
     def stop(self) -> None:
         def _core():
@@ -85,6 +85,19 @@ class RayTrainCell:
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
+    def _change_state(
+        self,
+        debug_name: str,
+        old_state_cls: type[_CellState] | tuple[type[_CellState], ...],
+        fn: Callable[[], _CellState],
+    ):
+        logger.info(f"{debug_name} start {self.cell_id=}")
+        assert isinstance(self._state, old_state_cls), f"{self.cell_id=} {self._state=}"
+        self._state = fn()
+        logger.info(f"{debug_name} end {self.cell_id=}")
+
+    # ------------------------ cooperatively prepare ------------------------
+
     async def cooperatively_prepare(self):
         assert self.is_running
 
@@ -96,17 +109,6 @@ class RayTrainCell:
 
         for dst_rank in send_ckpt_dst_ranks:
             await call_send_ckpt(dst_rank=dst_rank)
-
-    def _change_state(
-        self,
-        debug_name: str,
-        old_state_cls: type[_CellState] | tuple[type[_CellState], ...],
-        fn: Callable[[], _CellState],
-    ):
-        logger.info(f"{debug_name} start {self.cell_id=}")
-        assert isinstance(self._state, old_state_cls), f"{self.cell_id=} {self._state=}"
-        self._state = fn()
-        logger.info(f"{debug_name} end {self.cell_id=}")
 
     # ------------------------ actor creation ------------------------
 
