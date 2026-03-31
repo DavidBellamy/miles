@@ -11,13 +11,12 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from miles.ray.train.group import RayTrainGroup
+
 logger = logging.getLogger(__name__)
 
 
-def start_control_server(actor_model: object, rollout_manager: object, port: int) -> None:
-    from miles.ray.train.group import RayTrainGroup
-
-    assert isinstance(actor_model, RayTrainGroup)
+def start_control_server(actor_model: RayTrainGroup, rollout_manager: object, port: int) -> None:
     registry = _CellRegistry()
 
     for i in range(len(actor_model._cells)):
@@ -174,11 +173,8 @@ class _CellHandle(abc.ABC):
 
 
 class _ActorCellHandle(_CellHandle):
-    def __init__(self, *, group: object, cell_index: int) -> None:
-        from miles.ray.train.group import RayTrainGroup
-
-        assert isinstance(group, RayTrainGroup)
-        self._group: RayTrainGroup = group
+    def __init__(self, *, group: RayTrainGroup, cell_index: int) -> None:
+        self._group = group
         self._cell_index = cell_index
 
     @property
