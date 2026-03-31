@@ -4,7 +4,7 @@ from miles.ray.train.cell import RayTrainCell, _StatePending, _StateRunning, _St
 def _make_cell_with_state(state) -> RayTrainCell:
     """Create a RayTrainCell with a pre-set state, bypassing __init__."""
     cell = object.__new__(RayTrainCell)
-    cell.cell_id = 0
+    cell.cell_index = 0
     cell._state = state
     return cell
 

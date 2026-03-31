@@ -33,7 +33,7 @@ class TrainRayActor(RayActor):
         rank: int,
         master_addr,
         master_port,
-        cell_id: int,
+        cell_index: int,
         num_cells: int,
         indep_dp_store_addr: str,
     ):
@@ -41,7 +41,7 @@ class TrainRayActor(RayActor):
 
         self._world_size = world_size
         self._rank = rank
-        self._cell_id = cell_id
+        self._cell_index = cell_index
         self._num_cells = num_cells
         self._indep_dp_store_addr = indep_dp_store_addr
         if master_addr:

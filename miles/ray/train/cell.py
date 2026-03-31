@@ -41,13 +41,13 @@ class RayTrainCell:
         num_gpus_per_actor: float,
         role: str,
         with_ref: bool,
-        cell_id: int,
+        cell_index: int,
         num_cells: int,
         indep_dp_store_addr: str,
         rollout_manager: object | None,
     ) -> None:
         self.args = args
-        self.cell_id = cell_id
+        self.cell_index = cell_index
         self.num_cells = num_cells
         self.role = role
         self.with_ref = with_ref
@@ -67,7 +67,7 @@ class RayTrainCell:
 
     def stop(self) -> None:
         if self.is_stopped:
-            logger.info(f"stop: cell {self.cell_id} already stopped, skipping")
+            logger.info(f"stop: cell {self.cell_index} already stopped, skipping")
             return
 
         def _core():
@@ -82,7 +82,7 @@ class RayTrainCell:
 
     def mark_as_pending(self) -> None:
         if self.is_pending or self.is_running:
-            logger.info(f"mark_as_pending: cell {self.cell_id} already {type(self._state).__name__}, skipping")
+            logger.info(f"mark_as_pending: cell {self.cell_index} already {type(self._state).__name__}, skipping")
             return
 
         self._change_state("mark_as_pending", _StateStopped, _StatePending)
@@ -92,7 +92,7 @@ class RayTrainCell:
             actor_handles = self._allocate_gpus_for_actor(
                 **self._creation_kwargs,
                 args=self.args,
-                cell_id=self.cell_id,
+                cell_index=self.cell_index,
                 num_cells=self.num_cells,
             )
             return _StateRunning(actor_handles=actor_handles)
@@ -105,10 +105,10 @@ class RayTrainCell:
         old_state_cls: type[_CellState] | tuple[type[_CellState], ...],
         fn: Callable[[], _CellState],
     ):
-        logger.info(f"{debug_name} start {self.cell_id=}")
-        assert isinstance(self._state, old_state_cls), f"{self.cell_id=} {self._state=}"
+        logger.info(f"{debug_name} start {self.cell_index=}")
+        assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
         self._state = fn()
-        logger.info(f"{debug_name} end {self.cell_id=}")
+        logger.info(f"{debug_name} end {self.cell_index=}")
 
     # ------------------------ cooperatively prepare ------------------------
 
@@ -144,7 +144,7 @@ class RayTrainCell:
     @staticmethod
     def _allocate_gpus_for_actor(
         args,
-        cell_id: int,
+        cell_index: int,
         num_cells: int,
         gpus_per_cell: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
@@ -211,7 +211,7 @@ class RayTrainCell:
                 rank,
                 master_addr,
                 master_port,
-                cell_id=cell_id,
+                cell_index=cell_index,
                 num_cells=num_cells,
                 indep_dp_store_addr=indep_dp_store_addr,
             )
@@ -271,5 +271,5 @@ class RayTrainCell:
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(
             self._state, _StateRunning
-        ), f"Cell {self.cell_id} is not running (state={type(self._state).__name__})"
+        ), f"Cell {self.cell_index} is not running (state={type(self._state).__name__})"
         return self._state.actor_handles

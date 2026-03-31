@@ -31,7 +31,7 @@ def send_ckpt(
         optimizer: Megatron optimizer.
         opt_param_scheduler: LR scheduler.
         iteration: Current training iteration / rollout_id.
-        dst_rank: Destination cell_id in the indep_dp process group.
+        dst_rank: Destination cell_index in the indep_dp process group.
         timeout: Timeout for the NCCL send operation.
     """
     state_dict = save_to_memory(
@@ -66,7 +66,7 @@ def recv_ckpt(
 
     Args:
         indep_dp: Independent DP group info (provides the torchft PG).
-        src_rank: Source cell_id in the indep_dp process group.
+        src_rank: Source cell_index in the indep_dp process group.
         timeout: Timeout for the NCCL recv operation.
 
     Returns:

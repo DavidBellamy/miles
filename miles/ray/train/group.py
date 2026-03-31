@@ -55,7 +55,7 @@ class RayTrainGroup:
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         self._indep_dp_quorum_id = 0
-        self._alive_cell_ids: frozenset[int] | None = None
+        self._last_alive_cell_indexs: frozenset[int] | None = None
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -64,8 +64,8 @@ class RayTrainGroup:
             self._indep_dp_store, indep_dp_store_addr = None, None
 
         self._cells: list[RayTrainCell] = []
-        for cell_id in range(num_cells):
-            cell_pg = _slice_pg(pg, start=cell_id * gpus_per_cell, end=(cell_id + 1) * gpus_per_cell)
+        for cell_index in range(num_cells):
+            cell_pg = _slice_pg(pg, start=cell_index * gpus_per_cell, end=(cell_index + 1) * gpus_per_cell)
             self._cells.append(
                 RayTrainCell(
                     args=args,
@@ -74,7 +74,7 @@ class RayTrainGroup:
                     num_gpus_per_actor=num_gpus_per_actor,
                     role=role,
                     with_ref=with_ref,
-                    cell_id=cell_id,
+                    cell_index=cell_index,
                     num_cells=num_cells,
                     indep_dp_store_addr=indep_dp_store_addr,
                     rollout_manager=rollout_manager,
@@ -87,13 +87,13 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        self._alive_cell_ids = frozenset(cell.cell_id for cell in self._cells)
+        self._last_alive_cell_indexs = frozenset(cell.cell_index for cell in self._cells)
         alive_mapping = self._compute_alive_mapping()
         return [
             future
             for cell in self._cells
             for future in cell.async_init(
-                indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
+                indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
             )
         ]
 
@@ -137,12 +137,12 @@ class RayTrainGroup:
     def set_rollout_manager(self):
         ray.get([future for cell in self._cells for future in cell.async_set_rollout_manager()])
 
-    def stop(self, cell_id: int) -> None:
-        self._cells[cell_id].stop()
+    def stop(self, cell_index: int) -> None:
+        self._cells[cell_index].stop()
 
-    def start(self, cell_id: int) -> None:
+    def start(self, cell_index: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
-        self._cells[cell_id].mark_as_pending()
+        self._cells[cell_index].mark_as_pending()
 
     # ------------------------ utils to forward calls to cells ------------------------
 
@@ -161,9 +161,9 @@ class RayTrainGroup:
     # ------------------------ internals for alive tracking ------------------------
 
     def _reconfigure_if_alive_changed(self) -> None:
-        current_alive = frozenset(cell.cell_id for cell in self._cells if cell.is_running)
+        current_alive = frozenset(cell.cell_index for cell in self._cells if cell.is_running)
         assert current_alive, "No running cells available for training"
-        if current_alive != self._alive_cell_ids:
+        if current_alive != self._last_alive_cell_indexs:
             self._reconfigure_running_cells(current_alive)
 
     def _reconfigure_running_cells(self, alive_ids: frozenset[int]) -> None:
@@ -176,30 +176,30 @@ class RayTrainGroup:
             if cell.is_running
             for future in cell.async_execute(
                 "reconfigure_indep_dp",
-                indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
+                indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
             )
         ])
-        self._alive_cell_ids = alive_ids
+        self._last_alive_cell_indexs = alive_ids
 
     # ------------------------ internals for stop/start ------------------------
 
     def _compute_alive_mapping(self) -> dict[int, int]:
-        running = sorted(cell.cell_id for cell in self._cells if cell.is_running)
-        return {cell_id: rank for rank, cell_id in enumerate(running)}
+        running = sorted(cell.cell_index for cell in self._cells if cell.is_running)
+        return {cell_index: rank for rank, cell_index in enumerate(running)}
 
-    def _make_indep_dp_info(self, cell_id: int, alive_mapping: dict[int, int]) -> IndepDPInfo:
+    def _make_indep_dp_info(self, cell_index: int, alive_mapping: dict[int, int]) -> IndepDPInfo:
         return IndepDPInfo(
-            cell_index=cell_id,
+            cell_index=cell_index,
             num_cells=len(self._cells),
-            alive_rank=alive_mapping[cell_id],
+            alive_rank=alive_mapping[cell_index],
             alive_size=len(alive_mapping),
             quorum_id=self._indep_dp_quorum_id,
         )
 
     async def _materialize_pending_cells(self) -> None:
-        was_pending_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
+        was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
         assert was_pending_ids, "No pending cells to materialize"
-        was_running_ids = [cell.cell_id for cell in self._cells if cell.is_running]
+        was_running_ids = [cell.cell_index for cell in self._cells if cell.is_running]
         assert was_running_ids, "No running cells to materialize"
 
         # Step 1: Bump states
@@ -207,29 +207,29 @@ class RayTrainGroup:
 
         # Step 2: Allocate actors
         for cell in self._cells:
-            if cell.cell_id in was_pending_ids:
+            if cell.cell_index in was_pending_ids:
                 cell.allocate_for_pending()
 
         # Step 3: Compute alive mapping (all previously running + newly allocated are now running)
         alive_mapping = self._compute_alive_mapping()
 
         # Step 4: Convert ckpt transfer ranks to alive_rank
-        src_cell_id = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        src_cell_index = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
         ckpt_dst_alive_ranks = [alive_mapping[cid] for cid in was_pending_ids]
-        src_alive_rank = alive_mapping[src_cell_id]
+        src_alive_rank = alive_mapping[src_cell_index]
 
         # Step 5: Cooperatively prepare
         await asyncio.gather(
             *[
                 (
                     cell.prepare_indep_dp_mode_initialized(
-                        indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
-                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if cell.cell_id == src_cell_id else [],
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if cell.cell_index == src_cell_index else [],
                     )
-                    if cell.cell_id in was_running_ids
+                    if cell.cell_index in was_running_ids
                     else cell.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
-                        recv_ckpt_src_rank=src_alive_rank if cell.cell_id in was_pending_ids else None,
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                        recv_ckpt_src_rank=src_alive_rank if cell.cell_index in was_pending_ids else None,
                     )
                 )
                 for cell in self._cells
@@ -237,7 +237,7 @@ class RayTrainGroup:
             ]
         )
 
-        self._alive_cell_ids = frozenset(cell.cell_id for cell in self._cells if cell.is_running)
+        self._last_alive_cell_indexs = frozenset(cell.cell_index for cell in self._cells if cell.is_running)
 
     def _has_pending_cells(self) -> bool:
         return any(cell.is_pending for cell in self._cells)

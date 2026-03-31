@@ -67,7 +67,7 @@ class MegatronTrainRayActor(TrainRayActor):
             args: Runtime arguments.
             role: Logical role ("actor" or "critic").
             with_ref: Whether to load a reference model.
-            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_id
+            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_index
                 via PGTransport instead of loading from disk.
             indep_dp_info: Independent DP configuration (cell identity, alive rank/size, quorum ID).
         """

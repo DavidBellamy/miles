@@ -5,8 +5,8 @@ from miles.utils.indep_dp import IndepDPInfo
 
 
 class _MockCell:
-    def __init__(self, cell_id: int, *, is_running: bool = True):
-        self.cell_id = cell_id
+    def __init__(self, cell_index: int, *, is_running: bool = True):
+        self.cell_index = cell_index
         self._is_running = is_running
         self._execute_calls: list[tuple[str, tuple, dict]] = []
 
@@ -33,7 +33,7 @@ def _make_group_with_cells(cells: list[_MockCell]) -> RayTrainGroup:
     group = object.__new__(RayTrainGroup)
     group._cells = cells
     group._indep_dp_quorum_id = 0
-    group._alive_cell_ids = frozenset(c.cell_id for c in cells if c.is_running)
+    group._last_alive_cell_indexs = frozenset(c.cell_index for c in cells if c.is_running)
     return group
 
 
@@ -92,7 +92,7 @@ class TestReconfigureTriggeredOnAliveChange:
         group._reconfigure_if_alive_changed()
 
         assert group._indep_dp_quorum_id == initial_quorum + 1
-        assert group._alive_cell_ids == frozenset({0, 2})
+        assert group._last_alive_cell_indexs == frozenset({0, 2})
 
         # Verify reconfigure was called on running cells
         assert len(cells[0]._execute_calls) == 1

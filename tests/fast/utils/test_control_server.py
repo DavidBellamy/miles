@@ -210,7 +210,7 @@ def _make_group_with_mock_cells(cells: list[_MockRayTrainCell]) -> RayTrainGroup
     group = object.__new__(RayTrainGroup)
     group._cells = cells
     group._indep_dp_quorum_id = 0
-    group._alive_cell_ids = frozenset()
+    group._last_alive_cell_ids = frozenset()
     return group
 
 
