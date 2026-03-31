@@ -273,23 +273,23 @@ class TestRolloutCellHandle:
     async def test_stop_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
 
-        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_index=0)
         await handle.stop(timeout_seconds=45)
 
-        assert manager.stop_cell.calls == [(("cell-0", 45), {})]
+        assert manager.stop_cell.calls == [((0, 45), {})]
 
     @pytest.mark.asyncio
     async def test_start_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
 
-        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_index=0)
         await handle.start()
 
     @pytest.mark.asyncio
     async def test_get_status_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager(status_return="stopped")
 
-        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_index=0)
         assert await handle.get_status() == "stopped"
 
     @pytest.mark.asyncio
@@ -297,13 +297,13 @@ class TestRolloutCellHandle:
         manager = _MockRolloutManager()
         manager.get_cell_node_ids = _MockRemoteCall(["n0", "n1"])
 
-        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_index=0)
         assert await handle.get_node_ids() == ["n0", "n1"]
 
     def test_cell_type_is_rollout(self) -> None:
-        handle = _RolloutCellHandle(rollout_manager=object(), cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=object(), cell_index=0)
         assert handle.cell_type == "rollout"
-        assert handle.cell_id == "cell-0"
+        assert handle.cell_id == "rollout-0"
 
 
 class _MockRayTrainCell:

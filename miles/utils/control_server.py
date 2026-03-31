@@ -30,7 +30,7 @@ def start_control_server(actor_model: RayTrainGroup, rollout_manager: object, po
         registry.register(
             _RolloutCellHandle(
                 rollout_manager=rollout_manager,
-                cell_id=f"rollout-{i}",
+                cell_index=i,
             )
         )
 
@@ -184,12 +184,12 @@ class _ActorCellHandle(_CellHandle):
         self._cell_index = cell_index
 
     @property
-    def cell_id(self) -> str:
-        return f"actor-{self._cell_index}"
-
-    @property
     def cell_type(self) -> str:
         return "actor"
+
+    @property
+    def cell_index(self) -> int:
+        return self._cell_index
 
     async def stop(self, timeout_seconds: int) -> None:
         self._group.stop(self._cell_index)
@@ -213,26 +213,26 @@ class _ActorCellHandle(_CellHandle):
 
 
 class _RolloutCellHandle(_CellHandle):
-    def __init__(self, rollout_manager: object, cell_id: str) -> None:
+    def __init__(self, *, rollout_manager: object, cell_index: int) -> None:
         self._rollout_manager = rollout_manager
-        self._cell_id = cell_id
-
-    @property
-    def cell_id(self) -> str:
-        return self._cell_id
+        self._cell_index = cell_index
 
     @property
     def cell_type(self) -> str:
         return "rollout"
 
+    @property
+    def cell_index(self) -> int:
+        return self._cell_index
+
     async def stop(self, timeout_seconds: int) -> None:
-        await self._rollout_manager.stop_cell.remote(self._cell_id, timeout_seconds)
+        await self._rollout_manager.stop_cell.remote(self._cell_index, timeout_seconds)
 
     async def start(self) -> None:
-        await self._rollout_manager.start_cell.remote(self._cell_id)
+        await self._rollout_manager.start_cell.remote(self._cell_index)
 
     async def get_status(self) -> str:
-        return await self._rollout_manager.get_cell_status.remote(self._cell_id)
+        return await self._rollout_manager.get_cell_status.remote(self._cell_index)
 
     async def get_node_ids(self) -> list[str]:
-        return await self._rollout_manager.get_cell_node_ids.remote(self._cell_id)
+        return await self._rollout_manager.get_cell_node_ids.remote(self._cell_index)
