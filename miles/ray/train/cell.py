@@ -59,23 +59,22 @@ class RayTrainCell:
     # ------------------------ lifecycle management ------------------------
 
     def stop(self) -> None:
+        assert isinstance(self._state, _StateRunning), f"{self.cell_id=} {self._state=}"
+
         handles = self._get_actor_handles()
         for actor in handles:
             ray.kill(actor)
+
         self._state = _StateStopped()
-        logger.info(f"Killed all actors in cell {self.cell_id}")
+        logger.info(f"stop() done {self.cell_id=}")
 
     def mark_pending(self) -> None:
-        assert isinstance(
-            self._state, _StateStopped
-        ), f"Cannot mark pending for cell {self.cell_id} (state={self._state.type})"
+        assert isinstance(self._state, _StateStopped), f"{self.cell_id=} {self._state=}"
         self._state = _StatePending()
-        logger.info(f"Cell {self.cell_id} marked as pending")
+        logger.info(f"mark_pending() done {self.cell_id=}")
 
     def recreate_actors(self) -> None:
-        assert isinstance(
-            self._state, _StatePending
-        ), f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
+        assert isinstance(self._state, _StatePending), f"{self.cell_id=} {self._state=}"
 
         actor_handles = self._allocate_gpus_for_actor(
             **self._creation_kwargs,
@@ -84,8 +83,7 @@ class RayTrainCell:
             num_cells=self.num_cells,
         )
         self._state = _StateRunning(actor_handles=actor_handles)
-
-        logger.info(f"Recreated actors for cell {self.cell_id}")
+        logger.info(f"recreate_actors() done {self.cell_id=}")
 
     # ------------------------ actor creation ------------------------
 
