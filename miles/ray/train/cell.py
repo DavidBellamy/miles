@@ -112,18 +112,22 @@ class RayTrainCell:
     ):
         if was_initialized:
             assert recv_ckpt_src_rank is None, "recv_ckpt_src_rank is not used in this branch"
+
             await asyncio.gather(
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
+
+            for dst_rank in send_ckpt_dst_ranks:
+                await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
         else:
+            assert TODO
+
             await asyncio.gather(*self.async_init(
                 indep_dp_quorum_id=indep_dp_quorum_id,
                 recv_ckpt_src_rank=recv_ckpt_src_rank,
             ))
-            await asyncio.gather(*self.async_set_rollout_manager())
 
-        for dst_rank in send_ckpt_dst_ranks:
-            await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
+            await asyncio.gather(*self.async_set_rollout_manager())
 
     # ------------------------ actor creation ------------------------
 
