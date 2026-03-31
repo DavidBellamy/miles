@@ -53,12 +53,15 @@ class RayTrainCell:
         self._num_gpus_per_actor = num_gpus_per_actor
         self._indep_dp_store_addr = indep_dp_store_addr
 
-        actor_handles = self._create_actors()
-        self._state: _CellState = _StateRunning(actor_handles=actor_handles)
+        self._state: _CellState = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
 
     @property
     def is_running(self) -> bool:
         return isinstance(self._state, _StateRunning)
+
+    @property
+    def is_pending(self) -> bool:
+        return isinstance(self._state, _StatePending)
 
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={self._state.type})"
@@ -78,36 +81,24 @@ class RayTrainCell:
         self._state = _StatePending()
         logger.info(f"Cell {self.cell_id} marked as pending")
 
-    @property
-    def is_pending(self) -> bool:
-        return isinstance(self._state, _StatePending)
-
     def recreate_actors(self) -> None:
         assert isinstance(self._state, _StatePending), (
             f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
         )
-        actor_handles = self._create_actors()
-        self._state = _StateRunning(actor_handles=actor_handles)
+        self._state = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
-    def async_execute(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
-        handles = self._get_actor_handles()
-        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
-
-    def async_connect(self, critic_cell: "RayTrainCell") -> list[ray.ObjectRef]:
-        handles = self._get_actor_handles()
-        critic_handles = critic_cell._get_actor_handles()
-        return [
-            actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
-        ]
-
-    def _create_actors(self) -> list:
+    def _allocate_gpus_for_actor(self):
         world_size = self._gpus_per_cell
 
+        # Use placement group to lock resources for models of same type
+        # Use placement group to lock resources for models of same type
         assert self._pg is not None
         pg, reordered_bundle_indices, _reordered_gpu_ids = self._pg
 
         env_vars = {
+            # because sglang will always set NCCL_CUMEM_ENABLE to 0
+            # we need also set it to 0 to prevent nccl error.
             "NCCL_CUMEM_ENABLE": os.environ.get("NCCL_CUMEM_ENABLE", "0"),
             "NVTE_FP8_BLOCK_SCALING_FP32_SCALES": "1",
             **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
@@ -143,6 +134,7 @@ class RayTrainCell:
 
         TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
 
+        # Create worker actors
         actor_handles = []
         master_addr, master_port = None, None
         for rank in range(world_size):
@@ -167,3 +159,15 @@ class RayTrainCell:
             actor_handles.append(actor)
 
         return actor_handles
+
+    def async_execute(self, fn_name, *args, **kwargs):
+        handles = self._get_actor_handles()
+        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
+
+    def async_connect(self, critic_cell: "RayTrainCell"):
+        handles = self._get_actor_handles()
+        critic_handles = critic_cell._get_actor_handles()
+        return [
+            actor.connect_actor_critic.remote(critic)
+            for actor, critic in zip(handles, critic_handles, strict=False)
+        ]
