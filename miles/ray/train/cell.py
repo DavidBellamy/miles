@@ -218,14 +218,15 @@ class RayTrainCell:
         ]
 
     def async_init(self, *, indep_dp_quorum_id: int, recv_ckpt_src_rank: int | None = None):
-        return self.async_execute(
-            "init",
-            args=self.args,
-            role=self.role,
-            with_ref=self.with_ref,
-            indep_dp_quorum_id=indep_dp_quorum_id,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
-        )
+        kwargs: dict = dict(args=self.args, role=self.role, with_ref=self.with_ref)
+        if self.args.train_backend == "megatron":
+            kwargs["indep_dp_quorum_id"] = indep_dp_quorum_id
+            kwargs["recv_ckpt_src_rank"] = recv_ckpt_src_rank
+        else:
+            assert recv_ckpt_src_rank is None, (
+                f"stop-start (recv_ckpt) only supported with megatron backend, got {self.args.train_backend}"
+            )
+        return self.async_execute("init", **kwargs)
 
     # ------------------------ state helpers ------------------------
 
