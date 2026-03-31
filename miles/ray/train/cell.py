@@ -59,6 +59,7 @@ class RayTrainCell:
     # ------------------------ lifecycle management ------------------------
 
     def stop(self) -> None:
+        logger.info(f"stop() start {self.cell_id=}")
         assert isinstance(self._state, _StateRunning), f"{self.cell_id=} {self._state=}"
 
         handles = self._get_actor_handles()
@@ -69,11 +70,13 @@ class RayTrainCell:
         logger.info(f"stop() done {self.cell_id=}")
 
     def mark_pending(self) -> None:
+        logger.info(f"mark_pending() start {self.cell_id=}")
         assert isinstance(self._state, _StateStopped), f"{self.cell_id=} {self._state=}"
         self._state = _StatePending()
         logger.info(f"mark_pending() done {self.cell_id=}")
 
     def recreate_actors(self) -> None:
+        logger.info(f"recreate_actors() start {self.cell_id=}")
         assert isinstance(self._state, _StatePending), f"{self.cell_id=} {self._state=}"
 
         actor_handles = self._allocate_gpus_for_actor(
