@@ -86,9 +86,10 @@ class RayTrainCell:
             lambda: _StateAllocatedAlive(actor_handles=self._state.actor_handles),
         )
 
-    def mark_as_errored(self) -> None:
+    # TODO call this function (probably within cell?)
+    def _mark_as_errored(self) -> None:
         self._change_state(
-            "mark_as_errored",
+            "_mark_as_errored",
             _StateAllocatedBase,
             lambda: _StateAllocatedErrored(actor_handles=self._state.actor_handles),
         )
