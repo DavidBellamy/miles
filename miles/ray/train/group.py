@@ -94,7 +94,7 @@ class RayTrainGroup:
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
         asyncio.get_event_loop().run_until_complete(self._refresh_cells())
-        return self._async_execute("train", rollout_id, rollout_data_ref)
+        return self._async_execute_alive("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
@@ -105,13 +105,13 @@ class RayTrainGroup:
         self._execute_first_running_cell("update_weights")
 
     def onload(self):
-        ray.get(self._async_execute("wake_up"))
+        ray.get(self._async_execute_alive("wake_up"))
 
     def offload(self):
-        ray.get(self._async_execute("sleep"))
+        ray.get(self._async_execute_alive("sleep"))
 
     def clear_memory(self):
-        ray.get(self._async_execute("clear_memory"))
+        ray.get(self._async_execute_alive("clear_memory"))
 
     def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
@@ -142,15 +142,19 @@ class RayTrainGroup:
         running_cells = [cell for cell in self._cells if TODO_cell_is_running]
         return ray.get(running_cells[0].async_execute(fn_name, *args, **kwargs))
 
-    def _async_execute(self, fn_name, *args, **kwargs):
-        TODO_not_all_running
-        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+    def _async_execute_alive(self, fn_name, *args, **kwargs):
+        return [
+            future
+            for cell in self._cells
+            if cell.is_alive
+            for future in cell.async_execute(fn_name, *args, **kwargs)
+        ]
 
     # ------------------------ internals for stop/start ------------------------
 
     async def _refresh_cells(self) -> None:
         was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
-        was_alive_ids = [cell.cell_index for cell in self._cells if cell.is_allocated_alive]
+        was_alive_ids = [cell.cell_index for cell in self._cells if cell.is_alive]
         assert len(was_alive_ids) > 0, "Cannot recover when all cells are dead"
         TODO_handle_zero_case
 

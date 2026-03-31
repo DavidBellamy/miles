@@ -264,7 +264,7 @@ class RayTrainCell:
         return isinstance(self._state, _StateAllocatedBase)
 
     @property
-    def is_allocated_alive(self) -> bool:
+    def is_alive(self) -> bool:
         return isinstance(self._state, _StateAllocatedAlive)
 
     @property

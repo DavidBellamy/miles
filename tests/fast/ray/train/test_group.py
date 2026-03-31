@@ -70,7 +70,7 @@ class TestAsyncExecuteSkipsStoppedCells:
         stopped_cell = _MockCell(1, is_running=False)
         group = _make_group_with_cells([running_cell, stopped_cell])
 
-        group._async_execute("train", 42, "data_ref")
+        group._async_execute_alive("train", 42, "data_ref")
 
         assert len(running_cell._execute_calls) == 1
         assert running_cell._execute_calls[0][0] == "train"
