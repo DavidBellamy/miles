@@ -240,5 +240,5 @@ class RayTrainCell:
         return isinstance(self._state, _StatePending)
 
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
-        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={self._state.type})"
+        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={type(self._state).__name__})"
         return self._state.actor_handles
