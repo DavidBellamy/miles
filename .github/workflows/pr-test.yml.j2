@@ -153,6 +153,11 @@ on:
         required: false
         type: string
         default: 'sglang-miles'
+      ci_image:
+        description: 'Docker image override (default: radixark/miles:dev)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -164,7 +169,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request<% if config.label %> && contains(github.event.pull_request.labels.*.name, '<< config.label >>')<% endif %>)
     runs-on: self-hosted
     container:
-      image: << config.image if config.image else default_image >>
+      image: ${{ github.event.inputs.ci_image || '<< config.image if config.image else default_image >>' }}
       options: >
         --gpus all
         --ipc=host

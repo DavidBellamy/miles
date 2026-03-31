@@ -48,6 +48,11 @@ on:
         required: false
         type: string
         default: 'sglang-miles'
+      ci_image:
+        description: 'Docker image override (default: radixark/miles:dev)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -59,7 +64,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request)
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -170,7 +175,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-unit-test'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -281,7 +286,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-sglang'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -392,7 +397,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-short'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -503,7 +508,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-fsdp'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -614,7 +619,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-megatron'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -725,7 +730,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-precision'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -836,7 +841,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-ckpt'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -947,7 +952,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-long'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -1058,7 +1063,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-lora'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -1169,7 +1174,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-low-precision'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
@@ -1280,7 +1285,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-glm5'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:glm5
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:glm5' }}
       options: >
         --gpus all
         --ipc=host
@@ -1346,7 +1351,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-image'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: ${{ github.event.inputs.ci_image || 'radixark/miles:dev' }}
       options: >
         --gpus all
         --ipc=host
