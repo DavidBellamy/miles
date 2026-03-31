@@ -98,7 +98,7 @@ class RayTrainCell:
 
     # ------------------------ cooperatively prepare ------------------------
 
-    async def cooperatively_prepare(self):
+    async def cooperatively_prepare_indep_dp_world(self):
         assert self.is_running
 
         if is_initialized:

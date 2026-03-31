@@ -180,7 +180,11 @@ class RayTrainGroup:
             if cell in pending_cell_ids:
                 cell.allocate_for_pending()
 
-        TODO
+        # Step 2: Cooperatively prepare
+        await asyncio.gather(*[
+            cell.cooperatively_prepare_indep_dp_world()
+            for cell in self._cells
+        ])
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
