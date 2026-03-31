@@ -2,6 +2,7 @@
 
 import os
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -16,6 +17,7 @@ from miles.utils.process_group_utils import (
     MultiPGUtil,
     _NativePGUtil,
     _RawPGUtil,
+    _check_wait,
 )
 
 
@@ -279,3 +281,28 @@ def _worker_multi_pg_util_gather_object(rank: int, world_size: int) -> None:
 
 def test_multi_pg_util_gather_object() -> None:
     _run(_worker_multi_pg_util_gather_object)
+
+
+# -- _check_wait tests --
+
+
+class TestCheckWait:
+    def test_raises_on_false(self) -> None:
+        work = MagicMock()
+        work.wait.return_value = False
+
+        with pytest.raises(RuntimeError, match="torchft allreduce failed"):
+            _check_wait(work, "allreduce")
+
+    def test_passes_on_true(self) -> None:
+        work = MagicMock()
+        work.wait.return_value = True
+
+        _check_wait(work, "allreduce")
+
+    def test_propagates_exception_from_wait(self) -> None:
+        work = MagicMock()
+        work.wait.side_effect = RuntimeError("NCCL timeout")
+
+        with pytest.raises(RuntimeError, match="NCCL timeout"):
+            _check_wait(work, "allreduce")

@@ -138,6 +138,17 @@ class _NativePGUtil(GeneralPGUtil):
         dist.gather_object(obj, object_gather_list, dst=dst, group=group)
 
 
+def _check_wait(work: dist._Work, op_name: str) -> None:
+    """Call work.wait() and raise if it returns False.
+
+    torchft ProcessGroupNCCL.wait() returns False on failure instead of raising,
+    so callers that ignore the return value silently proceed with corrupted tensors.
+    """
+    success = work.wait()
+    if not success:
+        raise RuntimeError(f"torchft {op_name} failed (wait returned False)")
+
+
 class _RawPGUtil(GeneralPGUtil):
     def get_rank(self, group: dist.ProcessGroup) -> int:
         return group._rank
@@ -146,18 +157,18 @@ class _RawPGUtil(GeneralPGUtil):
         return group.size()
 
     def all_reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
+        _check_wait(group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)), "allreduce")
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
+        _check_wait(group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)), "reduce")
 
     def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
+        _check_wait(group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)), "broadcast")
 
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
     ) -> None:
-        group.allgather([output_tensors], [[input_tensor]]).wait()
+        _check_wait(group.allgather([output_tensors], [[input_tensor]]), "allgather")
 
     def gather(
         self,
@@ -167,7 +178,7 @@ class _RawPGUtil(GeneralPGUtil):
         group: dist.ProcessGroup,
     ) -> None:
         output = [gather_list] if gather_list is not None else []
-        group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+        _check_wait(group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)), "gather")
 
     def gather_object(
         self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
