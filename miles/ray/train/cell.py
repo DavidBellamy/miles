@@ -90,12 +90,13 @@ class RayTrainCell:
         )
 
     def _update_indep_dp_info(self, indep_dp_info: IndepDPInfo) -> None:
-        assert isinstance(self._state, _StateAllocatedAlive), (
-            f"cell {self.cell_index}: _update_indep_dp_info requires _StateAllocatedAlive, got {self._state}"
-        )
-        self._state = _StateAllocatedAlive(
-            actor_handles=self._state.actor_handles,
-            indep_dp_info=indep_dp_info,
+        self._change_state(
+            "_update_indep_dp_info",
+            _StateAllocatedAlive,
+            lambda: _StateAllocatedAlive(
+                actor_handles=self._state.actor_handles,
+                indep_dp_info=indep_dp_info,
+            ),
         )
 
     # TODO call this function (probably within cell?)
