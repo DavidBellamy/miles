@@ -432,7 +432,7 @@ class TestAsyncTrain:
         for cell in group._cells:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
-                new_calls = calls[init_counts[id(handle)]:]
+                new_calls = calls[init_counts[id(handle)] :]
                 assert not any(c[0] == "reconfigure_indep_dp" for c in new_calls)
                 train_calls = [c for c in new_calls if c[0] == "train"]
                 assert len(train_calls) == 3
