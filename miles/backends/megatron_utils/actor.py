@@ -61,6 +61,16 @@ class MegatronTrainRayActor(TrainRayActor):
         recv_ckpt_src_rank: int | None = None,
         indep_dp_info: IndepDPInfo,
     ) -> int | None:
+        """Initialize the actor.
+
+        Args:
+            args: Runtime arguments.
+            role: Logical role ("actor" or "critic").
+            with_ref: Whether to load a reference model.
+            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_id
+                via PGTransport instead of loading from disk.
+            indep_dp_info: Independent DP configuration (cell identity, alive rank/size, quorum ID).
+        """
         monkey_patch_torch_dist()
 
         super().init(args, role, with_ref)
