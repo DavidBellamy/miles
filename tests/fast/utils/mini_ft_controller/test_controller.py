@@ -65,7 +65,7 @@ async def test_heal_on_fatal_error() -> None:
 @pytest.mark.asyncio
 async def test_skip_degraded_cell() -> None:
     """Degraded cell does not trigger heal."""
-    degraded_cell = _make_cell(name="cell-0", healthy_status="Degraded", healthy_reason=None)
+    degraded_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Degraded")
     suspend_cell = AsyncMock()
     resume_cell = AsyncMock()
 
