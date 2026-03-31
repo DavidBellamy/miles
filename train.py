@@ -5,8 +5,8 @@ from miles.ray.placement_group import create_placement_groups, create_rollout_ma
 from miles.utils.arguments import parse_args
 from miles.utils.control_server.server import start_control_server
 from miles.utils.logging_utils import configure_logger
-from miles.utils.misc import should_run_periodic_action
 from miles.utils.mini_ft_controller import maybe_start_mini_ft_controller
+from miles.utils.misc import should_run_periodic_action
 from miles.utils.tracking_utils import init_tracking
 
 

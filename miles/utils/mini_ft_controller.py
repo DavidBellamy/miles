@@ -42,11 +42,11 @@ def maybe_start_mini_ft_controller(args: Any) -> None:
 
 class _MiniFTControllerRunner:
     def __init__(
-            self,
-            *,
-            control_server_url: str,
-            poll_interval: float,
-            resume_delay: float,
+        self,
+        *,
+        control_server_url: str,
+        poll_interval: float,
+        resume_delay: float,
     ) -> None:
         url = control_server_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=url, timeout=30.0)
@@ -115,13 +115,13 @@ class _CellBackoff:
 
 class _MiniFTController:
     def __init__(
-            self,
-            *,
-            get_cells: Callable[[], Awaitable[list[_CellSnapshot]]],
-            suspend_cell: Callable[[str], Awaitable[None]],
-            resume_cell: Callable[[str], Awaitable[None]],
-            poll_interval: float = 10.0,
-            resume_delay: float = 5.0,
+        self,
+        *,
+        get_cells: Callable[[], Awaitable[list[_CellSnapshot]]],
+        suspend_cell: Callable[[str], Awaitable[None]],
+        resume_cell: Callable[[str], Awaitable[None]],
+        poll_interval: float = 10.0,
+        resume_delay: float = 5.0,
     ) -> None:
         self._get_cells = get_cells
         self._suspend_cell = suspend_cell
@@ -138,7 +138,7 @@ class _MiniFTController:
             start = time.monotonic()
             await self._poll_and_heal()
             elapsed = time.monotonic() - start
-            await asyncio.sleep(max(0, self._poll_interval - elapsed))
+            await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
 
     def request_stop(self) -> None:
         self._running = False
@@ -183,7 +183,7 @@ class _MiniFTController:
             logger.info("Successfully healed cell %s", cell_name)
         except Exception:
             backoff.consecutive_failures += 1
-            delay = min(5 * (2 ** backoff.consecutive_failures), 300)
+            delay = min(5 * (2**backoff.consecutive_failures), 300)
             backoff.next_attempt_at = time.monotonic() + delay
             logger.warning(
                 "Failed to heal cell %s (attempt %d), next attempt in %.0fs",

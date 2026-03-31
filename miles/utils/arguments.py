@@ -1789,9 +1789,7 @@ def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
     if args.mini_ft_controller_enable and args.control_server_port == 0:
-        raise ValueError(
-            "--mini-ft-controller-enable requires --control-server-port to be set (non-zero)"
-        )
+        raise ValueError("--mini-ft-controller-enable requires --control-server-port to be set (non-zero)")
 
     if "train" in args.ft_components:
         args.indep_dp = True

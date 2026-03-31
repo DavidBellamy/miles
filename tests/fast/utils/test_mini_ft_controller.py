@@ -153,9 +153,7 @@ async def test_exponential_backoff_timing() -> None:
 
         backoff = controller._cell_backoffs["cell-0"]
         actual_delay = backoff.next_attempt_at - after
-        assert abs(actual_delay - expected_delay) < 2.0, (
-            f"Expected delay ~{expected_delay}, got {actual_delay:.1f}"
-        )
+        assert abs(actual_delay - expected_delay) < 2.0, f"Expected delay ~{expected_delay}, got {actual_delay:.1f}"
 
 
 @pytest.mark.asyncio
@@ -305,10 +303,12 @@ async def test_get_cells_parses_healthy_and_unhealthy() -> None:
     """Parse CellList JSON into _CellSnapshot with correct healthy bool."""
     runner = _create_runner()
 
-    cells_json = _build_cell_list_json([
-        _build_cell_json(name="actor-0", healthy_status="True"),
-        _build_cell_json(name="actor-1", healthy_status="False"),
-    ])
+    cells_json = _build_cell_list_json(
+        [
+            _build_cell_json(name="actor-0", healthy_status="True"),
+            _build_cell_json(name="actor-1", healthy_status="False"),
+        ]
+    )
 
     runner._client = AsyncMock()
     runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
