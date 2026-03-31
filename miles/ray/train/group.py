@@ -153,8 +153,8 @@ class RayTrainGroup:
     # ------------------------ internals for stop/start ------------------------
 
     async def _refresh_cells(self) -> None:
-        snapshotted_pending_indices = [cell.cell_index for cell in self._cells if cell.is_pending]
-        snapshotted_alive_indices = [cell.cell_index for cell in self._cells if cell.is_alive]
+        snapshotted_pending_indices = [c.cell_index for c in self._cells if c.is_pending]
+        snapshotted_alive_indices = [c.cell_index for c in self._cells if c.is_alive]
         will_alive_indices = sorted(list(set(snapshotted_pending_indices + snapshotted_alive_indices)))
         assert len(snapshotted_alive_indices) > 0, "Cannot recover when all cells are dead"
 
@@ -171,29 +171,32 @@ class RayTrainGroup:
         # Step 1: Bump states
         self._indep_dp_quorum_id += 1
 
-        # Step 2: Allocate actors
-        for cell in self._cells:
-            if cell.cell_index in snapshotted_pending_indices:
-                cell.allocate_for_pending()
+        # Step 2: Allocate pending actors
+        for c in self._cells:
+            if c.cell_index in snapshotted_pending_indices:
+                c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
         await asyncio.gather(
             *[
                 (
-                    cell.prepare_indep_dp_mode_alive(
-                        indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
-                        send_ckpt_dst_ranks=snapshotted_pending_indices if cell.cell_index == src_cell_index else [],
+                    c.prepare_indep_dp_mode_alive(
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index),
+                        send_ckpt_dst_ranks=snapshotted_pending_indices if c.cell_index == src_cell_index else [],
                     )
-                    if cell.cell_index in snapshotted_alive_indices
-                    else cell.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
-                        recv_ckpt_src_rank=src_cell_index if cell.cell_index in snapshotted_pending_indices else None,
+                    if c.cell_index in snapshotted_alive_indices
+                    else c.prepare_indep_dp_mode_healing(
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index),
+                        recv_ckpt_src_rank=src_cell_index if c.cell_index in snapshotted_pending_indices else None,
                     )
                 )
-                for cell in self._cells
+                for c in self._cells
+                if c in will_alive_indices
             ]
         )
+
+        assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
 
     def _compute_indep_dp_info(self, cell_index: int) -> IndepDPInfo:
         return IndepDPInfo(
