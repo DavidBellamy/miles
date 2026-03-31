@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 from miles.ray.train.cell import (
     RayTrainCell,
     _StateAllocatedAlive,
@@ -100,15 +102,21 @@ class TestStateTransitions:
         assert not cell.is_alive
         assert cell.is_allocated
 
-    def test_stop_from_alive_transitions_to_stopped(self):
-        """stop() from Alive kills actors and transitions to Stopped."""
-        cell = _make_cell_with_state(_make_alive_state())
+    @patch("miles.ray.train.cell.ray")
+    def test_stop_from_alive_kills_actors_and_transitions_to_stopped(self, mock_ray):
+        """stop() from Alive kills all actors and transitions to Stopped."""
+        actor_0, actor_1 = MagicMock(), MagicMock()
+        state = _StateAllocatedAlive(actor_handles=[actor_0, actor_1], indep_dp_info=_make_indep_dp_info())
+        cell = _make_cell_with_state(state)
 
         cell.stop()
 
         assert cell.is_stopped
         assert not cell.is_alive
         assert not cell.is_allocated
+        mock_ray.kill.assert_any_call(actor_0)
+        mock_ray.kill.assert_any_call(actor_1)
+        assert mock_ray.kill.call_count == 2
 
     def test_update_indep_dp_info_replaces_info(self):
         """_update_indep_dp_info updates the stored IndepDPInfo on an alive cell."""
