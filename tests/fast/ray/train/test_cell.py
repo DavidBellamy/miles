@@ -170,6 +170,52 @@ class TestMarkAsErrored:
         assert cell.is_errored
 
 
+class TestInvalidTransitions:
+    def test_mark_as_errored_rejects_from_uninitialized(self):
+        cell = make_cell()
+
+        with pytest.raises(AssertionError):
+            cell._mark_as_errored()
+
+    def test_allocate_for_pending_rejects_from_alive(self):
+        cell = make_alive_cell(0, alive_cell_indices=[0])
+
+        with pytest.raises(AssertionError):
+            cell.allocate_for_pending()
+
+    def test_allocate_for_pending_rejects_from_stopped(self):
+        cell = make_cell()
+        cell.stop()
+
+        with pytest.raises(AssertionError):
+            cell.allocate_for_pending()
+
+
+class TestErroredToStopped:
+    def test_stop_from_errored_transitions_to_stopped(self):
+        cell = make_alive_cell(0, alive_cell_indices=[0])
+        cell._mark_as_errored()
+        assert cell.is_errored
+
+        cell.stop()
+
+        assert cell.is_stopped
+        assert not cell.is_errored
+
+    def test_full_error_recovery_lifecycle(self):
+        """Errored → stop → pending → allocate → alive (full recovery from error)."""
+        cell = make_alive_cell(0, alive_cell_indices=[0])
+        cell._mark_as_errored()
+
+        cell.stop()
+        cell.mark_as_pending()
+        cell.allocate_for_pending()
+        cell._mark_as_alive(indep_dp_info=make_indep_dp_info(quorum_id=99))
+
+        assert cell.is_alive
+        assert cell.indep_dp_info.quorum_id == 99
+
+
 class TestAsyncInit:
     def test_dispatches_init_and_marks_alive(self):
         cell = make_cell(actor_count=2)
@@ -186,6 +232,9 @@ class TestAsyncInit:
             calls = ray.get(handle.get_calls.remote())
             assert len(calls) == 1
             assert calls[0][0] == "init"
+            kwargs = calls[0][2]
+            assert kwargs["indep_dp_info"] == info
+            assert kwargs["recv_ckpt_src_rank"] is None
 
 
 class TestPrepareIndepDPModeAlive:
@@ -202,9 +251,11 @@ class TestPrepareIndepDPModeAlive:
 
         for handle in cell._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
-            assert any(c[0] == "reconfigure_indep_dp" for c in calls)
+            reconfig_calls = [c for c in calls if c[0] == "reconfigure_indep_dp"]
+            assert len(reconfig_calls) == 1
+            assert reconfig_calls[0][2]["indep_dp_info"] == new_info
 
-    def test_sends_ckpt_to_dst_ranks(self):
+    def test_sends_ckpt_to_correct_dst_ranks(self):
         cell = make_alive_cell(0, alive_cell_indices=[0, 1, 2])
 
         new_info = make_indep_dp_info(alive_cell_indices=[0, 1, 2], quorum_id=2)
@@ -216,6 +267,8 @@ class TestPrepareIndepDPModeAlive:
         calls = ray.get(handle.get_calls.remote())
         send_calls = [c for c in calls if c[0] == "send_ckpt"]
         assert len(send_calls) == 2
+        assert send_calls[0][2]["dst_rank"] == 1
+        assert send_calls[1][2]["dst_rank"] == 2
 
 
 class TestPrepareIndepDPModeHealing:

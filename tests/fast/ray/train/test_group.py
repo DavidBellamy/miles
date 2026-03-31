@@ -197,6 +197,37 @@ class TestRefreshCellsHealing:
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "init" for c in calls)
 
+        # Step 6: Source cell (cell 0) sent ckpt to healed cell's alive_rank
+        for handle in cells[0]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            send_calls = [c for c in calls if c[0] == "send_ckpt"]
+            assert len(send_calls) == 1
+            assert send_calls[0][2]["dst_rank"] == 2  # alive_rank of cell 2 in [0,1,2]
+
+    def test_multiple_pending_cells_healed(self):
+        """Multiple pending cells healed simultaneously with correct ranks."""
+        cells = [make_alive_cell(0, alive_cell_indices=[0])]
+        for i in [1, 2]:
+            cell = make_cell(i)
+            cell.stop()
+            cell.mark_as_pending()
+            cells.append(cell)
+
+        group = _make_group_with_cells(cells)
+        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
+
+        assert all(c.is_alive for c in cells)
+        for cell in cells:
+            assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
+
+        # Source (cell 0) sent ckpt to both pending cells
+        for handle in cells[0]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            send_calls = [c for c in calls if c[0] == "send_ckpt"]
+            assert len(send_calls) == 2
+            dst_ranks = sorted(c[2]["dst_rank"] for c in send_calls)
+            assert dst_ranks == [1, 2]
+
     def test_pending_cell_with_stopped_cell(self):
         """Pending + stopped: only alive and pending participate, stopped excluded."""
         cells = [
