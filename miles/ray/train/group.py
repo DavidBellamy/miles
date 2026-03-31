@@ -165,7 +165,7 @@ class RayTrainGroup:
         exists_alive_cell_changed_config = any(
             cell.indep_dp_info.alive_cell_indices != will_alive_indices
             for cell in self._cells
-            if cell in snapshotted_alive_indices
+            if cell.cell_index in snapshotted_alive_indices
         )
         exists_pending_cell = len(snapshotted_pending_indices) != 0
         needs_reconfigure = exists_pending_cell or exists_alive_cell_changed_config
