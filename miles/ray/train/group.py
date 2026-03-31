@@ -98,11 +98,11 @@ class RayTrainGroup:
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
-        self._execute_first_running_cell("save_model", rollout_id, force_sync=force_sync)
+        ray.get(self._async_execute_first_alive("save_model", rollout_id, force_sync=force_sync))
 
     def update_weights(self):
         """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
-        self._execute_first_running_cell("update_weights")
+        ray.get(self._async_execute_first_alive("update_weights"))
 
     def onload(self):
         ray.get(self._async_execute_alive("wake_up"))
@@ -138,10 +138,6 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    def _execute_first_running_cell(self, fn_name, *args, **kwargs):
-        running_cells = [cell for cell in self._cells if TODO_cell_is_running]
-        return ray.get(running_cells[0].async_execute(fn_name, *args, **kwargs))
-
     def _async_execute_alive(self, fn_name, *args, **kwargs):
         return [
             future
@@ -149,6 +145,10 @@ class RayTrainGroup:
             if cell.is_alive
             for future in cell.async_execute(fn_name, *args, **kwargs)
         ]
+
+    def _async_execute_first_alive(self, fn_name, *args, **kwargs):
+        running_cells = [cell for cell in self._cells if TODO_cell_is_running]
+        return running_cells[0].async_execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
 
