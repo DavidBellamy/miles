@@ -33,6 +33,7 @@ def start_control_server(
             registry.register(_ActorCellHandle(group=actor_model, cell_index=i))
 
     if "rollout" in ft_components:
+        # TODO the code will NOT work before implementing rollout ft
         num_rollout_cells = ray.get(rollout_manager.get_cell_count.remote())
         for i in range(num_rollout_cells):
             registry.register(
@@ -220,7 +221,7 @@ class _ActorCellHandle(_CellHandle):
         return []
 
 
-# TODO: waiting for real rollout ft impl
+# TODO the code will NOT work before implementing rollout ft
 class _RolloutCellHandle(_CellHandle):
     def __init__(self, *, rollout_manager: object, cell_index: int) -> None:
         self._rollout_manager = rollout_manager
