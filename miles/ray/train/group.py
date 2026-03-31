@@ -163,7 +163,9 @@ class RayTrainGroup:
         # Step 2: Allocate actors
         for cell in self._cells:
             if cell.cell_index in was_pending_ids:
-                cell.allocate_for_pending()
+                cell.allocate_for_pending(
+                    indep_dp_alive_cell_indices=TODO,
+                )
 
         # Step 3: Cooperatively prepare
         src_cell_index = was_alive_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
