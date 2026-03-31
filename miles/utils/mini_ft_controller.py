@@ -142,6 +142,7 @@ class _MiniFTController:
                 await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
         except Exception:
             logger.error("Error in run", exc_info=True)
+            raise
 
     def request_stop(self) -> None:
         self._running = False
