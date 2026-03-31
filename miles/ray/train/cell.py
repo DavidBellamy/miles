@@ -54,17 +54,7 @@ class RayTrainCell:
 
         self._state: _CellState = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
 
-    @property
-    def is_running(self) -> bool:
-        return isinstance(self._state, _StateRunning)
-
-    @property
-    def is_pending(self) -> bool:
-        return isinstance(self._state, _StatePending)
-
-    def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
-        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={self._state.type})"
-        return self._state.actor_handles
+    # ------------------------ lifecycle management ------------------------
 
     def stop(self) -> None:
         handles = self._get_actor_handles()
@@ -87,10 +77,12 @@ class RayTrainCell:
         self._state = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
+    # ------------------------ actor creation ------------------------
+
+    # TODO make it static function
     def _allocate_gpus_for_actor(self):
         world_size = self._gpus_per_cell
 
-        # Use placement group to lock resources for models of same type
         # Use placement group to lock resources for models of same type
         assert self._pg is not None
         pg, reordered_bundle_indices, _reordered_gpu_ids = self._pg
@@ -159,6 +151,8 @@ class RayTrainCell:
 
         return actor_handles
 
+    # ------------------------ usage ------------------------
+
     def async_execute(self, fn_name, *args, **kwargs):
         handles = self._get_actor_handles()
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
@@ -169,3 +163,17 @@ class RayTrainCell:
         return [
             actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
+
+    # ------------------------ state helpers ------------------------
+
+    @property
+    def is_running(self) -> bool:
+        return isinstance(self._state, _StateRunning)
+
+    @property
+    def is_pending(self) -> bool:
+        return isinstance(self._state, _StatePending)
+
+    def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
+        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={self._state.type})"
+        return self._state.actor_handles
