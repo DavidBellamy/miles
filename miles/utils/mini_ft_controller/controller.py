@@ -19,7 +19,6 @@ class CellSnapshot(StrictBaseModel):
 class _CellBackoff:
     consecutive_failures: int = 0
     next_attempt_at: float = 0.0
-    given_up: bool = False
 
 
 class MiniFTController:
@@ -31,14 +30,12 @@ class MiniFTController:
         resume_cell: Callable[[str], Awaitable[None]],
         poll_interval: float = 10.0,
         resume_delay: float = 5.0,
-        max_consecutive_failures: int = 5,
     ) -> None:
         self._get_cells = get_cells
         self._suspend_cell = suspend_cell
         self._resume_cell = resume_cell
         self._poll_interval = poll_interval
         self._resume_delay = resume_delay
-        self._max_consecutive_failures = max_consecutive_failures
 
         self._running: bool = False
         self._cell_backoffs: dict[str, _CellBackoff] = {}
@@ -72,9 +69,6 @@ class MiniFTController:
                 if cell.healthy_status == "False" and cell.healthy_reason == "Fatal":
                     backoff = self._cell_backoffs.setdefault(cell.name, _CellBackoff())
 
-                    if backoff.given_up:
-                        continue
-
                     now = time.monotonic()
                     if now < backoff.next_attempt_at:
                         continue
@@ -105,20 +99,10 @@ class MiniFTController:
             backoff.consecutive_failures += 1
             delay = min(5 * (2 ** backoff.consecutive_failures), 300)
             backoff.next_attempt_at = time.monotonic() + delay
-
-            if backoff.consecutive_failures >= self._max_consecutive_failures:
-                backoff.given_up = True
-                logger.error(
-                    "Giving up on cell %s after %d consecutive failures",
-                    cell_name,
-                    backoff.consecutive_failures,
-                    exc_info=True,
-                )
-            else:
-                logger.warning(
-                    "Failed to heal cell %s (attempt %d), next attempt in %.0fs",
-                    cell_name,
-                    backoff.consecutive_failures,
-                    delay,
-                    exc_info=True,
-                )
+            logger.warning(
+                "Failed to heal cell %s (attempt %d), next attempt in %.0fs",
+                cell_name,
+                backoff.consecutive_failures,
+                delay,
+                exc_info=True,
+            )

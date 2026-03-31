@@ -23,7 +23,6 @@ def _make_controller(
     resume_cell: AsyncMock | None = None,
     poll_interval: float = 0.01,
     resume_delay: float = 0.0,
-    max_consecutive_failures: int = 5,
 ) -> MiniFTController:
     return MiniFTController(
         get_cells=get_cells or AsyncMock(return_value=[]),
@@ -31,7 +30,6 @@ def _make_controller(
         resume_cell=resume_cell or AsyncMock(),
         poll_interval=poll_interval,
         resume_delay=resume_delay,
-        max_consecutive_failures=max_consecutive_failures,
     )
 
 
@@ -132,7 +130,6 @@ async def test_backoff_on_heal_failure() -> None:
     controller = _make_controller(
         get_cells=AsyncMock(return_value=[fatal_cell]),
         suspend_cell=suspend_cell,
-        max_consecutive_failures=10,
     )
 
     await controller._poll_and_heal()
@@ -151,7 +148,6 @@ async def test_exponential_backoff_timing() -> None:
     controller = _make_controller(
         get_cells=AsyncMock(return_value=[fatal_cell]),
         suspend_cell=suspend_cell,
-        max_consecutive_failures=20,
     )
 
     expected_delays = [10, 20, 40, 80, 160, 300, 300]
@@ -170,35 +166,6 @@ async def test_exponential_backoff_timing() -> None:
         assert abs(actual_delay - expected_delay) < 2.0, (
             f"Expected delay ~{expected_delay}, got {actual_delay:.1f}"
         )
-
-
-@pytest.mark.asyncio
-async def test_given_up_after_max_failures() -> None:
-    """After N consecutive failures, given_up=True, no more attempts."""
-    fatal_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal")
-    suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
-
-    max_failures = 3
-    controller = _make_controller(
-        get_cells=AsyncMock(return_value=[fatal_cell]),
-        suspend_cell=suspend_cell,
-        max_consecutive_failures=max_failures,
-    )
-
-    for _ in range(max_failures):
-        backoff = controller._cell_backoffs.get("cell-0")
-        if backoff:
-            backoff.next_attempt_at = 0.0
-        await controller._poll_and_heal()
-
-    backoff = controller._cell_backoffs["cell-0"]
-    assert backoff.given_up is True
-    assert backoff.consecutive_failures == max_failures
-
-    # One more poll should not attempt heal
-    suspend_cell.reset_mock()
-    await controller._poll_and_heal()
-    suspend_cell.assert_not_called()
 
 
 @pytest.mark.asyncio

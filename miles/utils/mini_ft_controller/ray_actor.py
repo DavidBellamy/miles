@@ -19,7 +19,6 @@ class MiniFTControllerActor:
         control_server_url: str,
         poll_interval: float,
         resume_delay: float,
-        max_consecutive_failures: int,
     ) -> None:
         self._url = control_server_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=self._url, timeout=30.0)
@@ -29,7 +28,6 @@ class MiniFTControllerActor:
             resume_cell=self._resume_cell,
             poll_interval=poll_interval,
             resume_delay=resume_delay,
-            max_consecutive_failures=max_consecutive_failures,
         )
 
     async def run(self) -> None:
@@ -88,7 +86,6 @@ def maybe_start_mini_ft_controller(args: Any) -> None:
         control_server_url=f"http://127.0.0.1:{args.control_server_port}",
         poll_interval=args.mini_ft_controller_poll_interval,
         resume_delay=args.mini_ft_controller_resume_delay,
-        max_consecutive_failures=args.mini_ft_controller_max_consecutive_failures,
     )
     controller.run.remote()  # fire-and-forget
     logger.info("Started MiniFTControllerActor")

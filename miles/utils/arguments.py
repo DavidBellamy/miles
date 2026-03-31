@@ -553,12 +553,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=5.0,
                 help="Delay in seconds between suspending and resuming a cell during heal.",
             )
-            parser.add_argument(
-                "--mini-ft-controller-max-consecutive-failures",
-                type=int,
-                default=5,
-                help="Maximum consecutive heal failures before giving up on a cell.",
-            )
             return parser
 
         # data

@@ -60,7 +60,6 @@ def _create_actor_instance() -> MiniFTControllerActor:
         control_server_url="http://127.0.0.1:8080",
         poll_interval=10.0,
         resume_delay=5.0,
-        max_consecutive_failures=5,
     )
     return actor
 
