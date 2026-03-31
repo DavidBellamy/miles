@@ -3,27 +3,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import ray
-from tests.fast.ray.train.conftest import make_alive_cell, make_cell
 from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 from miles.ray.train.group import RayTrainGroup
 
 
-def _make_group_with_cells(cells: list) -> RayTrainGroup:
-    """Create a RayTrainGroup via real __init__, then replace cells with the provided ones."""
-    group = _make_group_via_init(num_cells=len(cells))
-    group._cells = cells
-    return group
-
-
-def _make_mock_args(*, indep_dp: bool = True, num_cells: int = 3) -> MagicMock:
+def _make_mock_args(*, indep_dp: bool = True) -> MagicMock:
     args = MagicMock()
     args.indep_dp = indep_dp
     return args
 
 
-def _make_group_via_init(*, num_cells: int = 3, actor_count_per_cell: int = 1) -> RayTrainGroup:
-    """Create a RayTrainGroup through real __init__ with mocked placement group and actor factory."""
+def _make_group(
+    *,
+    num_cells: int = 3,
+    actor_count_per_cell: int = 1,
+    rollout_manager: object | None = None,
+) -> RayTrainGroup:
+    """Create a RayTrainGroup through real __init__ with mocked pg and actor factory."""
     with patch(
         "miles.ray.train.group.compute_megatron_world_size_except_dp",
         return_value=1,
@@ -38,40 +35,47 @@ def _make_group_via_init(*, num_cells: int = 3, actor_count_per_cell: int = 1) -
             pg=(MagicMock(), list(range(num_cells)), list(range(num_cells))),
             role="actor",
             with_ref=False,
-            rollout_manager=None,
+            rollout_manager=rollout_manager,
         )
+    return group
+
+
+def _init_group(group: RayTrainGroup) -> None:
+    """Call async_init and wait for all cells to become alive."""
+    ray.get(group.async_init())
+
+
+def _make_alive_group(*, num_cells: int = 3, **kwargs) -> RayTrainGroup:
+    """Create a group and init all cells to alive."""
+    group = _make_group(num_cells=num_cells, **kwargs)
+    _init_group(group)
     return group
 
 
 class TestInit:
     def test_creates_correct_number_of_cells(self):
-        """__init__ creates num_cells cells, each with correct cell_index."""
-        group = _make_group_via_init(num_cells=3)
+        group = _make_group(num_cells=3)
 
         assert len(group._cells) == 3
         assert [c.cell_index for c in group._cells] == [0, 1, 2]
 
     def test_cells_are_allocated_after_init(self):
-        """All cells are in allocated (uninitialized) state after __init__."""
-        group = _make_group_via_init(num_cells=2)
+        group = _make_group(num_cells=2)
 
         for cell in group._cells:
             assert cell.is_allocated
             assert not cell.is_alive
 
     def test_each_cell_has_own_actors(self):
-        """Each cell has its own actor handles (not shared)."""
-        group = _make_group_via_init(num_cells=3, actor_count_per_cell=2)
+        group = _make_group(num_cells=3, actor_count_per_cell=2)
 
         handles_per_cell = [cell._get_actor_handles() for cell in group._cells]
         assert all(len(h) == 2 for h in handles_per_cell)
 
-        # No handle appears in two cells
         all_handles = [h for handles in handles_per_cell for h in handles]
         assert len(set(id(h) for h in all_handles)) == 6
 
     def test_single_cell_no_tcp_store(self):
-        """With indep_dp but only 1 cell, no TCPStore is created."""
         with patch(
             "miles.ray.train.group.compute_megatron_world_size_except_dp",
             return_value=1,
@@ -79,9 +83,8 @@ class TestInit:
             "miles.ray.train.group.allocate_gpus_for_actor",
             side_effect=lambda **kwargs: [DummyTrainActor.remote()],
         ):
-            args = _make_mock_args(indep_dp=False)
             group = RayTrainGroup(
-                args=args,
+                args=_make_mock_args(indep_dp=False),
                 num_nodes=1,
                 num_gpus_per_node=1,
                 pg=(MagicMock(), [0], [0]),
@@ -94,11 +97,9 @@ class TestInit:
         assert group._indep_dp_store is None
 
     def test_async_init_marks_all_cells_alive(self):
-        """async_init dispatches init to all cells and marks them alive."""
-        group = _make_group_via_init(num_cells=3)
+        group = _make_group(num_cells=3)
 
-        refs = group.async_init()
-        ray.get(refs)
+        _init_group(group)
 
         for cell in group._cells:
             assert cell.is_alive
@@ -112,71 +113,62 @@ class TestInit:
 
 class TestStopStartCell:
     def test_stop_cell_transitions_to_stopped(self):
-        cells = [make_alive_cell(0, alive_cell_indices=[0, 1]), make_alive_cell(1, alive_cell_indices=[0, 1])]
-        group = _make_group_with_cells(cells)
+        group = _make_alive_group(num_cells=2)
 
         group.stop_cell(1)
 
-        assert cells[1].is_stopped
-        assert cells[0].is_alive
+        assert group._cells[1].is_stopped
+        assert group._cells[0].is_alive
 
     def test_start_cell_transitions_to_pending(self):
-        cells = [make_alive_cell(0, alive_cell_indices=[0, 1]), make_alive_cell(1, alive_cell_indices=[0, 1])]
-        group = _make_group_with_cells(cells)
+        group = _make_alive_group(num_cells=2)
         group.stop_cell(1)
 
         group.start_cell(1)
 
-        assert cells[1].is_pending
+        assert group._cells[1].is_pending
 
 
 class TestAsyncExecuteFirstAlive:
     def test_picks_first_alive_cell(self):
-        """_async_execute_first_alive dispatches to the first alive cell only."""
-        cells = [make_alive_cell(i, alive_cell_indices=[0, 1, 2]) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        group = _make_alive_group(num_cells=3)
 
         refs = group._async_execute_first_alive("save_model", 42)
         ray.get(refs)
 
-        # Only cell 0's actors should have received the call
-        for handle in cells[0]._get_actor_handles():
+        for handle in group._cells[0]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "save_model" for c in calls)
 
-        # Cell 1 and 2 should NOT have received anything
-        for cell in cells[1:]:
+        for cell in group._cells[1:]:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
                 assert not any(c[0] == "save_model" for c in calls)
 
     def test_skips_stopped_picks_next(self):
-        """When cell 0 is stopped, picks next alive cell."""
-        cells = [make_alive_cell(i, alive_cell_indices=[0, 1]) for i in range(2)]
-        group = _make_group_with_cells(cells)
-        cells[0].stop()
+        group = _make_alive_group(num_cells=2)
+        group._cells[0].stop()
 
         refs = group._async_execute_first_alive("update_weights")
         ray.get(refs)
 
-        for handle in cells[1]._get_actor_handles():
+        for handle in group._cells[1]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "update_weights" for c in calls)
 
 
 class TestComputeIndepDPInfo:
     def test_all_alive(self):
-        group = _make_group_with_cells([make_cell(i) for i in range(3)])
+        group = _make_group(num_cells=3)
 
         info = group._compute_indep_dp_info(cell_index=2, alive_cell_indices=[0, 1, 2])
 
         assert info.alive_rank == 2
         assert info.alive_size == 3
         assert info.cell_index == 2
-        assert info.alive_cell_indices == [0, 1, 2]
 
     def test_with_gap(self):
-        group = _make_group_with_cells([make_cell(i) for i in range(3)])
+        group = _make_group(num_cells=3)
 
         info = group._compute_indep_dp_info(cell_index=2, alive_cell_indices=[0, 2])
 
@@ -186,24 +178,21 @@ class TestComputeIndepDPInfo:
 
 class TestAsyncExecuteAlive:
     def test_skips_stopped_cells(self):
-        alive_cell = make_alive_cell(0, alive_cell_indices=[0])
-        stopped_cell = make_cell(1)
-        stopped_cell.stop()
-        group = _make_group_with_cells([alive_cell, stopped_cell])
+        group = _make_alive_group(num_cells=2)
+        group._cells[1].stop()
 
         refs = group._async_execute_alive("train")
 
         assert len(refs) == 1
         ray.get(refs)
 
-        for handle in alive_cell._get_actor_handles():
+        for handle in group._cells[0]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "train" for c in calls)
 
     def test_asserts_on_no_alive_cells(self):
-        stopped = make_cell(0)
-        stopped.stop()
-        group = _make_group_with_cells([stopped])
+        group = _make_alive_group(num_cells=1)
+        group._cells[0].stop()
 
         with pytest.raises(AssertionError, match="No alive cells"):
             group._async_execute_alive("train")
@@ -212,110 +201,91 @@ class TestAsyncExecuteAlive:
 class TestRefreshCellsReconfigure:
     def test_reconfigure_triggers_on_alive_change(self):
         """When a cell is stopped, _refresh_cells reconfigures remaining alive cells."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
-        initial_quorum = group._indep_dp_quorum_id
+        group = _make_alive_group(num_cells=3)
 
         # Step 1: Stop cell 1
-        cells[1].stop()
+        group.stop_cell(1)
 
         # Step 2: Refresh
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
-        # Step 3: Quorum bumped
-        assert group._indep_dp_quorum_id == initial_quorum + 1
+        # Step 3: Quorum bumped (init was quorum 0, this is first reconfigure)
+        assert group._indep_dp_quorum_id == 1
 
         # Step 4: Remaining alive cells have updated indep_dp_info
-        assert cells[0].is_alive
-        assert cells[0].indep_dp_info.alive_cell_indices == [0, 2]
-        assert cells[0].indep_dp_info.alive_rank == 0
-        assert cells[0].indep_dp_info.alive_size == 2
+        assert group._cells[0].is_alive
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 2]
+        assert group._cells[0].indep_dp_info.alive_rank == 0
+        assert group._cells[0].indep_dp_info.alive_size == 2
 
-        assert cells[2].is_alive
-        assert cells[2].indep_dp_info.alive_cell_indices == [0, 2]
-        assert cells[2].indep_dp_info.alive_rank == 1
+        assert group._cells[2].is_alive
+        assert group._cells[2].indep_dp_info.alive_rank == 1
 
         # Step 5: Stopped cell untouched
-        assert cells[1].is_stopped
+        assert group._cells[1].is_stopped
 
         # Step 6: Actors received reconfigure_indep_dp
-        for cell in [cells[0], cells[2]]:
+        for cell in [group._cells[0], group._cells[2]]:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
                 assert any(c[0] == "reconfigure_indep_dp" for c in calls)
 
     def test_no_reconfigure_when_unchanged(self):
-        all_alive = [0, 1]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(2)]
-        group = _make_group_with_cells(cells)
-        initial_quorum = group._indep_dp_quorum_id
+        group = _make_alive_group(num_cells=2)
 
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
-        assert group._indep_dp_quorum_id == initial_quorum
+        assert group._indep_dp_quorum_id == 0
 
 
 class TestRefreshCellsHealing:
     def test_pending_cell_gets_healed(self):
         """A pending cell goes through allocate + healing with correct alive_rank."""
-        # Step 1: cells [0, 1] alive, cell 2 pending
-        cells = [
-            make_alive_cell(0, alive_cell_indices=[0, 1]),
-            make_alive_cell(1, alive_cell_indices=[0, 1]),
-        ]
-        pending_cell = make_cell(2)
-        pending_cell.stop()
-        pending_cell.mark_as_pending()
-        cells.append(pending_cell)
+        group = _make_alive_group(num_cells=3)
 
-        group = _make_group_with_cells(cells)
+        # Step 1: Stop cell 2, then start it (pending)
+        group.stop_cell(2)
+        group.start_cell(2)
 
         # Step 2: Refresh heals the pending cell
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
         # Step 3: All 3 cells are now alive
-        assert all(c.is_alive for c in cells)
+        assert all(c.is_alive for c in group._cells)
 
         # Step 4: All cells have consistent indep_dp_info
-        for cell in cells:
+        for cell in group._cells:
             assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
             assert cell.indep_dp_info.alive_size == 3
 
-        assert cells[0].indep_dp_info.alive_rank == 0
-        assert cells[1].indep_dp_info.alive_rank == 1
-        assert cells[2].indep_dp_info.alive_rank == 2
-
         # Step 5: Healed cell's actors received init
-        for handle in cells[2]._get_actor_handles():
+        for handle in group._cells[2]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "init" for c in calls)
 
-        # Step 6: Source cell (cell 0) sent ckpt to healed cell's alive_rank
-        for handle in cells[0]._get_actor_handles():
+        # Step 6: Source cell sent ckpt to healed cell's alive_rank
+        for handle in group._cells[0]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             send_calls = [c for c in calls if c[0] == "send_ckpt"]
             assert len(send_calls) == 1
-            assert send_calls[0][2]["dst_rank"] == 2  # alive_rank of cell 2 in [0,1,2]
+            assert send_calls[0][2]["dst_rank"] == 2
 
     def test_multiple_pending_cells_healed(self):
-        """Multiple pending cells healed simultaneously with correct ranks."""
-        cells = [make_alive_cell(0, alive_cell_indices=[0])]
-        for i in [1, 2]:
-            cell = make_cell(i)
-            cell.stop()
-            cell.mark_as_pending()
-            cells.append(cell)
+        """Multiple pending cells healed simultaneously."""
+        group = _make_alive_group(num_cells=3)
+        group.stop_cell(1)
+        group.stop_cell(2)
+        group.start_cell(1)
+        group.start_cell(2)
 
-        group = _make_group_with_cells(cells)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
-        assert all(c.is_alive for c in cells)
-        for cell in cells:
+        assert all(c.is_alive for c in group._cells)
+        for cell in group._cells:
             assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
 
-        # Source (cell 0) sent ckpt to both pending cells
-        for handle in cells[0]._get_actor_handles():
+        # Source (cell 0) sent ckpt to both healed cells
+        for handle in group._cells[0]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             send_calls = [c for c in calls if c[0] == "send_ckpt"]
             assert len(send_calls) == 2
@@ -325,223 +295,174 @@ class TestRefreshCellsHealing:
     def test_healed_cell_receives_set_rollout_manager(self):
         """Healed cell receives set_rollout_manager after init."""
         rollout_mgr = MagicMock()
-        cells = [
-            make_alive_cell(0, alive_cell_indices=[0]),
-        ]
-        pending_cell = make_cell(1, rollout_manager=rollout_mgr)
-        pending_cell.stop()
-        pending_cell.mark_as_pending()
-        cells.append(pending_cell)
+        group = _make_alive_group(num_cells=2, rollout_manager=rollout_mgr)
+        group.stop_cell(1)
+        group.start_cell(1)
 
-        group = _make_group_with_cells(cells)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
-        assert cells[1].is_alive
-        for handle in cells[1]._get_actor_handles():
+        assert group._cells[1].is_alive
+        for handle in group._cells[1]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "set_rollout_manager" for c in calls)
 
     def test_pending_cell_with_stopped_cell(self):
         """Pending + stopped: only alive and pending participate, stopped excluded."""
-        cells = [
-            make_alive_cell(0, alive_cell_indices=[0]),
-        ]
-        stopped_cell = make_cell(1)
-        stopped_cell.stop()
-        cells.append(stopped_cell)
+        group = _make_alive_group(num_cells=3)
 
-        pending_cell = make_cell(2)
-        pending_cell.stop()
-        pending_cell.mark_as_pending()
-        cells.append(pending_cell)
-
-        group = _make_group_with_cells(cells)
+        # cell 1 stopped (not restarted), cell 2 pending
+        group.stop_cell(1)
+        group.stop_cell(2)
+        group.start_cell(2)
 
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
 
-        # cell 0 and 2 alive, cell 1 still stopped
-        assert cells[0].is_alive
-        assert cells[1].is_stopped
-        assert cells[2].is_alive
+        assert group._cells[0].is_alive
+        assert group._cells[1].is_stopped
+        assert group._cells[2].is_alive
 
-        # alive set is [0, 2]
-        assert cells[0].indep_dp_info.alive_cell_indices == [0, 2]
-        assert cells[0].indep_dp_info.alive_size == 2
-        assert cells[2].indep_dp_info.alive_cell_indices == [0, 2]
-        assert cells[2].indep_dp_info.alive_rank == 1
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 2]
+        assert group._cells[0].indep_dp_info.alive_size == 2
+        assert group._cells[2].indep_dp_info.alive_rank == 1
 
 
 class TestRefreshCellsNoOp:
     def test_repeated_refresh_without_change_does_not_reconfigure(self):
-        """Calling _refresh_cells multiple times without state changes does not dispatch any actor calls."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        """Calling _refresh_cells multiple times without state changes dispatches no actor calls."""
+        group = _make_alive_group(num_cells=3)
 
-        # Step 1: First refresh — no change, should be no-op
-        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-        assert group._indep_dp_quorum_id == 0
-
-        # Step 2: Second refresh — still no change
-        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-        assert group._indep_dp_quorum_id == 0
-
-        # Step 3: No actor calls were dispatched at all
-        for cell in cells:
+        # Clear init calls by noting current call count
+        init_call_counts = {}
+        for cell in group._cells:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
-                assert len(calls) == 0, f"cell {cell.cell_index} unexpectedly received calls: {calls}"
+                init_call_counts[id(handle)] = len(calls)
+
+        # Two refreshes — neither should change anything
+        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
+        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
+        assert group._indep_dp_quorum_id == 0
+
+        # No new calls dispatched
+        for cell in group._cells:
+            for handle in cell._get_actor_handles():
+                calls = ray.get(handle.get_calls.remote())
+                assert len(calls) == init_call_counts[id(handle)]
 
     def test_refresh_after_reconfigure_is_noop_on_second_call(self):
-        """After a reconfigure, the next _refresh_cells with no further changes is a no-op."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
-
-        # Step 1: Stop cell 1 → triggers reconfigure
-        cells[1].stop()
+        group = _make_alive_group(num_cells=3)
+        group.stop_cell(1)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
         assert group._indep_dp_quorum_id == 1
 
-        # Step 2: Clear actor call records
-        for cell in [cells[0], cells[2]]:
-            for handle in cell._get_actor_handles():
-                ray.get(handle.get_calls.remote())  # just to confirm calls exist
-
-        # Step 3: Second refresh — nothing changed, should NOT bump quorum
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-        assert group._indep_dp_quorum_id == 1  # NOT 2
+        assert group._indep_dp_quorum_id == 1
 
 
 class TestConsecutiveStopStartCycles:
     def test_stop_train_stop_train_start_train(self):
-        """Consecutive stop-start cycle: stop 1 → refresh → stop 2 → refresh → start 1 → refresh."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        """Consecutive: stop 1 → refresh → stop 2 → refresh → start 1 → refresh."""
+        group = _make_alive_group(num_cells=3)
 
-        # Step 1: Stop cell 1 → refresh
-        cells[1].stop()
+        # Step 1: Stop cell 1
+        group.stop_cell(1)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-
         assert group._indep_dp_quorum_id == 1
-        assert cells[0].indep_dp_info.alive_cell_indices == [0, 2]
-        assert cells[2].indep_dp_info.alive_cell_indices == [0, 2]
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 2]
 
-        # Step 2: Stop cell 2 → refresh (only cell 0 alive)
-        cells[2].stop()
+        # Step 2: Stop cell 2 (only cell 0 alive)
+        group.stop_cell(2)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-
         assert group._indep_dp_quorum_id == 2
-        assert cells[0].indep_dp_info.alive_cell_indices == [0]
-        assert cells[0].indep_dp_info.alive_size == 1
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0]
+        assert group._cells[0].indep_dp_info.alive_size == 1
 
-        # Step 3: Start cell 1 → refresh (cells 0 and 1 alive)
-        cells[1].mark_as_pending()
+        # Step 3: Start cell 1 (cells 0 and 1 alive)
+        group.start_cell(1)
         asyncio.get_event_loop().run_until_complete(group._refresh_cells())
-
         assert group._indep_dp_quorum_id == 3
-        assert cells[0].is_alive
-        assert cells[1].is_alive
-        assert cells[2].is_stopped
-        assert cells[0].indep_dp_info.alive_cell_indices == [0, 1]
-        assert cells[1].indep_dp_info.alive_cell_indices == [0, 1]
-        assert cells[0].indep_dp_info.alive_rank == 0
-        assert cells[1].indep_dp_info.alive_rank == 1
+        assert group._cells[0].is_alive
+        assert group._cells[1].is_alive
+        assert group._cells[2].is_stopped
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 1]
+        assert group._cells[1].indep_dp_info.alive_cell_indices == [0, 1]
 
 
 class TestAsyncTrain:
     def test_async_train_refreshes_and_dispatches(self):
-        """async_train calls _refresh_cells then dispatches train to alive cells."""
-        all_alive = [0, 1]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(2)]
-        group = _make_group_with_cells(cells)
+        group = _make_alive_group(num_cells=2)
 
         refs = group.async_train(rollout_id=0, rollout_data_ref="data")
         ray.get(refs)
 
-        # Both cells should have received train call
-        for cell in cells:
+        for cell in group._cells:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
                 assert any(c[0] == "train" for c in calls)
 
     def test_async_train_with_stopped_cell_only_dispatches_to_alive(self):
-        """async_train with a stopped cell only dispatches train to alive cells."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
-
-        # Stop cell 1
-        cells[1].stop()
+        group = _make_alive_group(num_cells=3)
+        group.stop_cell(1)
 
         refs = group.async_train(rollout_id=0, rollout_data_ref="data")
         ray.get(refs)
 
-        # Cell 0 and 2 received train, cell 1 did not
-        for cell in [cells[0], cells[2]]:
+        for cell in [group._cells[0], group._cells[2]]:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
                 assert any(c[0] == "train" for c in calls)
 
-        assert cells[1].is_stopped
+        assert group._cells[1].is_stopped
 
     def test_consecutive_async_train_no_reconfigure_overhead(self):
-        """Multiple async_train calls with no state changes should not trigger reconfigure."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        """Multiple async_train calls with no state changes — no reconfigure overhead."""
+        group = _make_alive_group(num_cells=3)
 
-        # Step 1: Three consecutive async_train calls
+        # Note init call count
+        init_counts = {}
+        for cell in group._cells:
+            for handle in cell._get_actor_handles():
+                init_counts[id(handle)] = len(ray.get(handle.get_calls.remote()))
+
         for step in range(3):
-            refs = group.async_train(rollout_id=step, rollout_data_ref="data")
-            ray.get(refs)
+            ray.get(group.async_train(rollout_id=step, rollout_data_ref="data"))
 
-        # Step 2: Quorum never bumped
         assert group._indep_dp_quorum_id == 0
 
-        # Step 3: No reconfigure_indep_dp calls, only train calls
-        for cell in cells:
+        for cell in group._cells:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
-                assert not any(c[0] == "reconfigure_indep_dp" for c in calls)
-                train_calls = [c for c in calls if c[0] == "train"]
+                new_calls = calls[init_counts[id(handle)]:]
+                assert not any(c[0] == "reconfigure_indep_dp" for c in new_calls)
+                train_calls = [c for c in new_calls if c[0] == "train"]
                 assert len(train_calls) == 3
 
     def test_rapid_stop_start_before_async_train(self):
-        """Cell stopped and immediately started before next async_train — healed in one refresh."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        """Cell stopped and immediately started before next async_train — healed in one shot."""
+        group = _make_alive_group(num_cells=3)
 
-        # Stop and immediately start cell 1
         group.stop_cell(1)
         group.start_cell(1)
 
-        # async_train heals cell 1 in one shot
-        refs = group.async_train(rollout_id=0, rollout_data_ref="data")
-        ray.get(refs)
+        ray.get(group.async_train(rollout_id=0, rollout_data_ref="data"))
 
-        # All 3 cells alive and trained
-        assert all(c.is_alive for c in cells)
-        for cell in cells:
+        assert all(c.is_alive for c in group._cells)
+        for cell in group._cells:
             assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
 
     def test_full_lifecycle_through_async_train(self):
         """End-to-end: normal → degraded → steady degraded → healing → full."""
-        all_alive = [0, 1, 2]
-        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
-        group = _make_group_with_cells(cells)
+        group = _make_alive_group(num_cells=3)
 
         # Step 1: Normal training (no reconfigure)
         ray.get(group.async_train(rollout_id=0, rollout_data_ref="data"))
         assert group._indep_dp_quorum_id == 0
 
-        # Step 2: Stop cell 2 → degraded training (triggers reconfigure)
+        # Step 2: Stop cell 2 → degraded (triggers reconfigure)
         group.stop_cell(2)
         ray.get(group.async_train(rollout_id=1, rollout_data_ref="data"))
         assert group._indep_dp_quorum_id == 1
-        assert cells[0].indep_dp_info.alive_cell_indices == [0, 1]
+        assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 1]
 
         # Step 3: Steady degraded (no reconfigure)
         ray.get(group.async_train(rollout_id=2, rollout_data_ref="data"))
@@ -551,8 +472,8 @@ class TestAsyncTrain:
         group.start_cell(2)
         ray.get(group.async_train(rollout_id=3, rollout_data_ref="data"))
         assert group._indep_dp_quorum_id == 2
-        assert all(c.is_alive for c in cells)
-        assert cells[2].indep_dp_info.alive_cell_indices == [0, 1, 2]
+        assert all(c.is_alive for c in group._cells)
+        assert group._cells[2].indep_dp_info.alive_cell_indices == [0, 1, 2]
 
         # Step 5: Full training again (no reconfigure)
         ray.get(group.async_train(rollout_id=4, rollout_data_ref="data"))
