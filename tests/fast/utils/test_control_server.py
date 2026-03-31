@@ -115,7 +115,7 @@ class TestCellRegistry:
 class TestGetCells:
     @pytest.mark.asyncio
     async def test_empty_registry(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.get("/cells")
+        resp = await async_client.get("/api/v1/cells")
         assert resp.status_code == 200
         assert resp.json() == []
 
@@ -146,7 +146,7 @@ class TestGetCells:
             )
         )
 
-        resp = await async_client.get("/cells")
+        resp = await async_client.get("/api/v1/cells")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 3
@@ -164,12 +164,12 @@ class TestGetCells:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="running")
         registry.register(handle)
 
-        resp1 = await async_client.get("/cells")
+        resp1 = await async_client.get("/api/v1/cells")
         assert resp1.json()[0]["status"] == "running"
 
         handle._status = "stopped"
 
-        resp2 = await async_client.get("/cells")
+        resp2 = await async_client.get("/api/v1/cells")
         assert resp2.json()[0]["status"] == "stopped"
 
 
@@ -179,7 +179,7 @@ class TestStopCell:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/stop")
+        resp = await async_client.post("/api/v1/cells/cell-0/stop")
         assert resp.status_code == 200
         assert handle.stop_calls == [30]
 
@@ -188,13 +188,13 @@ class TestStopCell:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/stop", json={"timeout_seconds": 60})
+        resp = await async_client.post("/api/v1/cells/cell-0/stop", json={"timeout_seconds": 60})
         assert resp.status_code == 200
         assert handle.stop_calls == [60]
 
     @pytest.mark.asyncio
     async def test_unknown_cell_returns_404(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.post("/cells/nonexistent/stop")
+        resp = await async_client.post("/api/v1/cells/nonexistent/stop")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
@@ -204,7 +204,7 @@ class TestStopCell:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="stopped")
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/stop")
+        resp = await async_client.post("/api/v1/cells/cell-0/stop")
         assert resp.status_code == 200
         assert len(handle.stop_calls) == 1
 
@@ -217,14 +217,14 @@ class TestStopCell:
         )
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/stop")
+        resp = await async_client.post("/api/v1/cells/cell-0/stop")
         assert resp.status_code == 500
 
 
 class TestHealth:
     @pytest.mark.asyncio
     async def test_health_returns_ok(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.get("/health")
+        resp = await async_client.get("/api/v1/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
 
@@ -235,13 +235,13 @@ class TestStartCell:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="stopped")
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/start")
+        resp = await async_client.post("/api/v1/cells/cell-0/start")
         assert resp.status_code == 200
         assert handle.start_calls == 1
 
     @pytest.mark.asyncio
     async def test_unknown_cell_returns_404(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.post("/cells/nonexistent/start")
+        resp = await async_client.post("/api/v1/cells/nonexistent/start")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
@@ -251,7 +251,7 @@ class TestStartCell:
         handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="running")
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/start")
+        resp = await async_client.post("/api/v1/cells/cell-0/start")
         assert resp.status_code == 200
         assert handle.start_calls == 1
 
@@ -264,7 +264,7 @@ class TestStartCell:
         )
         registry.register(handle)
 
-        resp = await async_client.post("/cells/cell-0/start")
+        resp = await async_client.post("/api/v1/cells/cell-0/start")
         assert resp.status_code == 500
 
 

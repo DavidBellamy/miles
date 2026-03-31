@@ -89,11 +89,11 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
 
     # -------------------------- APIs ------------------------------
 
-    @app.get("/health")
+    @app.get("/api/v1/health")
     async def health() -> _OkResponse:
         return _OkResponse()
 
-    @app.get("/cells")
+    @app.get("/api/v1/cells")
     async def get_cells() -> list[_CellInfo]:
         handles = registry.get_all()
 
@@ -108,14 +108,14 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
 
         return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
-    @app.post("/cells/{cell_id}/stop")
+    @app.post("/api/v1/cells/{cell_id}/stop")
     async def stop_cell(cell_id: str, body: _StopRequest | None = None) -> _OkResponse:
         if body is None:
             body = _StopRequest()
         handle = _get_handle(cell_id)
         return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
 
-    @app.post("/cells/{cell_id}/start")
+    @app.post("/api/v1/cells/{cell_id}/start")
     async def start_cell(cell_id: str) -> _OkResponse:
         handle = _get_handle(cell_id)
         return await _call_handle(cell_id, "start", handle.start())
