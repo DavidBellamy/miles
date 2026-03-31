@@ -288,16 +288,17 @@ class RayTrainCell:
 
     @property
     def status(self) -> str:
-        if self.is_alive or isinstance(self._state, _StateAllocatedUninitialized):
-            return "running"
-        elif self.is_pending:
-            return "pending"
-        elif self.is_stopped:
-            return "stopped"
-        elif self.is_errored:
-            return "errored"
-        else:
-            raise NotImplementedError(f"Unknown state: {self._state}")
+        match self._state:
+            case _StateAllocatedAlive() | _StateAllocatedUninitialized():
+                return "running"
+            case _StatePending():
+                return "pending"
+            case _StateStopped():
+                return "stopped"
+            case _StateAllocatedErrored():
+                return "errored"
+            case _:
+                raise NotImplementedError(f"Unknown state: {self._state}")
 
     @property
     def indep_dp_info(self) -> IndepDPInfo:
