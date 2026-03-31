@@ -176,8 +176,9 @@ class RayTrainGroup:
         self._indep_dp_quorum_id += 1
 
         # Step 1: Recreate actors for each pending cell
-        for cell in pending_cells:
-            cell.allocate_for_pending()
+        for cell in self._cells:
+            if cell in pending_cell_ids:
+                cell.allocate_for_pending()
 
         TODO
 
