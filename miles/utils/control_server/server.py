@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import abc
 import asyncio
 import logging
 import threading
-from typing import Literal
 
 import ray
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict
 
 from miles.ray.train.group import RayTrainGroup
+from miles.utils.control_server.handles import _ActorCellHandle, _CellHandle, _RolloutCellHandle
+from miles.utils.control_server.models import _CellInfo, _OkResponse, _StopRequest
+from miles.utils.control_server.registry import _CellRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -55,30 +55,6 @@ def _start_control_server_raw(registry: _CellRegistry, port: int) -> None:
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     logger.info("Control server started on port %d", port)
-
-
-# -------------------------- types ------------------------------
-
-
-class _CellInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    cell_id: str
-    cell_type: Literal["actor", "rollout"]
-    status: Literal["running", "stopped", "pending", "errored"]
-    node_ids: list[str]
-
-
-class _StopRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    timeout_seconds: int = 30
-
-
-class _OkResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: str = "ok"
 
 
 # -------------------------- main app ------------------------------
@@ -137,104 +113,3 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
         return _OkResponse()
 
     return app
-
-
-# -------------------------- registry ------------------------------
-
-
-class _CellRegistry:
-    def __init__(self) -> None:
-        self._handles: dict[str, _CellHandle] = {}
-
-    def register(self, handle: _CellHandle) -> None:
-        if handle.cell_id in self._handles:
-            raise ValueError(f"Cell '{handle.cell_id}' is already registered")
-        self._handles[handle.cell_id] = handle
-
-    def get_all(self) -> list[_CellHandle]:
-        return list(self._handles.values())
-
-    def get(self, cell_id: str) -> _CellHandle:
-        return self._handles[cell_id]
-
-
-# -------------------------- handle ------------------------------
-
-
-class _CellHandle(abc.ABC):
-    @property
-    def cell_id(self) -> str:
-        return f"{self.cell_type}-{self.cell_index}"
-
-    @property
-    @abc.abstractmethod
-    def cell_type(self) -> str: ...
-
-    @property
-    @abc.abstractmethod
-    def cell_index(self) -> int: ...
-
-    @abc.abstractmethod
-    async def stop(self, timeout_seconds: int) -> None: ...
-
-    @abc.abstractmethod
-    async def start(self) -> None: ...
-
-    @abc.abstractmethod
-    async def get_status(self) -> str: ...
-
-    @abc.abstractmethod
-    async def get_node_ids(self) -> list[str]: ...
-
-
-class _ActorCellHandle(_CellHandle):
-    def __init__(self, *, group: RayTrainGroup, cell_index: int) -> None:
-        self._group = group
-        self._cell_index = cell_index
-
-    @property
-    def cell_type(self) -> str:
-        return "actor"
-
-    @property
-    def cell_index(self) -> int:
-        return self._cell_index
-
-    async def stop(self, timeout_seconds: int) -> None:
-        self._group.stop_cell(self._cell_index)
-
-    async def start(self) -> None:
-        self._group.start_cell(self._cell_index)
-
-    async def get_status(self) -> str:
-        return self._group._cells[self._cell_index].status
-
-    async def get_node_ids(self) -> list[str]:
-        return []
-
-
-# TODO the code will NOT work before implementing rollout ft
-class _RolloutCellHandle(_CellHandle):
-    def __init__(self, *, rollout_manager: object, cell_index: int) -> None:
-        self._rollout_manager = rollout_manager
-        self._cell_index = cell_index
-
-    @property
-    def cell_type(self) -> str:
-        return "rollout"
-
-    @property
-    def cell_index(self) -> int:
-        return self._cell_index
-
-    async def stop(self, timeout_seconds: int) -> None:
-        await self._rollout_manager.stop_cell.remote(self._cell_index, timeout_seconds)
-
-    async def start(self) -> None:
-        await self._rollout_manager.start_cell.remote(self._cell_index)
-
-    async def get_status(self) -> str:
-        return await self._rollout_manager.get_cell_status.remote(self._cell_index)
-
-    async def get_node_ids(self) -> list[str]:
-        return await self._rollout_manager.get_cell_node_ids.remote(self._cell_index)

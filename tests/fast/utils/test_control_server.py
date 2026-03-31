@@ -5,7 +5,9 @@ import asyncio
 import httpx
 import pytest
 
-from miles.utils.control_server import _ActorCellHandle, _CellRegistry, _create_control_app, _RolloutCellHandle
+from miles.utils.control_server.handles import _ActorCellHandle, _RolloutCellHandle
+from miles.utils.control_server.registry import _CellRegistry
+from miles.utils.control_server.server import _create_control_app
 
 
 class _MockHandle:
