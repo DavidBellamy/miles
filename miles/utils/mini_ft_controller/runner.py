@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 from typing import Any
 
 import httpx
-import ray
 
 from miles.utils.mini_ft_controller.controller import CellSnapshot, MiniFTController
 
 logger = logging.getLogger(__name__)
 
 
-@ray.remote(num_cpus=0.001)
-class MiniFTControllerActor:
+class _MiniFTControllerRunner:
     def __init__(
         self,
         *,
@@ -20,8 +20,8 @@ class MiniFTControllerActor:
         poll_interval: float,
         resume_delay: float,
     ) -> None:
-        self._url = control_server_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._url, timeout=30.0)
+        url = control_server_url.rstrip("/")
+        self._client = httpx.AsyncClient(base_url=url, timeout=30.0)
         self._controller = MiniFTController(
             get_cells=self._get_cells,
             suspend_cell=self._suspend_cell,
@@ -35,9 +35,6 @@ class MiniFTControllerActor:
             await self._controller.run()
         finally:
             await self._client.aclose()
-
-    def request_stop(self) -> None:
-        self._controller.request_stop()
 
     async def _get_cells(self) -> list[CellSnapshot]:
         resp = await self._client.get("/api/v1/cells")
@@ -82,10 +79,15 @@ def maybe_start_mini_ft_controller(args: Any) -> None:
     if not args.mini_ft_controller_enable:
         return
 
-    controller = MiniFTControllerActor.remote(
+    runner = _MiniFTControllerRunner(
         control_server_url=f"http://127.0.0.1:{args.control_server_port}",
         poll_interval=args.mini_ft_controller_poll_interval,
         resume_delay=args.mini_ft_controller_resume_delay,
     )
-    controller.run.remote()  # fire-and-forget
-    logger.info("Started MiniFTControllerActor")
+
+    def _run() -> None:
+        asyncio.run(runner.run())
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    logger.info("Started mini FT controller on daemon thread")

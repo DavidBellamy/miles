@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from miles.utils.mini_ft_controller.controller import CellSnapshot
-from miles.utils.mini_ft_controller.ray_actor import MiniFTControllerActor
+from miles.utils.mini_ft_controller.runner import _MiniFTControllerRunner
 
 
 def _build_cell_json(
@@ -53,15 +53,12 @@ def _build_cell_list_json(cells: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _create_actor_instance() -> MiniFTControllerActor:
-    """Create a MiniFTControllerActor instance directly (without Ray)."""
-    actor = MiniFTControllerActor.__new__(MiniFTControllerActor)
-    actor.__init__(
+def _create_runner_instance() -> _MiniFTControllerRunner:
+    return _MiniFTControllerRunner(
         control_server_url="http://127.0.0.1:8080",
         poll_interval=10.0,
         resume_delay=5.0,
     )
-    return actor
 
 
 def _mock_response(*, status_code: int = 200, json_data: Any = None) -> httpx.Response:
@@ -81,17 +78,17 @@ def _mock_response(*, status_code: int = 200, json_data: Any = None) -> httpx.Re
 @pytest.mark.asyncio
 async def test_get_cells_parses_response() -> None:
     """Mock httpx returning CellList JSON → verify CellSnapshot list correct."""
-    actor = _create_actor_instance()
+    runner = _create_runner_instance()
 
     cells_json = _build_cell_list_json([
         _build_cell_json(name="actor-0", healthy_status="True"),
         _build_cell_json(name="actor-1", healthy_status="False", healthy_reason="Fatal"),
     ])
 
-    actor._client = AsyncMock()
-    actor._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
+    runner._client = AsyncMock()
+    runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
 
-    result = await actor._get_cells()
+    result = await runner._get_cells()
 
     assert len(result) == 2
     assert result[0] == CellSnapshot(name="actor-0", healthy_status="True", healthy_reason=None)
@@ -101,16 +98,16 @@ async def test_get_cells_parses_response() -> None:
 @pytest.mark.asyncio
 async def test_get_cells_extracts_healthy_condition() -> None:
     """Verify Healthy condition status and reason correctly extracted."""
-    actor = _create_actor_instance()
+    runner = _create_runner_instance()
 
     cells_json = _build_cell_list_json([
         _build_cell_json(name="cell-0", healthy_status="False", healthy_reason="Fatal"),
     ])
 
-    actor._client = AsyncMock()
-    actor._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
+    runner._client = AsyncMock()
+    runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
 
-    result = await actor._get_cells()
+    result = await runner._get_cells()
 
     assert result[0].healthy_status == "False"
     assert result[0].healthy_reason == "Fatal"
@@ -119,13 +116,13 @@ async def test_get_cells_extracts_healthy_condition() -> None:
 @pytest.mark.asyncio
 async def test_suspend_cell_sends_correct_patch() -> None:
     """Verify PATCH body for suspend."""
-    actor = _create_actor_instance()
-    actor._client = AsyncMock()
-    actor._client.patch = AsyncMock(return_value=_mock_response())
+    runner = _create_runner_instance()
+    runner._client = AsyncMock()
+    runner._client.patch = AsyncMock(return_value=_mock_response())
 
-    await actor._suspend_cell("actor-0")
+    await runner._suspend_cell("actor-0")
 
-    actor._client.patch.assert_called_once_with(
+    runner._client.patch.assert_called_once_with(
         "/api/v1/cells/actor-0",
         json={"spec": {"suspend": True}},
     )
@@ -134,13 +131,13 @@ async def test_suspend_cell_sends_correct_patch() -> None:
 @pytest.mark.asyncio
 async def test_resume_cell_sends_correct_patch() -> None:
     """Verify PATCH body for resume."""
-    actor = _create_actor_instance()
-    actor._client = AsyncMock()
-    actor._client.patch = AsyncMock(return_value=_mock_response())
+    runner = _create_runner_instance()
+    runner._client = AsyncMock()
+    runner._client.patch = AsyncMock(return_value=_mock_response())
 
-    await actor._resume_cell("actor-0")
+    await runner._resume_cell("actor-0")
 
-    actor._client.patch.assert_called_once_with(
+    runner._client.patch.assert_called_once_with(
         "/api/v1/cells/actor-0",
         json={"spec": {"suspend": False}},
     )
@@ -149,12 +146,12 @@ async def test_resume_cell_sends_correct_patch() -> None:
 @pytest.mark.asyncio
 async def test_get_cells_http_error_raises() -> None:
     """Verify HTTP 4xx/5xx propagated."""
-    actor = _create_actor_instance()
-    actor._client = AsyncMock()
-    actor._client.get = AsyncMock(return_value=_mock_response(status_code=500))
+    runner = _create_runner_instance()
+    runner._client = AsyncMock()
+    runner._client.get = AsyncMock(return_value=_mock_response(status_code=500))
 
     with pytest.raises(httpx.HTTPStatusError):
-        await actor._get_cells()
+        await runner._get_cells()
 
 
 def test_argument_validation_requires_control_server_port() -> None:
