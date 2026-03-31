@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 import ray
@@ -227,6 +228,25 @@ class TestRefreshCellsHealing:
             assert len(send_calls) == 2
             dst_ranks = sorted(c[2]["dst_rank"] for c in send_calls)
             assert dst_ranks == [1, 2]
+
+    def test_healed_cell_receives_set_rollout_manager(self):
+        """Healed cell receives set_rollout_manager after init."""
+        rollout_mgr = MagicMock()
+        cells = [
+            make_alive_cell(0, alive_cell_indices=[0]),
+        ]
+        pending_cell = make_cell(1, rollout_manager=rollout_mgr)
+        pending_cell.stop()
+        pending_cell.mark_as_pending()
+        cells.append(pending_cell)
+
+        group = _make_group_with_cells(cells)
+        asyncio.get_event_loop().run_until_complete(group._refresh_cells())
+
+        assert cells[1].is_alive
+        for handle in cells[1]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert any(c[0] == "set_rollout_manager" for c in calls)
 
     def test_pending_cell_with_stopped_cell(self):
         """Pending + stopped: only alive and pending participate, stopped excluded."""

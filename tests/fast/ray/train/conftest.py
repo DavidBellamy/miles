@@ -33,7 +33,12 @@ def make_indep_dp_info(
     )
 
 
-def make_cell(cell_index: int = 0, *, actor_count: int = 2) -> RayTrainCell:
+def make_cell(
+    cell_index: int = 0,
+    *,
+    actor_count: int = 2,
+    rollout_manager: object | None = None,
+) -> RayTrainCell:
     def factory():
         return [DummyTrainActor.remote() for _ in range(actor_count)]
 
@@ -43,7 +48,7 @@ def make_cell(cell_index: int = 0, *, actor_count: int = 2) -> RayTrainCell:
         with_ref=False,
         cell_index=cell_index,
         actor_factory=factory,
-        rollout_manager=None,
+        rollout_manager=rollout_manager,
     )
 
 
