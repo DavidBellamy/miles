@@ -15,14 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def start_control_server(actor_model: object, rollout_manager: object, port: int) -> None:
-    registry = _SubsystemRegistry()
+    registry = _CellRegistry()
 
-    registry.register(_TrainingSubsystemHandle(node_ids=actor_model.get_node_ids()))
+    registry.register(_ActorCellHandle(node_ids=actor_model.get_node_ids()))
 
     cell_infos = ray.get(rollout_manager.list_cells.remote())
     for cell_info in cell_infos:
         registry.register(
-            _RolloutSubsystemHandle(
+            _RolloutCellHandle(
                 rollout_manager=rollout_manager,
                 cell_id=cell_info["cell_id"],
             )
@@ -31,7 +31,7 @@ def start_control_server(actor_model: object, rollout_manager: object, port: int
     _start_control_server_raw(registry=registry, port=port)
 
 
-def _start_control_server_raw(registry: _SubsystemRegistry, port: int) -> None:
+def _start_control_server_raw(registry: _CellRegistry, port: int) -> None:
     app = _create_control_app(registry)
 
     def _run() -> None:
@@ -42,11 +42,11 @@ def _start_control_server_raw(registry: _SubsystemRegistry, port: int) -> None:
     logger.info("Control server started on port %d", port)
 
 
-class _SubsystemInfo(BaseModel):
+class _CellInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    subsystem_id: str
-    subsystem_type: Literal["training", "rollout"]
+    cell_id: str
+    cell_type: Literal["training", "rollout"]
     status: Literal["running", "stopped", "pending", "failed"]
     node_ids: list[str]
 
@@ -63,82 +63,82 @@ class _OkResponse(BaseModel):
     status: str = "ok"
 
 
-def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
+def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
 
-    @app.get("/subsystems")
-    async def get_subsystems() -> list[_SubsystemInfo]:
+    @app.get("/cells")
+    async def get_cells() -> list[_CellInfo]:
         handles = registry.get_all()
 
-        async def _fetch(handle: _SubsystemHandle) -> _SubsystemInfo:
+        async def _fetch(handle: _CellHandle) -> _CellInfo:
             status, node_ids = await asyncio.gather(handle.get_status(), handle.get_node_ids())
-            return _SubsystemInfo(
-                subsystem_id=handle.subsystem_id,
-                subsystem_type=handle.subsystem_type,
+            return _CellInfo(
+                cell_id=handle.cell_id,
+                cell_type=handle.cell_type,
                 status=status,
                 node_ids=node_ids,
             )
 
         return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
-    def _get_handle(subsystem_id: str) -> _SubsystemHandle:
+    def _get_handle(cell_id: str) -> _CellHandle:
         try:
-            return registry.get(subsystem_id)
+            return registry.get(cell_id)
         except KeyError:
-            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
+            raise HTTPException(status_code=404, detail=f"Cell '{cell_id}' not found") from None
 
-    async def _call_handle(subsystem_id: str, action: str, coro) -> _OkResponse:
+    async def _call_handle(cell_id: str, action: str, coro) -> _OkResponse:
         try:
             await coro
         except NotImplementedError as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
         except Exception:
-            logger.error("Failed to %s subsystem %s", action, subsystem_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to {action} subsystem '{subsystem_id}'") from None
+            logger.error("Failed to %s cell %s", action, cell_id, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to {action} cell '{cell_id}'") from None
         return _OkResponse()
 
-    @app.post("/subsystems/{subsystem_id}/stop")
-    async def stop_subsystem(subsystem_id: str, body: _StopRequest | None = None) -> _OkResponse:
+    @app.post("/cells/{cell_id}/stop")
+    async def stop_cell(cell_id: str, body: _StopRequest | None = None) -> _OkResponse:
         if body is None:
             body = _StopRequest()
-        handle = _get_handle(subsystem_id)
-        return await _call_handle(subsystem_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
+        handle = _get_handle(cell_id)
+        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
 
-    @app.post("/subsystems/{subsystem_id}/start")
-    async def start_subsystem(subsystem_id: str) -> _OkResponse:
-        handle = _get_handle(subsystem_id)
-        return await _call_handle(subsystem_id, "start", handle.start())
+    @app.post("/cells/{cell_id}/start")
+    async def start_cell(cell_id: str) -> _OkResponse:
+        handle = _get_handle(cell_id)
+        return await _call_handle(cell_id, "start", handle.start())
 
     return app
 
 
-class _SubsystemRegistry:
+class _CellRegistry:
     def __init__(self) -> None:
-        self._handles: dict[str, _SubsystemHandle] = {}
+        self._handles: dict[str, _CellHandle] = {}
 
-    def register(self, handle: _SubsystemHandle) -> None:
-        if handle.subsystem_id in self._handles:
-            raise ValueError(f"Subsystem '{handle.subsystem_id}' is already registered")
-        self._handles[handle.subsystem_id] = handle
+    def register(self, handle: _CellHandle) -> None:
+        if handle.cell_id in self._handles:
+            raise ValueError(f"Cell '{handle.cell_id}' is already registered")
+        self._handles[handle.cell_id] = handle
 
-    def get_all(self) -> list[_SubsystemHandle]:
+    def get_all(self) -> list[_CellHandle]:
         return list(self._handles.values())
 
-    def get(self, subsystem_id: str) -> _SubsystemHandle:
+    def get(self, cell_id: str) -> _CellHandle:
         try:
-            return self._handles[subsystem_id]
+            return self._handles[cell_id]
         except KeyError as e:
-            raise KeyError(f"Subsystem '{subsystem_id}' not found") from e
+            raise KeyError(f"Cell '{cell_id}' not found") from e
 
 
-class _SubsystemHandle(abc.ABC):
+class _CellHandle(abc.ABC):
     @property
     @abc.abstractmethod
-    def subsystem_id(self) -> str: ...
+    def cell_id(self) -> str: ...
 
     @property
     @abc.abstractmethod
-    def subsystem_type(self) -> str: ...
+    def cell_type(self) -> str: ...
 
     @abc.abstractmethod
     async def stop(self, timeout_seconds: int) -> None: ...
@@ -153,26 +153,26 @@ class _SubsystemHandle(abc.ABC):
     async def get_node_ids(self) -> list[str]: ...
 
 
-class _TrainingSubsystemHandle(_SubsystemHandle):
+class _ActorCellHandle(_CellHandle):
     def __init__(self, node_ids: list[str]) -> None:
         self._node_ids = node_ids
 
     @property
-    def subsystem_id(self) -> str:
+    def cell_id(self) -> str:
         return "training"
 
     @property
-    def subsystem_type(self) -> str:
+    def cell_type(self) -> str:
         return "training"
 
     async def stop(self, timeout_seconds: int) -> None:
         raise NotImplementedError(
-            "Training subsystem lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
+            "Training cell lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
         )
 
     async def start(self) -> None:
         raise NotImplementedError(
-            "Training subsystem lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
+            "Training cell lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
         )
 
     async def get_status(self) -> str:
@@ -182,17 +182,17 @@ class _TrainingSubsystemHandle(_SubsystemHandle):
         return self._node_ids
 
 
-class _RolloutSubsystemHandle(_SubsystemHandle):
+class _RolloutCellHandle(_CellHandle):
     def __init__(self, rollout_manager: object, cell_id: str) -> None:
         self._rollout_manager = rollout_manager
         self._cell_id = cell_id
 
     @property
-    def subsystem_id(self) -> str:
+    def cell_id(self) -> str:
         return self._cell_id
 
     @property
-    def subsystem_type(self) -> str:
+    def cell_type(self) -> str:
         return "rollout"
 
     async def stop(self, timeout_seconds: int) -> None:

@@ -7,24 +7,24 @@ import pytest
 
 from miles.utils.control_server import (
     _create_control_app,
-    _RolloutSubsystemHandle,
-    _SubsystemRegistry,
-    _TrainingSubsystemHandle,
+    _RolloutCellHandle,
+    _CellRegistry,
+    _ActorCellHandle,
 )
 
 
 class _MockHandle:
     def __init__(
         self,
-        subsystem_id: str,
-        subsystem_type: str,
+        cell_id: str,
+        cell_type: str,
         status: str = "running",
         node_ids: list[str] | None = None,
         stop_error: Exception | None = None,
         start_error: Exception | None = None,
     ) -> None:
-        self.subsystem_id = subsystem_id
-        self.subsystem_type = subsystem_type
+        self.cell_id = cell_id
+        self.cell_type = cell_type
         self._status = status
         self._node_ids = node_ids or []
         self._stop_error = stop_error
@@ -76,30 +76,30 @@ class _MockRolloutManager:
 
 
 @pytest.fixture
-def registry() -> _SubsystemRegistry:
-    return _SubsystemRegistry()
+def registry() -> _CellRegistry:
+    return _CellRegistry()
 
 
 @pytest.fixture
-def async_client(registry: _SubsystemRegistry) -> httpx.AsyncClient:
+def async_client(registry: _CellRegistry) -> httpx.AsyncClient:
     app = _create_control_app(registry)
     transport = httpx.ASGITransport(app=app)
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-class TestSubsystemRegistry:
-    def test_register_and_get_by_id(self, registry: _SubsystemRegistry) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
+class TestCellRegistry:
+    def test_register_and_get_by_id(self, registry: _CellRegistry) -> None:
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(handle)
         assert registry.get("cell-0") is handle
 
-    def test_get_unknown_id_raises_key_error(self, registry: _SubsystemRegistry) -> None:
+    def test_get_unknown_id_raises_key_error(self, registry: _CellRegistry) -> None:
         with pytest.raises(KeyError):
             registry.get("nonexistent")
 
-    def test_get_all_returns_all_registered(self, registry: _SubsystemRegistry) -> None:
-        h1 = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
-        h2 = _MockHandle(subsystem_id="cell-1", subsystem_type="rollout")
+    def test_get_all_returns_all_registered(self, registry: _CellRegistry) -> None:
+        h1 = _MockHandle(cell_id="cell-0", cell_type="rollout")
+        h2 = _MockHandle(cell_id="cell-1", cell_type="rollout")
         registry.register(h1)
         registry.register(h2)
 
@@ -108,193 +108,193 @@ class TestSubsystemRegistry:
         assert h1 in all_handles
         assert h2 in all_handles
 
-    def test_register_duplicate_id_raises(self, registry: _SubsystemRegistry) -> None:
-        h1 = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
-        h2 = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
+    def test_register_duplicate_id_raises(self, registry: _CellRegistry) -> None:
+        h1 = _MockHandle(cell_id="cell-0", cell_type="rollout")
+        h2 = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(h1)
 
         with pytest.raises(ValueError, match="already registered"):
             registry.register(h2)
 
 
-class TestGetSubsystems:
+class TestGetCells:
     @pytest.mark.asyncio
     async def test_empty_registry(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.get("/subsystems")
+        resp = await async_client.get("/cells")
         assert resp.status_code == 200
         assert resp.json() == []
 
     @pytest.mark.asyncio
-    async def test_returns_all(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
+    async def test_returns_all(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
         registry.register(
             _MockHandle(
-                subsystem_id="training",
-                subsystem_type="training",
+                cell_id="training",
+                cell_type="training",
                 status="running",
                 node_ids=["node-0", "node-1"],
             )
         )
         registry.register(
             _MockHandle(
-                subsystem_id="cell-0",
-                subsystem_type="rollout",
+                cell_id="cell-0",
+                cell_type="rollout",
                 status="running",
                 node_ids=["node-2"],
             )
         )
         registry.register(
             _MockHandle(
-                subsystem_id="cell-1",
-                subsystem_type="rollout",
+                cell_id="cell-1",
+                cell_type="rollout",
                 status="stopped",
                 node_ids=["node-3"],
             )
         )
 
-        resp = await async_client.get("/subsystems")
+        resp = await async_client.get("/cells")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 3
 
-        by_id = {d["subsystem_id"]: d for d in data}
-        assert by_id["training"]["subsystem_type"] == "training"
+        by_id = {d["cell_id"]: d for d in data}
+        assert by_id["training"]["cell_type"] == "training"
         assert by_id["training"]["status"] == "running"
         assert by_id["training"]["node_ids"] == ["node-0", "node-1"]
-        assert by_id["cell-0"]["subsystem_type"] == "rollout"
+        assert by_id["cell-0"]["cell_type"] == "rollout"
         assert by_id["cell-0"]["status"] == "running"
         assert by_id["cell-1"]["status"] == "stopped"
 
     @pytest.mark.asyncio
-    async def test_reflects_status_change(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="running")
+    async def test_reflects_status_change(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="running")
         registry.register(handle)
 
-        resp1 = await async_client.get("/subsystems")
+        resp1 = await async_client.get("/cells")
         assert resp1.json()[0]["status"] == "running"
 
         handle._status = "stopped"
 
-        resp2 = await async_client.get("/subsystems")
+        resp2 = await async_client.get("/cells")
         assert resp2.json()[0]["status"] == "stopped"
 
 
-class TestStopSubsystem:
+class TestStopCell:
     @pytest.mark.asyncio
-    async def test_default_timeout(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
+    async def test_default_timeout(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/stop")
+        resp = await async_client.post("/cells/cell-0/stop")
         assert resp.status_code == 200
         assert handle.stop_calls == [30]
 
     @pytest.mark.asyncio
-    async def test_custom_timeout(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
+    async def test_custom_timeout(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout")
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/stop", json={"timeout_seconds": 60})
+        resp = await async_client.post("/cells/cell-0/stop", json={"timeout_seconds": 60})
         assert resp.status_code == 200
         assert handle.stop_calls == [60]
 
     @pytest.mark.asyncio
-    async def test_unknown_subsystem_returns_404(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.post("/subsystems/nonexistent/stop")
+    async def test_unknown_cell_returns_404(self, async_client: httpx.AsyncClient) -> None:
+        resp = await async_client.post("/cells/nonexistent/stop")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_already_stopped_is_idempotent(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="stopped")
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="stopped")
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/stop")
+        resp = await async_client.post("/cells/cell-0/stop")
         assert resp.status_code == 200
         assert len(handle.stop_calls) == 1
 
     @pytest.mark.asyncio
     async def test_handle_raises_returns_500(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
         handle = _MockHandle(
-            subsystem_id="cell-0",
-            subsystem_type="rollout",
+            cell_id="cell-0",
+            cell_type="rollout",
             stop_error=RuntimeError("engine crashed"),
         )
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/stop")
+        resp = await async_client.post("/cells/cell-0/stop")
         assert resp.status_code == 500
 
     @pytest.mark.asyncio
-    async def test_training_subsystem_returns_error(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+    async def test_training_cell_returns_error(
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
-        registry.register(_TrainingSubsystemHandle(node_ids=["n0"]))
+        registry.register(_ActorCellHandle(node_ids=["n0"]))
 
-        resp = await async_client.post("/subsystems/training/stop")
+        resp = await async_client.post("/cells/training/stop")
         assert resp.status_code == 500
         assert "managed by the platform" in resp.json()["detail"]
 
 
-class TestStartSubsystem:
+class TestStartCell:
     @pytest.mark.asyncio
-    async def test_calls_handle(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="stopped")
+    async def test_calls_handle(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="stopped")
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/start")
+        resp = await async_client.post("/cells/cell-0/start")
         assert resp.status_code == 200
         assert handle.start_calls == 1
 
     @pytest.mark.asyncio
-    async def test_unknown_subsystem_returns_404(self, async_client: httpx.AsyncClient) -> None:
-        resp = await async_client.post("/subsystems/nonexistent/start")
+    async def test_unknown_cell_returns_404(self, async_client: httpx.AsyncClient) -> None:
+        resp = await async_client.post("/cells/nonexistent/start")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_already_running_is_idempotent(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
-        handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="running")
+        handle = _MockHandle(cell_id="cell-0", cell_type="rollout", status="running")
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/start")
+        resp = await async_client.post("/cells/cell-0/start")
         assert resp.status_code == 200
         assert handle.start_calls == 1
 
     @pytest.mark.asyncio
     async def test_handle_raises_returns_500(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
         handle = _MockHandle(
-            subsystem_id="cell-0",
-            subsystem_type="rollout",
+            cell_id="cell-0",
+            cell_type="rollout",
             start_error=RuntimeError("engine crashed"),
         )
         registry.register(handle)
 
-        resp = await async_client.post("/subsystems/cell-0/start")
+        resp = await async_client.post("/cells/cell-0/start")
         assert resp.status_code == 500
 
     @pytest.mark.asyncio
-    async def test_training_subsystem_returns_error(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
+    async def test_training_cell_returns_error(
+        self, registry: _CellRegistry, async_client: httpx.AsyncClient
     ) -> None:
-        registry.register(_TrainingSubsystemHandle(node_ids=["n0"]))
+        registry.register(_ActorCellHandle(node_ids=["n0"]))
 
-        resp = await async_client.post("/subsystems/training/start")
+        resp = await async_client.post("/cells/training/start")
         assert resp.status_code == 500
         assert "managed by the platform" in resp.json()["detail"]
 
 
-class TestRolloutSubsystemHandle:
+class TestRolloutCellHandle:
     @pytest.mark.asyncio
     async def test_stop_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
 
-        handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
         await handle.stop(timeout_seconds=45)
 
         assert manager.stop_cell.calls == [(("cell-0", 45), {})]
@@ -303,14 +303,14 @@ class TestRolloutSubsystemHandle:
     async def test_start_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager()
 
-        handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
         await handle.start()
 
     @pytest.mark.asyncio
     async def test_get_status_delegates_to_manager(self) -> None:
         manager = _MockRolloutManager(status_return="stopped")
 
-        handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
         assert await handle.get_status() == "stopped"
 
     @pytest.mark.asyncio
@@ -318,39 +318,39 @@ class TestRolloutSubsystemHandle:
         manager = _MockRolloutManager()
         manager.get_cell_node_ids = _MockRemoteCall(["n0", "n1"])
 
-        handle = _RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
+        handle = _RolloutCellHandle(rollout_manager=manager, cell_id="cell-0")
         assert await handle.get_node_ids() == ["n0", "n1"]
 
-    def test_subsystem_type_is_rollout(self) -> None:
-        handle = _RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0")
-        assert handle.subsystem_type == "rollout"
-        assert handle.subsystem_id == "cell-0"
+    def test_cell_type_is_rollout(self) -> None:
+        handle = _RolloutCellHandle(rollout_manager=object(), cell_id="cell-0")
+        assert handle.cell_type == "rollout"
+        assert handle.cell_id == "cell-0"
 
 
-class TestTrainingSubsystemHandle:
+class TestActorCellHandle:
     @pytest.mark.asyncio
     async def test_stop_raises(self) -> None:
-        handle = _TrainingSubsystemHandle(node_ids=["n0"])
+        handle = _ActorCellHandle(node_ids=["n0"])
         with pytest.raises(NotImplementedError, match="managed by the platform"):
             await handle.stop(timeout_seconds=30)
 
     @pytest.mark.asyncio
     async def test_start_raises(self) -> None:
-        handle = _TrainingSubsystemHandle(node_ids=["n0"])
+        handle = _ActorCellHandle(node_ids=["n0"])
         with pytest.raises(NotImplementedError, match="managed by the platform"):
             await handle.start()
 
     @pytest.mark.asyncio
     async def test_get_status_always_running(self) -> None:
-        handle = _TrainingSubsystemHandle(node_ids=[])
+        handle = _ActorCellHandle(node_ids=[])
         assert await handle.get_status() == "running"
 
     @pytest.mark.asyncio
     async def test_get_node_ids(self) -> None:
-        handle = _TrainingSubsystemHandle(node_ids=["n0", "n1", "n2"])
+        handle = _ActorCellHandle(node_ids=["n0", "n1", "n2"])
         assert await handle.get_node_ids() == ["n0", "n1", "n2"]
 
-    def test_subsystem_type_is_training(self) -> None:
-        handle = _TrainingSubsystemHandle(node_ids=[])
-        assert handle.subsystem_type == "training"
-        assert handle.subsystem_id == "training"
+    def test_cell_type_is_training(self) -> None:
+        handle = _ActorCellHandle(node_ids=[])
+        assert handle.cell_type == "training"
+        assert handle.cell_id == "training"
