@@ -1,10 +1,12 @@
 from miles.ray.train.cell import (
     RayTrainCell,
     _StateAllocatedAlive,
+    _StateAllocatedErrored,
     _StateAllocatedUninitialized,
     _StatePending,
     _StateStopped,
 )
+from miles.utils.indep_dp import IndepDPInfo
 
 
 def _make_cell_with_state(state) -> RayTrainCell:
@@ -13,6 +15,23 @@ def _make_cell_with_state(state) -> RayTrainCell:
     cell.cell_index = 0
     cell._state = state
     return cell
+
+
+def _make_indep_dp_info(*, cell_index: int = 0, alive_cell_indices: list[int] | None = None) -> IndepDPInfo:
+    if alive_cell_indices is None:
+        alive_cell_indices = [0]
+    return IndepDPInfo(
+        cell_index=cell_index,
+        num_cells=3,
+        alive_rank=alive_cell_indices.index(cell_index),
+        alive_size=len(alive_cell_indices),
+        quorum_id=0,
+        alive_cell_indices=alive_cell_indices,
+    )
+
+
+def _make_alive_state() -> _StateAllocatedAlive:
+    return _StateAllocatedAlive(actor_handles=[], indep_dp_info=_make_indep_dp_info())
 
 
 class TestStopIdempotent:
@@ -44,37 +63,103 @@ class TestMarkAsPendingIdempotent:
 
     def test_mark_as_pending_already_allocated_is_noop(self):
         """Calling mark_as_pending() on an alive cell does not crash and state stays."""
-        cell = _make_cell_with_state(_StateAllocatedAlive(actor_handles=[]))
+        cell = _make_cell_with_state(_make_alive_state())
 
         cell.mark_as_pending()
 
-        assert cell.is_running
+        assert cell.is_alive
 
 
-class TestPhaseTransitions:
-    def test_uninitialized_state(self):
-        """Uninitialized state is allocated and running but not errored."""
+class TestStateTransitions:
+    def test_uninitialized_is_allocated_but_not_alive(self):
+        """Uninitialized state is allocated but not alive or errored."""
         cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
 
         assert cell.is_allocated
-        assert cell.is_running
+        assert not cell.is_alive
         assert not cell.is_errored
 
-    def test_mark_as_alive(self):
-        """mark_as_alive transitions from Uninitialized to Alive."""
+    def test_mark_as_alive_transitions_uninitialized_to_alive(self):
+        """_mark_as_alive transitions from Uninitialized to Alive."""
         cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
+        info = _make_indep_dp_info()
 
-        cell._mark_as_alive()
+        cell._mark_as_alive(indep_dp_info=info)
 
-        assert cell.is_running
+        assert cell.is_alive
         assert not cell.is_errored
+        assert cell.indep_dp_info == info
 
-    def test_mark_as_errored(self):
-        """mark_as_errored transitions from Alive to Errored."""
-        cell = _make_cell_with_state(_StateAllocatedAlive(actor_handles=[]))
+    def test_mark_as_errored_transitions_alive_to_errored(self):
+        """_mark_as_errored transitions from Alive to Errored."""
+        cell = _make_cell_with_state(_make_alive_state())
 
-        cell.mark_as_errored()
+        cell._mark_as_errored()
 
         assert cell.is_errored
-        assert not cell.is_running
+        assert not cell.is_alive
         assert cell.is_allocated
+
+    def test_stop_from_alive_transitions_to_stopped(self):
+        """stop() from Alive kills actors and transitions to Stopped."""
+        cell = _make_cell_with_state(_make_alive_state())
+
+        cell.stop()
+
+        assert cell.is_stopped
+        assert not cell.is_alive
+        assert not cell.is_allocated
+
+    def test_update_indep_dp_info_replaces_info(self):
+        """_update_indep_dp_info updates the stored IndepDPInfo on an alive cell."""
+        old_info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2])
+        cell = _make_cell_with_state(_StateAllocatedAlive(actor_handles=[], indep_dp_info=old_info))
+
+        new_info = _make_indep_dp_info(alive_cell_indices=[0, 2])
+        cell._update_indep_dp_info(new_info)
+
+        assert cell.indep_dp_info == new_info
+        assert cell.indep_dp_info.alive_size == 2
+
+
+class TestStatePredicates:
+    """Verify is_pending/is_allocated/is_alive/is_stopped/is_errored for each state."""
+
+    def test_pending(self):
+        cell = _make_cell_with_state(_StatePending())
+        assert cell.is_pending
+        assert not cell.is_allocated
+        assert not cell.is_alive
+        assert not cell.is_stopped
+
+    def test_uninitialized(self):
+        cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
+        assert not cell.is_pending
+        assert cell.is_allocated
+        assert not cell.is_alive
+        assert not cell.is_stopped
+
+    def test_alive(self):
+        cell = _make_cell_with_state(_make_alive_state())
+        assert not cell.is_pending
+        assert cell.is_allocated
+        assert cell.is_alive
+        assert not cell.is_stopped
+        assert not cell.is_errored
+
+    def test_errored(self):
+        cell = _make_cell_with_state(
+            _StateAllocatedErrored(actor_handles=[], indep_dp_info=_make_indep_dp_info())
+        )
+        assert not cell.is_pending
+        assert cell.is_allocated
+        assert not cell.is_alive
+        assert not cell.is_stopped
+        assert cell.is_errored
+
+    def test_stopped(self):
+        cell = _make_cell_with_state(_StateStopped())
+        assert not cell.is_pending
+        assert not cell.is_allocated
+        assert not cell.is_alive
+        assert cell.is_stopped
