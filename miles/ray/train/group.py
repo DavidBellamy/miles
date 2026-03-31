@@ -166,6 +166,7 @@ class RayTrainGroup:
             cell.cooperatively_prepare_indep_dp_world(
                 was_initialized=cell.cell_id in was_running_ids,
                 indep_dp_quorum_id=self._indep_dp_quorum_id,
+                recv_ckpt_src_rank=src_cell_id if cell.cell_id in was_pending_ids else None,
                 send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
             )
             for cell in self._cells

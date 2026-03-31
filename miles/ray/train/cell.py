@@ -105,6 +105,7 @@ class RayTrainCell:
         self,
         was_initialized: bool,
         indep_dp_quorum_id: int,
+        recv_ckpt_src_rank: int | None,
         send_ckpt_dst_ranks: list[int],
     ):
         if was_initialized:
@@ -112,7 +113,10 @@ class RayTrainCell:
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
         else:
-            await asyncio.gather(*self.async_init(indep_dp_quorum_id=indep_dp_quorum_id))
+            await asyncio.gather(*self.async_init(
+                indep_dp_quorum_id=indep_dp_quorum_id,
+                recv_ckpt_src_rank=recv_ckpt_src_rank,
+            ))
 
         for dst_rank in send_ckpt_dst_ranks:
             await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
@@ -213,13 +217,14 @@ class RayTrainCell:
             actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
 
-    def async_init(self, *, indep_dp_quorum_id: int):
+    def async_init(self, *, indep_dp_quorum_id: int, recv_ckpt_src_rank: int | None = None):
         return self.async_execute(
             "init",
             args=self.args,
             role=self.role,
             with_ref=self.with_ref,
             indep_dp_quorum_id=indep_dp_quorum_id,
+            recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
 
     # ------------------------ state helpers ------------------------
