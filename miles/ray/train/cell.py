@@ -14,37 +14,6 @@ from miles.utils.indep_dp import IndepDPInfo
 logger = logging.getLogger(__name__)
 
 
-class _StateBase(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-
-
-class _StatePending(_StateBase):
-    pass
-
-
-class _StateAllocated(_StateBase):
-    actor_handles: list[ray.actor.ActorHandle]
-
-
-class _StateUninitialized(_StateAllocated):
-    pass
-
-
-class _StateAlive(_StateAllocated):
-    pass
-
-
-class _StateErrored(_StateAllocated):
-    pass
-
-
-class _StateStopped(_StateBase):
-    pass
-
-
-_CellState = _StatePending | _StateAllocated | _StateStopped
-
-
 class RayTrainCell:
     def __init__(
         self,
@@ -124,8 +93,8 @@ class RayTrainCell:
     def _change_state(
         self,
         debug_name: str,
-        old_state_cls: type[_CellState] | tuple[type[_CellState], ...],
-        fn: Callable[[], _CellState],
+        old_state_cls: type["_CellState"] | tuple[type["_CellState"], ...],
+        fn: Callable[[], "_CellState"],
     ):
         logger.info(f"{debug_name} start {self.cell_index=}")
         assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
@@ -299,3 +268,37 @@ class RayTrainCell:
             self._state, _StateAllocated
         ), f"Cell {self.cell_index} is not allocated (state={type(self._state).__name__})"
         return self._state.actor_handles
+
+
+# ------------------------ states ------------------------
+
+
+class _StateBase(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+
+
+class _StatePending(_StateBase):
+    pass
+
+
+class _StateAllocated(_StateBase):
+    actor_handles: list[ray.actor.ActorHandle]
+
+
+class _StateUninitialized(_StateAllocated):
+    pass
+
+
+class _StateAlive(_StateAllocated):
+    pass
+
+
+class _StateErrored(_StateAllocated):
+    pass
+
+
+class _StateStopped(_StateBase):
+    pass
+
+
+_CellState = _StatePending | _StateAllocated | _StateStopped
