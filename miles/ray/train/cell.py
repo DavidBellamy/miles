@@ -79,19 +79,25 @@ class RayTrainCell:
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
-    def _mark_as_alive(self) -> None:
+    def _mark_as_alive(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
             "_mark_as_alive",
             _StateAllocatedUninitialized,
-            lambda: _StateAllocatedAlive(actor_handles=self._state.actor_handles),
+            lambda: _StateAllocatedAlive(
+                actor_handles=self._state.actor_handles,
+                indep_dp_info=indep_dp_info,
+            ),
         )
 
     # TODO call this function (probably within cell?)
     def _mark_as_errored(self) -> None:
         self._change_state(
             "_mark_as_errored",
-            _StateAllocatedBase,
-            lambda: _StateAllocatedErrored(actor_handles=self._state.actor_handles),
+            (_StateAllocatedAlive, _StateAllocatedErrored),
+            lambda: _StateAllocatedErrored(
+                actor_handles=self._state.actor_handles,
+                indep_dp_info=self._state.indep_info,
+            ),
         )
 
     def _change_state(
@@ -239,7 +245,7 @@ class RayTrainCell:
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
-        self._mark_as_alive()
+        self._mark_as_alive(indep_dp_info=indep_dp_info)
         return handles
 
     def async_set_rollout_manager(self):
@@ -292,11 +298,11 @@ class _StateAllocatedUninitialized(_StateAllocatedBase):
 
 
 class _StateAllocatedAlive(_StateAllocatedBase):
-    pass
+    indep_dp_info: IndepDPInfo
 
 
 class _StateAllocatedErrored(_StateAllocatedBase):
-    pass
+    indep_dp_info: IndepDPInfo
 
 
 class _StateStopped(_StateBase):
