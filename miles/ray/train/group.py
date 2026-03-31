@@ -46,8 +46,6 @@ class RayTrainGroup:
         with_ref: bool,
     ) -> None:
         self.args = args
-        self.role = role
-        self.with_ref = with_ref
 
         total_gpus = num_nodes * num_gpus_per_node
         num_cells = (total_gpus // compute_megatron_world_size_except_dp(args)) if args.indep_dp else 1
@@ -72,6 +70,7 @@ class RayTrainGroup:
                     pg=cell_pg,
                     num_gpus_per_actor=num_gpus_per_actor,
                     role=role,
+                    with_ref=with_ref,
                     cell_id=cell_id,
                     num_cells=num_cells,
                     indep_dp_store_addr=indep_dp_store_addr,
@@ -92,16 +91,11 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        TODO_unify
-        return self._async_execute("init", **self._cell_init_kwargs())
-
-    def _cell_init_kwargs(self):
-        return dict(
-            args=self.args,
-            role=self.role,
-            with_ref=self.with_ref,
-            indep_dp_quorum_id=self._indep_dp_quorum_id,
-        )
+        return [
+            future
+            for cell in self._cells
+            for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
+        ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""

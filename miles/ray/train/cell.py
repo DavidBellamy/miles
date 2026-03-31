@@ -39,6 +39,7 @@ class RayTrainCell:
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float,
         role: str,
+        with_ref: bool,
         cell_id: int,
         num_cells: int,
         indep_dp_store_addr: str,
@@ -47,6 +48,7 @@ class RayTrainCell:
         self.cell_id = cell_id
         self.num_cells = num_cells
         self.role = role
+        self.with_ref = with_ref
 
         self._creation_kwargs = dict(
             gpus_per_cell=gpus_per_cell,
@@ -200,7 +202,16 @@ class RayTrainCell:
 
         return actor_handles
 
-    # ------------------------ usage ------------------------
+    # ------------------------ forward calls to actors ------------------------
+
+    def async_init(self, *, indep_dp_quorum_id: int):
+        return self.async_execute(
+            "init",
+            args=self.args,
+            role=self.role,
+            with_ref=self.with_ref,
+            indep_dp_quorum_id=indep_dp_quorum_id,
+        )
 
     def async_execute(self, fn_name, *args, **kwargs):
         handles = self._get_actor_handles()
