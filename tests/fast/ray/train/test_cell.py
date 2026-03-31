@@ -1,4 +1,4 @@
-from miles.ray.train.cell import RayTrainCell, _AllocatedPhase, _StateAllocated, _StatePending, _StateStopped
+from miles.ray.train.cell import RayTrainCell, _StateAlive, _StateErrored, _StatePending, _StateStopped, _StateUninitialized
 
 
 def _make_cell_with_state(state) -> RayTrainCell:
@@ -37,8 +37,8 @@ class TestMarkAsPendingIdempotent:
         assert cell.is_pending
 
     def test_mark_as_pending_already_allocated_is_noop(self):
-        """Calling mark_as_pending() on an allocated cell does not crash and state stays."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase=_AllocatedPhase.ALIVE))
+        """Calling mark_as_pending() on an alive cell does not crash and state stays."""
+        cell = _make_cell_with_state(_StateAlive(actor_handles=[]))
 
         cell.mark_as_pending()
 
@@ -46,26 +46,26 @@ class TestMarkAsPendingIdempotent:
 
 
 class TestPhaseTransitions:
-    def test_uninitialized_phase(self):
-        """After allocate_for_pending, phase is UNINITIALIZED."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase=_AllocatedPhase.UNINITIALIZED))
+    def test_uninitialized_state(self):
+        """Uninitialized state is allocated and running but not errored."""
+        cell = _make_cell_with_state(_StateUninitialized(actor_handles=[]))
 
         assert cell.is_allocated
         assert cell.is_running
         assert not cell.is_errored
 
-    def test_mark_as_running(self):
-        """mark_as_running transitions from UNINITIALIZED to ALIVE phase."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase=_AllocatedPhase.UNINITIALIZED))
+    def test_mark_as_alive(self):
+        """mark_as_alive transitions from Uninitialized to Alive."""
+        cell = _make_cell_with_state(_StateUninitialized(actor_handles=[]))
 
-        cell.mark_as_running()
+        cell.mark_as_alive()
 
         assert cell.is_running
         assert not cell.is_errored
 
     def test_mark_as_errored(self):
-        """mark_as_errored transitions from ALIVE to ERRORED phase."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase=_AllocatedPhase.ALIVE))
+        """mark_as_errored transitions from Alive to Errored."""
+        cell = _make_cell_with_state(_StateAlive(actor_handles=[]))
 
         cell.mark_as_errored()
 
