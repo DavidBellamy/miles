@@ -2,18 +2,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from miles.utils.pydantic_utils import StrictBaseModel
 
 
-class _OkResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class _OkResponse(StrictBaseModel):
     status: str = "ok"
 
 
-class CellCondition(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellCondition(StrictBaseModel):
     type: str
     status: Literal["True", "False", "Unknown"]
     reason: str | None = None
@@ -21,29 +17,21 @@ class CellCondition(BaseModel):
     lastTransitionTime: str | None = None
 
 
-class CellStatus(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellStatus(StrictBaseModel):
     phase: Literal["Pending", "Running", "Suspended"]
     conditions: list[CellCondition]
 
 
-class CellSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellSpec(StrictBaseModel):
     suspend: bool = False
 
 
-class CellMetadata(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellMetadata(StrictBaseModel):
     name: str
     labels: dict[str, str]
 
 
-class Cell(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class Cell(StrictBaseModel):
     apiVersion: str = "miles.io/v1"
     kind: str = "Cell"
     metadata: CellMetadata
@@ -51,29 +39,21 @@ class Cell(BaseModel):
     status: CellStatus
 
 
-class CellList(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellList(StrictBaseModel):
     apiVersion: str = "miles.io/v1"
     kind: str = "CellList"
     items: list[Cell]
 
 
-class CellPatchSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellPatchSpec(StrictBaseModel):
     suspend: bool | None = None
 
 
-class CellPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellPatch(StrictBaseModel):
     spec: CellPatchSpec | None = None
 
 
-class K8sStatus(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class K8sStatus(StrictBaseModel):
     apiVersion: str = "v1"
     kind: str = "Status"
     status: str = "Failure"

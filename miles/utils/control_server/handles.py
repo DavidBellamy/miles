@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.control_server.models import (
@@ -87,9 +88,11 @@ class _RolloutCellHandle(_CellHandle):
         return self._cell_index
 
     async def get_cell(self) -> Cell:
-        phase = await self._rollout_manager.get_cell_phase.remote(self._cell_index)
-        conditions_raw = await self._rollout_manager.get_cell_conditions.remote(self._cell_index)
-        is_suspended = await self._rollout_manager.get_cell_is_suspended.remote(self._cell_index)
+        phase, conditions_raw, is_suspended = await asyncio.gather(
+            self._rollout_manager.get_cell_phase.remote(self._cell_index),
+            self._rollout_manager.get_cell_conditions.remote(self._cell_index),
+            self._rollout_manager.get_cell_is_suspended.remote(self._cell_index),
+        )
         return Cell(
             metadata=CellMetadata(
                 name=self.cell_id,
