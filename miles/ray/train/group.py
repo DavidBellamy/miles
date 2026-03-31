@@ -88,7 +88,7 @@ class RayTrainGroup:
         return [
             future
             for cell in self._cells
-            for future in cell.async_init(indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index))
+            for future in cell.async_init(indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index, alive_cell_indices=TODO))
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
@@ -182,12 +182,12 @@ class RayTrainGroup:
             *[
                 (
                     c.prepare_indep_dp_mode_alive(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index),
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
                         send_ckpt_dst_ranks=snapshotted_pending_indices if c.cell_index == src_cell_index else [],
                     )
                     if c.cell_index in snapshotted_alive_indices
                     else c.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index),
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
                         recv_ckpt_src_rank=src_cell_index if c.cell_index in snapshotted_pending_indices else None,
                     )
                 )
@@ -198,14 +198,14 @@ class RayTrainGroup:
 
         assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
 
-    def _compute_indep_dp_info(self, cell_index: int) -> IndepDPInfo:
+    def _compute_indep_dp_info(self, cell_index: int, alive_cell_indices: list[int]) -> IndepDPInfo:
         return IndepDPInfo(
             cell_index=cell_index,
             num_cells=len(self._cells),
             alive_rank=alive_mapping[cell_index],
-            alive_size=len(alive_mapping),
+            alive_size=len(alive_cell_indices),
             quorum_id=self._indep_dp_quorum_id,
-            alive_cell_indices=TODO,
+            alive_cell_indices=alive_cell_indices,
         )
 
 
