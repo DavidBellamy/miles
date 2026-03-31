@@ -41,6 +41,25 @@ def _make_controller(
     )
 
 
+def _run_controller_for_n_polls(
+    controller: _MiniFTController,
+    get_cells_mock: AsyncMock,
+    responses: list[list[_CellSnapshot]],
+) -> None:
+    """Configure get_cells to return `responses` then stop the controller."""
+    poll_count = 0
+
+    async def _side_effect() -> list[_CellSnapshot]:
+        nonlocal poll_count
+        result = responses[poll_count] if poll_count < len(responses) else []
+        poll_count += 1
+        if poll_count >= len(responses):
+            controller.request_stop()
+        return result
+
+    get_cells_mock.side_effect = _side_effect
+
+
 def _build_cell_json(
     *,
     name: str = "actor-0",
@@ -97,9 +116,9 @@ def _mock_response(*, status_code: int = 200, json_data: Any = None) -> httpx.Re
 class TestControllerHealing:
     @pytest.mark.asyncio
     async def test_heal_on_unhealthy_cell(self) -> None:
-        """Unhealthy cell triggers suspend → sleep → resume in order."""
+        """Unhealthy cell triggers suspend → resume."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
-        get_cells = AsyncMock(return_value=[unhealthy_cell])
+        get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
 
@@ -108,14 +127,9 @@ class TestControllerHealing:
             suspend_cell=suspend_cell,
             resume_cell=resume_cell,
         )
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
 
-        get_cells.side_effect = [
-            [unhealthy_cell],
-            asyncio.CancelledError(),
-        ]
-
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(controller.run(), timeout=5.0)
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         suspend_cell.assert_called_once_with("cell-0")
         resume_cell.assert_called_once_with("cell-0")
@@ -124,15 +138,18 @@ class TestControllerHealing:
     async def test_skip_healthy_cell(self) -> None:
         """Healthy cell does not trigger heal."""
         healthy_cell = _make_cell(name="cell-0", healthy=True)
+        get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
 
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=[healthy_cell]),
+            get_cells=get_cells,
             suspend_cell=suspend_cell,
             resume_cell=resume_cell,
         )
-        await controller._poll_and_heal()
+        _run_controller_for_n_polls(controller, get_cells, [[healthy_cell]])
+
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         suspend_cell.assert_not_called()
         resume_cell.assert_not_called()
@@ -144,15 +161,18 @@ class TestControllerHealing:
             _make_cell(name="cell-0", healthy=False),
             _make_cell(name="cell-1", healthy=False),
         ]
+        get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
 
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=cells),
+            get_cells=get_cells,
             suspend_cell=suspend_cell,
             resume_cell=resume_cell,
         )
-        await controller._poll_and_heal()
+        _run_controller_for_n_polls(controller, get_cells, [cells])
+
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         assert suspend_cell.call_count == 2
         assert resume_cell.call_count == 2
@@ -168,15 +188,18 @@ class TestControllerHealing:
             _make_cell(name="cell-0", healthy=True),
             _make_cell(name="cell-1", healthy=True),
         ]
+        get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
 
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=cells),
+            get_cells=get_cells,
             suspend_cell=suspend_cell,
             resume_cell=resume_cell,
         )
-        await controller._poll_and_heal()
+        _run_controller_for_n_polls(controller, get_cells, [cells])
+
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         suspend_cell.assert_not_called()
         resume_cell.assert_not_called()
@@ -187,14 +210,16 @@ class TestControllerBackoff:
     async def test_backoff_on_heal_failure(self) -> None:
         """Suspend raises → consecutive_failures increments, next_attempt_at increases."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        get_cells = AsyncMock()
         suspend_cell = AsyncMock(side_effect=RuntimeError("connection failed"))
 
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=[unhealthy_cell]),
+            get_cells=get_cells,
             suspend_cell=suspend_cell,
         )
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
 
-        await controller._poll_and_heal()
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         backoff = controller._cell_backoffs["cell-0"]
         assert backoff.consecutive_failures == 1
@@ -202,23 +227,28 @@ class TestControllerBackoff:
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_timing(self) -> None:
-        """Verify backoff delays: 5*2^1=10, 5*2^2=20, 5*2^3=40, ..., capped at 300."""
+        """Verify backoff delays: 5*2^1=10, 5*2^2=20, ..., capped at 300."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
         suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
 
+        expected_delays = [10, 20, 40, 80, 160, 300, 300]
+
+        get_cells = AsyncMock()
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=[unhealthy_cell]),
+            get_cells=get_cells,
             suspend_cell=suspend_cell,
         )
 
-        expected_delays = [10, 20, 40, 80, 160, 300, 300]
+        # Run one poll per iteration, resetting backoff timer each time
         for expected_delay in expected_delays:
             backoff = controller._cell_backoffs.get("cell-0")
             if backoff:
                 backoff.next_attempt_at = 0.0
 
+            _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+
             before = time.monotonic()
-            await controller._poll_and_heal()
+            await asyncio.wait_for(controller.run(), timeout=5.0)
             after = time.monotonic()
 
             backoff = controller._cell_backoffs["cell-0"]
@@ -240,18 +270,25 @@ class TestControllerBackoff:
             if call_count == 1:
                 raise RuntimeError("fail")
 
+        get_cells = AsyncMock()
         controller = _make_controller(
-            get_cells=AsyncMock(return_value=[unhealthy_cell]),
+            get_cells=get_cells,
             suspend_cell=AsyncMock(side_effect=failing_then_succeeding_suspend),
             resume_cell=AsyncMock(),
         )
 
-        await controller._poll_and_heal()
+        # Step 1: First attempt fails
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+
         backoff = controller._cell_backoffs["cell-0"]
         assert backoff.consecutive_failures == 1
 
+        # Step 2: Reset backoff timer, second attempt succeeds
         backoff.next_attempt_at = 0.0
-        await controller._poll_and_heal()
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+
         assert backoff.consecutive_failures == 0
         assert backoff.next_attempt_at == 0.0
 
@@ -259,35 +296,33 @@ class TestControllerBackoff:
 class TestControllerLifecycle:
     @pytest.mark.asyncio
     async def test_poll_continues_after_get_cells_failure(self) -> None:
-        """get_cells raises → controller does not exit."""
+        """get_cells raises → controller does not exit, continues polling."""
         call_count = 0
 
-        async def failing_get_cells() -> list[_CellSnapshot]:
+        async def failing_then_stopping(controller_ref: list[_MiniFTController]) -> list[_CellSnapshot]:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
                 raise RuntimeError("network error")
-            raise asyncio.CancelledError()
+            controller_ref[0].request_stop()
+            return []
 
-        controller = _make_controller(
-            get_cells=AsyncMock(side_effect=failing_get_cells),
+        controller = _make_controller()
+        controller_ref = [controller]
+        controller._get_cells = AsyncMock(
+            side_effect=lambda: failing_then_stopping(controller_ref),
         )
 
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(controller.run(), timeout=5.0)
+        await asyncio.wait_for(controller.run(), timeout=5.0)
 
         assert call_count == 3
 
     @pytest.mark.asyncio
     async def test_request_stop_exits_loop(self) -> None:
         """call request_stop → run() returns."""
-        controller = _make_controller()
-
-        async def stop_after_first_poll() -> list[_CellSnapshot]:
-            controller.request_stop()
-            return []
-
-        controller._get_cells = AsyncMock(side_effect=stop_after_first_poll)
+        get_cells = AsyncMock()
+        controller = _make_controller(get_cells=get_cells)
+        _run_controller_for_n_polls(controller, get_cells, [[]])
 
         await asyncio.wait_for(controller.run(), timeout=5.0)
 
