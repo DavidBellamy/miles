@@ -112,7 +112,7 @@ class RayTrainCell:
 
     # ------------------------ actor creation ------------------------
 
-    # TODO make it outside class
+    # TODO make it outside class (mechanically move)
     @staticmethod
     def _allocate_gpus_for_actor(
         args,
