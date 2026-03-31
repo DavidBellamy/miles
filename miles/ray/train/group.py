@@ -179,7 +179,7 @@ class RayTrainGroup:
             cell.materialize_pending()
 
         # Step 2: All previously-running cells reconfigure indep_dp PG
-        refs = []
+        refs: list[ray.ObjectRef] = []
         for cell in running_cells:
             refs.extend(cell.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=self._indep_dp_quorum_id))
         await asyncio.gather(*refs)
@@ -190,9 +190,7 @@ class RayTrainGroup:
         for cell in pending_cells:
             src_cell = running_cells[0]  # TODO support load balancing
             refs.extend(src_cell.async_execute("send_ckpt", dst_rank=cell.cell_id))
-            refs.extend(
-                cell.async_execute("init", **self._cell_init_kwargs(), recv_ckpt_src_rank=src_cell.cell_id)
-            )
+            refs.extend(cell.async_execute("init", **self._cell_init_kwargs(), recv_ckpt_src_rank=src_cell.cell_id))
         await asyncio.gather(*refs)
         del refs
 
