@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from miles.utils.mini_ft_controller import CellSnapshot, _MiniFTController, _MiniFTControllerRunner
+from miles.utils.mini_ft_controller import _CellSnapshot, _MiniFTController, _MiniFTControllerRunner
 
 
 # ------------------------ helpers: controller tests ------------------------
@@ -18,10 +18,9 @@ from miles.utils.mini_ft_controller import CellSnapshot, _MiniFTController, _Min
 def _make_cell(
     *,
     name: str = "cell-0",
-    healthy_status: str = "True",
-    healthy_reason: str | None = None,
-) -> CellSnapshot:
-    return CellSnapshot(name=name, healthy_status=healthy_status, healthy_reason=healthy_reason)
+    healthy: bool = True,
+) -> _CellSnapshot:
+    return _CellSnapshot(name=name, healthy=healthy)
 
 
 def _make_controller(
@@ -45,10 +44,10 @@ def _make_controller(
 
 
 @pytest.mark.asyncio
-async def test_heal_on_fatal_error() -> None:
-    """Fatal cell triggers suspend → sleep → resume in order."""
-    fatal_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal")
-    get_cells = AsyncMock(return_value=[fatal_cell])
+async def test_heal_on_unhealthy_cell() -> None:
+    """Unhealthy cell triggers suspend → sleep → resume in order."""
+    unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+    get_cells = AsyncMock(return_value=[unhealthy_cell])
     suspend_cell = AsyncMock()
     resume_cell = AsyncMock()
 
@@ -59,7 +58,7 @@ async def test_heal_on_fatal_error() -> None:
     )
 
     get_cells.side_effect = [
-        [fatal_cell],
+        [unhealthy_cell],
         asyncio.CancelledError(),
     ]
 
@@ -71,27 +70,9 @@ async def test_heal_on_fatal_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_skip_degraded_cell() -> None:
-    """Degraded cell does not trigger heal."""
-    degraded_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Degraded")
-    suspend_cell = AsyncMock()
-    resume_cell = AsyncMock()
-
-    controller = _make_controller(
-        get_cells=AsyncMock(return_value=[degraded_cell]),
-        suspend_cell=suspend_cell,
-        resume_cell=resume_cell,
-    )
-    await controller._poll_and_heal()
-
-    suspend_cell.assert_not_called()
-    resume_cell.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_skip_healthy_cell() -> None:
-    """Healthy=True cell does not trigger heal."""
-    healthy_cell = _make_cell(name="cell-0", healthy_status="True")
+    """Healthy cell does not trigger heal."""
+    healthy_cell = _make_cell(name="cell-0", healthy=True)
     suspend_cell = AsyncMock()
     resume_cell = AsyncMock()
 
@@ -107,11 +88,11 @@ async def test_skip_healthy_cell() -> None:
 
 
 @pytest.mark.asyncio
-async def test_heal_multiple_fatal_cells() -> None:
-    """Multiple Fatal cells are each healed."""
+async def test_heal_multiple_unhealthy_cells() -> None:
+    """Multiple unhealthy cells are each healed."""
     cells = [
-        _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal"),
-        _make_cell(name="cell-1", healthy_status="False", healthy_reason="Fatal"),
+        _make_cell(name="cell-0", healthy=False),
+        _make_cell(name="cell-1", healthy=False),
     ]
     suspend_cell = AsyncMock()
     resume_cell = AsyncMock()
@@ -134,11 +115,11 @@ async def test_heal_multiple_fatal_cells() -> None:
 @pytest.mark.asyncio
 async def test_backoff_on_heal_failure() -> None:
     """Suspend raises → consecutive_failures increments, next_attempt_at increases."""
-    fatal_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal")
+    unhealthy_cell = _make_cell(name="cell-0", healthy=False)
     suspend_cell = AsyncMock(side_effect=RuntimeError("connection failed"))
 
     controller = _make_controller(
-        get_cells=AsyncMock(return_value=[fatal_cell]),
+        get_cells=AsyncMock(return_value=[unhealthy_cell]),
         suspend_cell=suspend_cell,
     )
 
@@ -152,11 +133,11 @@ async def test_backoff_on_heal_failure() -> None:
 @pytest.mark.asyncio
 async def test_exponential_backoff_timing() -> None:
     """Verify backoff delays: 5*2^1=10, 5*2^2=20, 5*2^3=40, ..., capped at 300."""
-    fatal_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal")
+    unhealthy_cell = _make_cell(name="cell-0", healthy=False)
     suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
 
     controller = _make_controller(
-        get_cells=AsyncMock(return_value=[fatal_cell]),
+        get_cells=AsyncMock(return_value=[unhealthy_cell]),
         suspend_cell=suspend_cell,
     )
 
@@ -180,7 +161,7 @@ async def test_exponential_backoff_timing() -> None:
 @pytest.mark.asyncio
 async def test_successful_heal_resets_backoff() -> None:
     """Successful heal resets consecutive_failures to 0."""
-    fatal_cell = _make_cell(name="cell-0", healthy_status="False", healthy_reason="Fatal")
+    unhealthy_cell = _make_cell(name="cell-0", healthy=False)
 
     call_count = 0
 
@@ -191,7 +172,7 @@ async def test_successful_heal_resets_backoff() -> None:
             raise RuntimeError("fail")
 
     controller = _make_controller(
-        get_cells=AsyncMock(return_value=[fatal_cell]),
+        get_cells=AsyncMock(return_value=[unhealthy_cell]),
         suspend_cell=AsyncMock(side_effect=failing_then_succeeding_suspend),
         resume_cell=AsyncMock(),
     )
@@ -211,7 +192,7 @@ async def test_poll_continues_after_get_cells_failure() -> None:
     """get_cells raises → controller does not exit."""
     call_count = 0
 
-    async def failing_get_cells() -> list[CellSnapshot]:
+    async def failing_get_cells() -> list[_CellSnapshot]:
         nonlocal call_count
         call_count += 1
         if call_count <= 2:
@@ -233,7 +214,7 @@ async def test_request_stop_exits_loop() -> None:
     """call request_stop → run() returns."""
     controller = _make_controller()
 
-    async def stop_after_first_poll() -> list[CellSnapshot]:
+    async def stop_after_first_poll() -> list[_CellSnapshot]:
         controller.request_stop()
         return []
 
@@ -244,10 +225,10 @@ async def test_request_stop_exits_loop() -> None:
 
 @pytest.mark.asyncio
 async def test_no_action_when_all_healthy() -> None:
-    """All Healthy=True → no suspend/resume calls."""
+    """All healthy → no suspend/resume calls."""
     cells = [
-        _make_cell(name="cell-0", healthy_status="True"),
-        _make_cell(name="cell-1", healthy_status="True"),
+        _make_cell(name="cell-0", healthy=True),
+        _make_cell(name="cell-1", healthy=True),
     ]
     suspend_cell = AsyncMock()
     resume_cell = AsyncMock()
@@ -320,13 +301,13 @@ def _mock_response(*, status_code: int = 200, json_data: Any = None) -> httpx.Re
 
 
 @pytest.mark.asyncio
-async def test_get_cells_parses_response() -> None:
-    """Mock httpx returning CellList JSON → verify CellSnapshot list correct."""
+async def test_get_cells_parses_healthy_and_unhealthy() -> None:
+    """Parse CellList JSON into _CellSnapshot with correct healthy bool."""
     runner = _create_runner()
 
     cells_json = _build_cell_list_json([
         _build_cell_json(name="actor-0", healthy_status="True"),
-        _build_cell_json(name="actor-1", healthy_status="False", healthy_reason="Fatal"),
+        _build_cell_json(name="actor-1", healthy_status="False"),
     ])
 
     runner._client = AsyncMock()
@@ -335,56 +316,38 @@ async def test_get_cells_parses_response() -> None:
     result = await runner._get_cells()
 
     assert len(result) == 2
-    assert result[0] == CellSnapshot(name="actor-0", healthy_status="True", healthy_reason=None)
-    assert result[1] == CellSnapshot(name="actor-1", healthy_status="False", healthy_reason="Fatal")
-
-
-@pytest.mark.asyncio
-async def test_get_cells_extracts_healthy_condition() -> None:
-    """Verify Healthy condition status and reason correctly extracted."""
-    runner = _create_runner()
-
-    cells_json = _build_cell_list_json([
-        _build_cell_json(name="cell-0", healthy_status="False", healthy_reason="Fatal"),
-    ])
-
-    runner._client = AsyncMock()
-    runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
-
-    result = await runner._get_cells()
-
-    assert result[0].healthy_status == "False"
-    assert result[0].healthy_reason == "Fatal"
+    assert result[0] == _CellSnapshot(name="actor-0", healthy=True)
+    assert result[1] == _CellSnapshot(name="actor-1", healthy=False)
 
 
 @pytest.mark.asyncio
 async def test_suspend_cell_sends_correct_patch() -> None:
-    """Verify PATCH body for suspend."""
+    """Verify PATCH body for suspend uses CellPatch model."""
     runner = _create_runner()
     runner._client = AsyncMock()
     runner._client.patch = AsyncMock(return_value=_mock_response())
 
     await runner._suspend_cell("actor-0")
 
-    runner._client.patch.assert_called_once_with(
-        "/api/v1/cells/actor-0",
-        json={"spec": {"suspend": True}},
-    )
+    runner._client.patch.assert_called_once()
+    call_args = runner._client.patch.call_args
+    assert call_args[0][0] == "/api/v1/cells/actor-0"
+    assert '"suspend": true' in call_args[1]["content"] or '"suspend":true' in call_args[1]["content"]
 
 
 @pytest.mark.asyncio
 async def test_resume_cell_sends_correct_patch() -> None:
-    """Verify PATCH body for resume."""
+    """Verify PATCH body for resume uses CellPatch model."""
     runner = _create_runner()
     runner._client = AsyncMock()
     runner._client.patch = AsyncMock(return_value=_mock_response())
 
     await runner._resume_cell("actor-0")
 
-    runner._client.patch.assert_called_once_with(
-        "/api/v1/cells/actor-0",
-        json={"spec": {"suspend": False}},
-    )
+    runner._client.patch.assert_called_once()
+    call_args = runner._client.patch.call_args
+    assert call_args[0][0] == "/api/v1/cells/actor-0"
+    assert '"suspend": false' in call_args[1]["content"] or '"suspend":false' in call_args[1]["content"]
 
 
 @pytest.mark.asyncio

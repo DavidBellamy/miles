@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from miles.utils.control_server.models import CellList, CellPatch, CellPatchSpec
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -18,10 +19,9 @@ logger = logging.getLogger(__name__)
 # ------------------------ data models ------------------------
 
 
-class CellSnapshot(StrictBaseModel):
+class _CellSnapshot(StrictBaseModel):
     name: str
-    healthy_status: str
-    healthy_reason: str | None
+    healthy: bool
 
 
 @dataclass
@@ -37,7 +37,7 @@ class _MiniFTController:
     def __init__(
         self,
         *,
-        get_cells: Callable[[], Awaitable[list[CellSnapshot]]],
+        get_cells: Callable[[], Awaitable[list[_CellSnapshot]]],
         suspend_cell: Callable[[str], Awaitable[None]],
         resume_cell: Callable[[str], Awaitable[None]],
         poll_interval: float = 10.0,
@@ -71,21 +71,16 @@ class _MiniFTController:
             for cell in cells:
                 seen_cell_names.add(cell.name)
 
-                if cell.healthy_status == "True":
+                if cell.healthy:
                     continue
 
-                if cell.healthy_reason == "Degraded":
-                    logger.warning("Cell %s is Degraded, skipping heal", cell.name)
+                backoff = self._cell_backoffs.setdefault(cell.name, _CellBackoff())
+
+                now = time.monotonic()
+                if now < backoff.next_attempt_at:
                     continue
 
-                if cell.healthy_status == "False" and cell.healthy_reason == "Fatal":
-                    backoff = self._cell_backoffs.setdefault(cell.name, _CellBackoff())
-
-                    now = time.monotonic()
-                    if now < backoff.next_attempt_at:
-                        continue
-
-                    await self._heal(cell_name=cell.name, backoff=backoff)
+                await self._heal(cell_name=cell.name, backoff=backoff)
 
             stale_keys = set(self._cell_backoffs) - seen_cell_names
             for key in stale_keys:
@@ -146,27 +141,22 @@ class _MiniFTControllerRunner:
         finally:
             await self._client.aclose()
 
-    async def _get_cells(self) -> list[CellSnapshot]:
+    async def _get_cells(self) -> list[_CellSnapshot]:
         resp = await self._client.get("/api/v1/cells")
         resp.raise_for_status()
-        data: dict[str, Any] = resp.json()
+        cell_list = CellList.model_validate(resp.json())
 
-        snapshots: list[CellSnapshot] = []
-        for item in data["items"]:
-            name: str = item["metadata"]["name"]
-            healthy_status: str = "Unknown"
-            healthy_reason: str | None = None
-
-            for condition in item.get("status", {}).get("conditions", []):
-                if condition["type"] == "Healthy":
-                    healthy_status = condition["status"]
-                    healthy_reason = condition.get("reason")
+        snapshots: list[_CellSnapshot] = []
+        for cell in cell_list.items:
+            healthy = True
+            for condition in cell.status.conditions:
+                if condition.type == "Healthy":
+                    healthy = condition.status == "True"
                     break
 
-            snapshots.append(CellSnapshot(
-                name=name,
-                healthy_status=healthy_status,
-                healthy_reason=healthy_reason,
+            snapshots.append(_CellSnapshot(
+                name=cell.metadata.name,
+                healthy=healthy,
             ))
 
         return snapshots
@@ -178,9 +168,11 @@ class _MiniFTControllerRunner:
         await self._patch_cell_suspend(name=name, suspend=False)
 
     async def _patch_cell_suspend(self, *, name: str, suspend: bool) -> None:
+        patch = CellPatch(spec=CellPatchSpec(suspend=suspend))
         resp = await self._client.patch(
             f"/api/v1/cells/{name}",
-            json={"spec": {"suspend": suspend}},
+            content=patch.model_dump_json(),
+            headers={"Content-Type": "application/json"},
         )
         resp.raise_for_status()
 
