@@ -275,5 +275,4 @@ ray job submit \
   --custom-rm-path generate.reward_func \
   --rollout-function-path generate.RolloutFn \
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted \
-  "${WANDB_ARGS[@]}" \
-  --generate-multi-samples
+  "${WANDB_ARGS[@]}"
