@@ -1,6 +1,5 @@
 import logging
 import os
-from typing import Literal
 
 import ray
 from pydantic import ConfigDict
@@ -47,12 +46,16 @@ class RayTrainCell:
         self.num_cells = num_cells
         self.role = role
 
-        self._gpus_per_cell = gpus_per_cell
-        self._pg = pg
-        self._num_gpus_per_actor = num_gpus_per_actor
-        self._indep_dp_store_addr = indep_dp_store_addr
+        self._creation_kwargs = dict(
+            args=args,
+            gpus_per_cell=gpus_per_cell,
+            pg=pg,
+            num_gpus_per_actor=num_gpus_per_actor,
+            indep_dp_store_addr=indep_dp_store_addr,
+        )
 
-        self._state: _CellState = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
+        self._state: _CellState = _StatePending()
+        self.recreate_actors()
 
     # ------------------------ lifecycle management ------------------------
 
@@ -74,18 +77,34 @@ class RayTrainCell:
         assert isinstance(
             self._state, _StatePending
         ), f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
-        self._state = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
+
+        actor_handles = self._allocate_gpus_for_actor(
+            **self._creation_kwargs,
+            cell_id=self.cell_id,
+            num_cells=self.num_cells,
+        )
+        self._state = _StateRunning(actor_handles=actor_handles)
+
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
     # ------------------------ actor creation ------------------------
 
-    # TODO make it static function
-    def _allocate_gpus_for_actor(self):
-        world_size = self._gpus_per_cell
+    # TODO make it outside class
+    @staticmethod
+    def _allocate_gpus_for_actor(
+        args,
+        cell_id: int,
+        num_cells: int,
+        gpus_per_cell: int,
+        pg: tuple[PlacementGroup, list[int], list[int]],
+        num_gpus_per_actor: float,
+        indep_dp_store_addr: str,
+    ):
+        world_size = gpus_per_cell
 
         # Use placement group to lock resources for models of same type
-        assert self._pg is not None
-        pg, reordered_bundle_indices, _reordered_gpu_ids = self._pg
+        assert pg is not None
+        pg, reordered_bundle_indices, _reordered_gpu_ids = pg
 
         env_vars = {
             # because sglang will always set NCCL_CUMEM_ENABLE to 0
@@ -93,13 +112,13 @@ class RayTrainCell:
             "NCCL_CUMEM_ENABLE": os.environ.get("NCCL_CUMEM_ENABLE", "0"),
             "NVTE_FP8_BLOCK_SCALING_FP32_SCALES": "1",
             **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
-            **self.args.train_env_vars,
+            **args.train_env_vars,
         }
 
-        if source_patcher_config := self.args.dumper_source_patcher_config_train:
+        if source_patcher_config := args.dumper_source_patcher_config_train:
             env_vars["DUMPER_SOURCE_PATCHER_CONFIG"] = source_patcher_config
 
-        if self.args.offload_train and self.args.train_backend == "megatron":
+        if args.offload_train and args.train_backend == "megatron":
             import torch_memory_saver
 
             dynlib_path = os.path.join(
@@ -112,7 +131,7 @@ class RayTrainCell:
             env_vars["TMS_INIT_ENABLE"] = "1"
             env_vars["TMS_INIT_ENABLE_CPU_BACKUP"] = "1"
 
-        backend = self.args.train_backend
+        backend = args.train_backend
         if backend == "megatron":
             from miles.backends.megatron_utils.actor import MegatronTrainRayActor
 
@@ -130,8 +149,8 @@ class RayTrainCell:
         master_addr, master_port = None, None
         for rank in range(world_size):
             actor = TrainRayActor.options(
-                num_cpus=self._num_gpus_per_actor,
-                num_gpus=self._num_gpus_per_actor,
+                num_cpus=num_gpus_per_actor,
+                num_gpus=num_gpus_per_actor,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg,
                     placement_group_bundle_index=reordered_bundle_indices[rank],
@@ -141,9 +160,9 @@ class RayTrainCell:
                 rank,
                 master_addr,
                 master_port,
-                cell_id=self.cell_id,
-                num_cells=self.num_cells,
-                indep_dp_store_addr=self._indep_dp_store_addr,
+                cell_id=cell_id,
+                num_cells=num_cells,
+                indep_dp_store_addr=indep_dp_store_addr,
             )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
