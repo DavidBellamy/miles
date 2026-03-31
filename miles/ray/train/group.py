@@ -170,7 +170,7 @@ class RayTrainGroup:
         await asyncio.gather(
             *[
                 (
-                    cell.prepare_indep_dp_mode_initialized(
+                    cell.prepare_indep_dp_mode_alive(
                         indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
                         send_ckpt_dst_ranks=was_pending_ids if cell.cell_index == src_cell_index else [],
                     )

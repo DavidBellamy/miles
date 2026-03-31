@@ -107,7 +107,7 @@ class RayTrainCell:
 
     # ------------------------ cooperatively prepare ------------------------
 
-    async def prepare_indep_dp_mode_initialized(
+    async def prepare_indep_dp_mode_alive(
         self,
         indep_dp_info: IndepDPInfo,
         send_ckpt_dst_ranks: list[int],
