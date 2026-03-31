@@ -204,15 +204,6 @@ class RayTrainCell:
 
     # ------------------------ forward calls to actors ------------------------
 
-    def async_init(self, *, indep_dp_quorum_id: int):
-        return self.async_execute(
-            "init",
-            args=self.args,
-            role=self.role,
-            with_ref=self.with_ref,
-            indep_dp_quorum_id=indep_dp_quorum_id,
-        )
-
     def async_execute(self, fn_name, *args, **kwargs):
         handles = self._get_actor_handles()
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
@@ -223,6 +214,15 @@ class RayTrainCell:
         return [
             actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
+
+    def async_init(self, *, indep_dp_quorum_id: int):
+        return self.async_execute(
+            "init",
+            args=self.args,
+            role=self.role,
+            with_ref=self.with_ref,
+            indep_dp_quorum_id=indep_dp_quorum_id,
+        )
 
     # ------------------------ state helpers ------------------------
 
