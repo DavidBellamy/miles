@@ -27,6 +27,7 @@ def train(args):
             actor_model=actor_model,
             rollout_manager=rollout_manager,
             port=args.control_server_port,
+            ft_components=args.ft_components,
         )
 
     if args.offload_rollout:

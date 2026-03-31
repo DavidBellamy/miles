@@ -19,20 +19,28 @@ logger = logging.getLogger(__name__)
 # -------------------------- entrypoint ------------------------------
 
 
-def start_control_server(actor_model: RayTrainGroup, rollout_manager: object, port: int) -> None:
+def start_control_server(
+    *,
+    actor_model: RayTrainGroup,
+    rollout_manager: object,
+    port: int,
+    ft_components: frozenset[str],
+) -> None:
     registry = _CellRegistry()
 
-    for i in range(len(actor_model._cells)):
-        registry.register(_ActorCellHandle(group=actor_model, cell_index=i))
+    if "train" in ft_components:
+        for i in range(len(actor_model._cells)):
+            registry.register(_ActorCellHandle(group=actor_model, cell_index=i))
 
-    num_rollout_cells = ray.get(rollout_manager.get_cell_count.remote())
-    for i in range(num_rollout_cells):
-        registry.register(
-            _RolloutCellHandle(
-                rollout_manager=rollout_manager,
-                cell_index=i,
+    if "rollout" in ft_components:
+        num_rollout_cells = ray.get(rollout_manager.get_cell_count.remote())
+        for i in range(num_rollout_cells):
+            registry.register(
+                _RolloutCellHandle(
+                    rollout_manager=rollout_manager,
+                    cell_index=i,
+                )
             )
-        )
 
     _start_control_server_raw(registry=registry, port=port)
 
