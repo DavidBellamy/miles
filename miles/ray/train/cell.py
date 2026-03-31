@@ -74,21 +74,21 @@ class RayTrainCell:
                 **self._creation_kwargs,
                 args=self.args,
             )
-            return _StateUninitialized(actor_handles=actor_handles)
+            return _StateAllocatedUninitialized(actor_handles=actor_handles)
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
     def mark_as_alive(self) -> None:
-        assert isinstance(self._state, _StateUninitialized), (
+        assert isinstance(self._state, _StateAllocatedUninitialized), (
             f"cell {self.cell_index}: mark_as_alive requires _StateUninitialized, got {self._state}"
         )
-        self._state = _StateAlive(actor_handles=self._state.actor_handles)
+        self._state = _StateAllocatedAlive(actor_handles=self._state.actor_handles)
 
     def mark_as_errored(self) -> None:
-        assert isinstance(self._state, _StateAlive), (
+        assert isinstance(self._state, _StateAllocatedAlive), (
             f"cell {self.cell_index}: mark_as_errored requires _StateAlive, got {self._state}"
         )
-        self._state = _StateErrored(actor_handles=self._state.actor_handles)
+        self._state = _StateAllocatedErrored(actor_handles=self._state.actor_handles)
 
     def _change_state(
         self,
@@ -249,11 +249,11 @@ class RayTrainCell:
 
     @property
     def is_running(self) -> bool:
-        return isinstance(self._state, (_StateUninitialized, _StateAlive))
+        return isinstance(self._state, (_StateAllocatedUninitialized, _StateAllocatedAlive))
 
     @property
     def is_errored(self) -> bool:
-        return isinstance(self._state, _StateErrored)
+        return isinstance(self._state, _StateAllocatedErrored)
 
     @property
     def is_pending(self) -> bool:
@@ -285,15 +285,15 @@ class _StateAllocatedBase(_StateBase):
     actor_handles: list[ray.actor.ActorHandle]
 
 
-class _StateUninitialized(_StateAllocatedBase):
+class _StateAllocatedUninitialized(_StateAllocatedBase):
     pass
 
 
-class _StateAlive(_StateAllocatedBase):
+class _StateAllocatedAlive(_StateAllocatedBase):
     pass
 
 
-class _StateErrored(_StateAllocatedBase):
+class _StateAllocatedErrored(_StateAllocatedBase):
     pass
 
 

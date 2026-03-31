@@ -1,4 +1,4 @@
-from miles.ray.train.cell import RayTrainCell, _StateAlive, _StateErrored, _StatePending, _StateStopped, _StateUninitialized
+from miles.ray.train.cell import RayTrainCell, _StateAllocatedAlive, _StateAllocatedErrored, _StatePending, _StateStopped, _StateAllocatedUninitialized
 
 
 def _make_cell_with_state(state) -> RayTrainCell:
@@ -38,7 +38,7 @@ class TestMarkAsPendingIdempotent:
 
     def test_mark_as_pending_already_allocated_is_noop(self):
         """Calling mark_as_pending() on an alive cell does not crash and state stays."""
-        cell = _make_cell_with_state(_StateAlive(actor_handles=[]))
+        cell = _make_cell_with_state(_StateAllocatedAlive(actor_handles=[]))
 
         cell.mark_as_pending()
 
@@ -48,7 +48,7 @@ class TestMarkAsPendingIdempotent:
 class TestPhaseTransitions:
     def test_uninitialized_state(self):
         """Uninitialized state is allocated and running but not errored."""
-        cell = _make_cell_with_state(_StateUninitialized(actor_handles=[]))
+        cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
 
         assert cell.is_allocated
         assert cell.is_running
@@ -56,7 +56,7 @@ class TestPhaseTransitions:
 
     def test_mark_as_alive(self):
         """mark_as_alive transitions from Uninitialized to Alive."""
-        cell = _make_cell_with_state(_StateUninitialized(actor_handles=[]))
+        cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
 
         cell.mark_as_alive()
 
@@ -65,7 +65,7 @@ class TestPhaseTransitions:
 
     def test_mark_as_errored(self):
         """mark_as_errored transitions from Alive to Errored."""
-        cell = _make_cell_with_state(_StateAlive(actor_handles=[]))
+        cell = _make_cell_with_state(_StateAllocatedAlive(actor_handles=[]))
 
         cell.mark_as_errored()
 
