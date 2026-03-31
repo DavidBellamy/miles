@@ -147,9 +147,9 @@ class RayTrainGroup:
 
     def _assert_all_running_or_pending(self) -> None:
         for cell in self._cells:
-            assert cell.is_running or cell.is_pending, (
-                f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
-            )
+            assert (
+                cell.is_running or cell.is_pending
+            ), f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
 
     def _has_pending_cells(self) -> bool:
         return any(cell.is_pending for cell in self._cells)
@@ -176,10 +176,7 @@ class RayTrainGroup:
         self._indep_dp_quorum_id += 1
         qid = self._indep_dp_quorum_id
 
-        logger.info(
-            f"Materializing pending cells {[c.cell_id for c in pending_cells]}, "
-            f"indep_dp_quorum_id={qid}"
-        )
+        logger.info(f"Materializing pending cells {[c.cell_id for c in pending_cells]}, " f"indep_dp_quorum_id={qid}")
 
         # Step 2: All previously-running cells reconfigure indep_dp PG
         reconfigure_refs = []
@@ -192,14 +189,16 @@ class RayTrainGroup:
         for cell in pending_cells:
             src_cell = running_cells[0]
             transfer_refs.extend(src_cell.async_execute("send_ckpt", cell.cell_id))
-            transfer_refs.extend(cell.async_execute(
-                "init",
-                self.args,
-                cell.role,
-                with_ref=self._init_with_ref,
-                recv_ckpt_src_rank=src_cell.cell_id,
-                indep_dp_quorum_id=qid,
-            ))
+            transfer_refs.extend(
+                cell.async_execute(
+                    "init",
+                    self.args,
+                    cell.role,
+                    with_ref=self._init_with_ref,
+                    recv_ckpt_src_rank=src_cell.cell_id,
+                    indep_dp_quorum_id=qid,
+                )
+            )
         await asyncio.gather(*transfer_refs)
 
         logger.info("All pending cells materialized successfully")

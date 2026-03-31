@@ -75,16 +75,16 @@ class RayTrainCell:
         logger.info(f"Killed all actors in cell {self.cell_id}")
 
     def mark_pending(self) -> None:
-        assert isinstance(self._state, _StateStopped), (
-            f"Cannot mark pending for cell {self.cell_id} (state={self._state.type})"
-        )
+        assert isinstance(
+            self._state, _StateStopped
+        ), f"Cannot mark pending for cell {self.cell_id} (state={self._state.type})"
         self._state = _StatePending()
         logger.info(f"Cell {self.cell_id} marked as pending")
 
     def recreate_actors(self) -> None:
-        assert isinstance(self._state, _StatePending), (
-            f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
-        )
+        assert isinstance(
+            self._state, _StatePending
+        ), f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
         self._state = _StateRunning(actor_handles=self._allocate_gpus_for_actor())
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
@@ -168,6 +168,5 @@ class RayTrainCell:
         handles = self._get_actor_handles()
         critic_handles = critic_cell._get_actor_handles()
         return [
-            actor.connect_actor_critic.remote(critic)
-            for actor, critic in zip(handles, critic_handles, strict=False)
+            actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
