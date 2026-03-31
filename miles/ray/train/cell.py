@@ -89,6 +89,15 @@ class RayTrainCell:
             ),
         )
 
+    def _update_indep_dp_info(self, indep_dp_info: IndepDPInfo) -> None:
+        assert isinstance(self._state, _StateAllocatedAlive), (
+            f"cell {self.cell_index}: _update_indep_dp_info requires _StateAllocatedAlive, got {self._state}"
+        )
+        self._state = _StateAllocatedAlive(
+            actor_handles=self._state.actor_handles,
+            indep_dp_info=indep_dp_info,
+        )
+
     # TODO call this function (probably within cell?)
     def _mark_as_errored(self) -> None:
         self._change_state(
@@ -121,6 +130,7 @@ class RayTrainCell:
         await asyncio.gather(
             *self.async_execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info),
         )
+        self._update_indep_dp_info(indep_dp_info)
 
         for dst_rank in send_ckpt_dst_ranks:
             await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
