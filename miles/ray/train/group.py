@@ -53,6 +53,7 @@ class RayTrainGroup:
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         self._indep_dp_quorum_id = 0
+        self._rollout_manager = None
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -135,6 +136,7 @@ class RayTrainGroup:
         )
 
     def set_rollout_manager(self, rollout_manager):
+        self._rollout_manager = rollout_manager
         self._execute("set_rollout_manager", rollout_manager)
 
     def stop(self, cell_id: int) -> None:
@@ -171,6 +173,14 @@ class RayTrainGroup:
             )
             for cell in self._cells
         ])
+
+        # Step 4: Re-wire restarted cells
+        if self._rollout_manager is not None:
+            refs = []
+            for cell in self._cells:
+                if cell.cell_id in was_pending_ids:
+                    refs.extend(cell.async_execute("set_rollout_manager", self._rollout_manager))
+            ray.get(refs)
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:
