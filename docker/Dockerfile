@@ -114,6 +114,19 @@ RUN cd /sgl-workspace/sglang && \
     fi && \
     pip install -e "python[all]" --no-deps
 
+# Rebuild sglang router (Rust) from the same branch
+RUN curl --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    && export PATH="/root/.cargo/bin:${PATH}" \
+    && pip install maturin \
+    && cd /sgl-workspace/sglang/sgl-model-gateway/bindings/python \
+    && ulimit -n 65536 && maturin build --release --features vendored-openssl --out dist \
+    && pip install --force-reinstall dist/*.whl \
+    && cd /sgl-workspace/sglang/sgl-model-gateway \
+    && cargo build --release --bin sglang-router --features vendored-openssl \
+    && cp target/release/sglang-router /usr/local/bin/sglang-router \
+    && rm -rf /root/.cargo /root/.rustup target dist ~/.cargo \
+    && sed -i '/\.cargo\/env/d' /root/.profile /root/.bashrc 2>/dev/null || true
+
 # ====================================== Install main package ============================================
 
 ARG MILES_COMMIT=main
