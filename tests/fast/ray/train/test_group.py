@@ -77,10 +77,10 @@ class TestAsyncExecuteSkipsStoppedCells:
         assert stopped_cell._execute_calls == []
 
 
-class TestSnapshotAliveAndMaybeReconfigure:
+class TestRefreshCells:
     @patch("miles.ray.train.group.ray")
-    def test_reconfigure_triggers_on_change(self, mock_ray: MagicMock):
-        """When a cell is stopped, reconfiguration is triggered."""
+    def test_reconfigure_triggers_on_alive_change(self, mock_ray: MagicMock):
+        """When a cell is stopped, _refresh_cells triggers reconfiguration."""
         mock_ray.get.return_value = None
 
         cells = [_MockCell(0), _MockCell(1), _MockCell(2)]
@@ -90,12 +90,12 @@ class TestSnapshotAliveAndMaybeReconfigure:
         # Stop cell 1
         cells[1]._is_running = False
 
-        group._snapshot_alive_and_maybe_reconfigure()
+        group._refresh_cells()
 
         assert group._indep_dp_quorum_id == initial_quorum + 1
         assert group._last_alive_cell_indexs == frozenset({0, 2})
 
-        # Verify reconfigure was called on running cells
+        # Verify reconfigure was called on running cells only
         assert len(cells[0]._execute_calls) == 1
         assert cells[0]._execute_calls[0][0] == "reconfigure_indep_dp"
         assert len(cells[2]._execute_calls) == 1
@@ -116,13 +116,13 @@ class TestSnapshotAliveAndMaybeReconfigure:
         assert info_2.alive_size == 2
 
     @patch("miles.ray.train.group.ray")
-    def test_reconfigure_skips_when_unchanged(self, mock_ray: MagicMock):
+    def test_no_reconfigure_when_unchanged(self, mock_ray: MagicMock):
         """When alive set has not changed, no reconfiguration happens."""
         cells = [_MockCell(0), _MockCell(1)]
         group = _make_group_with_cells(cells)
         initial_quorum = group._indep_dp_quorum_id
 
-        group._snapshot_alive_and_maybe_reconfigure()
+        group._refresh_cells()
 
         assert group._indep_dp_quorum_id == initial_quorum
         assert cells[0]._execute_calls == []

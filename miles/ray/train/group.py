@@ -156,9 +156,13 @@ class RayTrainGroup:
         assert running_cells, "No running cells"
         return [future for cell in running_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
-    # ------------------------ internals for alive tracking ------------------------
+    # ------------------------ internals for cell lifecycle ------------------------
 
-    def _snapshot_alive_and_maybe_reconfigure(self) -> None:
+    def _refresh_cells(self) -> None:
+        has_pending = any(cell.is_pending for cell in self._cells)
+        if has_pending:
+            asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
+
         current_alive = frozenset(cell.cell_index for cell in self._cells if cell.is_running)
         assert current_alive, "No running cells available for training"
         if current_alive == self._last_alive_cell_indexs:
@@ -177,8 +181,6 @@ class RayTrainGroup:
                 indep_dp_info=self._make_indep_dp_info(cell.cell_index),
             )
         ])
-
-    # ------------------------ internals for stop/start ------------------------
 
     def _compute_alive_mapping(self) -> dict[int, int]:
         running = sorted(cell.cell_index for cell in self._cells if cell.is_running)
@@ -199,24 +201,22 @@ class RayTrainGroup:
         was_running_ids = [cell.cell_index for cell in self._cells if cell.is_running]
         assert was_running_ids, "No running cells to materialize"
 
-        # Step 1: Bump states
-        self._indep_dp_quorum_id += 1
-
-        # Step 2: Allocate actors
+        # Step 1: Allocate actors for pending cells
         for cell in self._cells:
             if cell.cell_index in was_pending_ids:
                 cell.allocate_for_pending()
 
-        # Step 3: Snapshot alive mapping (all previously running + newly allocated are now running)
+        # Step 2: Bump quorum and snapshot alive mapping
+        self._indep_dp_quorum_id += 1
         self._alive_mapping = self._compute_alive_mapping()
         self._last_alive_cell_indexs = frozenset(self._alive_mapping.keys())
 
-        # Step 4: Convert ckpt transfer ranks to alive_rank
+        # Step 3: Convert ckpt transfer ranks to alive_rank
         src_cell_index = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
         ckpt_dst_alive_ranks = [self._alive_mapping[cid] for cid in was_pending_ids]
         src_alive_rank = self._alive_mapping[src_cell_index]
 
-        # Step 5: Cooperatively prepare
+        # Step 4: Cooperatively prepare (reconfigure existing + init new)
         await asyncio.gather(
             *[
                 (
@@ -234,9 +234,6 @@ class RayTrainGroup:
                 if cell.is_running
             ]
         )
-
-    def _has_pending_cells(self) -> bool:
-        return any(cell.is_pending for cell in self._cells)
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]

@@ -227,16 +227,6 @@ class TestStopCell:
         resp = await async_client.post("/cells/cell-0/stop")
         assert resp.status_code == 500
 
-    @pytest.mark.asyncio
-    async def test_training_cell_returns_error(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        registry.register(_ActorCellHandle(node_ids=["n0"]))
-
-        resp = await async_client.post("/cells/training/stop")
-        assert resp.status_code == 500
-        assert "managed by the platform" in resp.json()["detail"]
-
 
 class TestStartCell:
     @pytest.mark.asyncio
@@ -278,16 +268,6 @@ class TestStartCell:
         resp = await async_client.post("/cells/cell-0/start")
         assert resp.status_code == 500
 
-    @pytest.mark.asyncio
-    async def test_training_cell_returns_error(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        registry.register(_ActorCellHandle(node_ids=["n0"]))
-
-        resp = await async_client.post("/cells/training/start")
-        assert resp.status_code == 500
-        assert "managed by the platform" in resp.json()["detail"]
-
 
 class TestRolloutCellHandle:
     @pytest.mark.asyncio
@@ -327,30 +307,77 @@ class TestRolloutCellHandle:
         assert handle.cell_id == "cell-0"
 
 
+class _MockRayTrainCell:
+    def __init__(self, *, is_running: bool = True, is_pending: bool = False) -> None:
+        self._is_running = is_running
+        self._is_pending = is_pending
+
+    @property
+    def is_running(self) -> bool:
+        return self._is_running
+
+    @property
+    def is_pending(self) -> bool:
+        return self._is_pending
+
+
+def _make_mock_group(cells: list[_MockRayTrainCell]) -> object:
+    from miles.ray.train.group import RayTrainGroup
+
+    group = object.__new__(RayTrainGroup)
+    group._cells = cells
+    group._indep_dp_quorum_id = 0
+    group._alive_cell_ids = frozenset()
+    return group
+
+
 class TestActorCellHandle:
-    @pytest.mark.asyncio
-    async def test_stop_raises(self) -> None:
-        handle = _ActorCellHandle(node_ids=["n0"])
-        with pytest.raises(NotImplementedError, match="managed by the platform"):
-            await handle.stop(timeout_seconds=30)
+    def test_cell_id_and_type(self) -> None:
+        group = _make_mock_group([_MockRayTrainCell()])
+        handle = _ActorCellHandle(group=group, cell_index=0)
+        assert handle.cell_id == "actor-0"
+        assert handle.cell_type == "actor"
 
     @pytest.mark.asyncio
-    async def test_start_raises(self) -> None:
-        handle = _ActorCellHandle(node_ids=["n0"])
-        with pytest.raises(NotImplementedError, match="managed by the platform"):
-            await handle.start()
-
-    @pytest.mark.asyncio
-    async def test_get_status_always_running(self) -> None:
-        handle = _ActorCellHandle(node_ids=[])
+    async def test_get_status_running(self) -> None:
+        group = _make_mock_group([_MockRayTrainCell(is_running=True)])
+        handle = _ActorCellHandle(group=group, cell_index=0)
         assert await handle.get_status() == "running"
 
     @pytest.mark.asyncio
-    async def test_get_node_ids(self) -> None:
-        handle = _ActorCellHandle(node_ids=["n0", "n1", "n2"])
-        assert await handle.get_node_ids() == ["n0", "n1", "n2"]
+    async def test_get_status_pending(self) -> None:
+        group = _make_mock_group([_MockRayTrainCell(is_running=False, is_pending=True)])
+        handle = _ActorCellHandle(group=group, cell_index=0)
+        assert await handle.get_status() == "pending"
 
-    def test_cell_type_is_training(self) -> None:
-        handle = _ActorCellHandle(node_ids=[])
-        assert handle.cell_type == "actor"
-        assert handle.cell_id == "actor"
+    @pytest.mark.asyncio
+    async def test_get_status_stopped(self) -> None:
+        group = _make_mock_group([_MockRayTrainCell(is_running=False)])
+        handle = _ActorCellHandle(group=group, cell_index=0)
+        assert await handle.get_status() == "stopped"
+
+    @pytest.mark.asyncio
+    async def test_get_node_ids_returns_empty(self) -> None:
+        group = _make_mock_group([_MockRayTrainCell()])
+        handle = _ActorCellHandle(group=group, cell_index=0)
+        assert await handle.get_node_ids() == []
+
+    @pytest.mark.asyncio
+    async def test_stop_delegates_to_group(self) -> None:
+        from unittest.mock import MagicMock
+
+        group = _make_mock_group([_MockRayTrainCell()])
+        group.stop = MagicMock()
+        handle = _ActorCellHandle(group=group, cell_index=2)
+        await handle.stop(timeout_seconds=10)
+        group.stop.assert_called_once_with(2)
+
+    @pytest.mark.asyncio
+    async def test_start_delegates_to_group(self) -> None:
+        from unittest.mock import MagicMock
+
+        group = _make_mock_group([_MockRayTrainCell()])
+        group.start = MagicMock()
+        handle = _ActorCellHandle(group=group, cell_index=1)
+        await handle.start()
+        group.start.assert_called_once_with(1)

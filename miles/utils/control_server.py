@@ -154,32 +154,38 @@ class _CellHandle(abc.ABC):
 
 
 class _ActorCellHandle(_CellHandle):
-    def __init__(self, node_ids: list[str]) -> None:
-        self._node_ids = node_ids
+    def __init__(self, *, group: object, cell_index: int) -> None:
+        from miles.ray.train.group import RayTrainGroup
+
+        assert isinstance(group, RayTrainGroup)
+        self._group: RayTrainGroup = group
+        self._cell_index = cell_index
 
     @property
     def cell_id(self) -> str:
-        return "training"
+        return f"actor-{self._cell_index}"
 
     @property
     def cell_type(self) -> str:
-        return "training"
+        return "actor"
 
     async def stop(self, timeout_seconds: int) -> None:
-        raise NotImplementedError(
-            "Training cell lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
-        )
+        self._group.stop(self._cell_index)
 
     async def start(self) -> None:
-        raise NotImplementedError(
-            "Training cell lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
-        )
+        self._group.start(self._cell_index)
 
     async def get_status(self) -> str:
-        return "running"
+        cell = self._group._cells[self._cell_index]
+        if cell.is_running:
+            return "running"
+        elif cell.is_pending:
+            return "pending"
+        else:
+            return "stopped"
 
     async def get_node_ids(self) -> list[str]:
-        return self._node_ids
+        return []
 
 
 class _RolloutCellHandle(_CellHandle):
