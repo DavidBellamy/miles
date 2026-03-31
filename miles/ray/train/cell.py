@@ -80,10 +80,18 @@ class RayTrainCell:
         self._change_state("allocate_for_pending", _StatePending, _core)
 
     def _mark_as_alive(self) -> None:
-        self._change_state("_mark_as_alive", _StateAllocatedUninitialized, lambda: _StateAllocatedAlive(actor_handles=self._state.actor_handles))
+        self._change_state(
+            "_mark_as_alive",
+            _StateAllocatedUninitialized,
+            lambda: _StateAllocatedAlive(actor_handles=self._state.actor_handles),
+        )
 
     def mark_as_errored(self) -> None:
-        self._change_state("mark_as_errored", _StateAllocatedBase, lambda: _StateAllocatedErrored(actor_handles=self._state.actor_handles))
+        self._change_state(
+            "mark_as_errored",
+            _StateAllocatedBase,
+            lambda: _StateAllocatedErrored(actor_handles=self._state.actor_handles),
+        )
 
     def _change_state(
         self,

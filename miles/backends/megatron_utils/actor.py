@@ -14,8 +14,8 @@ from transformers import AutoConfig
 from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
-from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box

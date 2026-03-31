@@ -1,4 +1,10 @@
-from miles.ray.train.cell import RayTrainCell, _StateAllocatedAlive, _StateAllocatedErrored, _StatePending, _StateStopped, _StateAllocatedUninitialized
+from miles.ray.train.cell import (
+    RayTrainCell,
+    _StateAllocatedAlive,
+    _StateAllocatedUninitialized,
+    _StatePending,
+    _StateStopped,
+)
 
 
 def _make_cell_with_state(state) -> RayTrainCell:

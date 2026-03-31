@@ -5,12 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from miles.utils.control_server import (
-    _create_control_app,
-    _RolloutCellHandle,
-    _CellRegistry,
-    _ActorCellHandle,
-)
+from miles.utils.control_server import _ActorCellHandle, _CellRegistry, _create_control_app, _RolloutCellHandle
 
 
 class _MockHandle:
@@ -214,9 +209,7 @@ class TestStopCell:
         assert len(handle.stop_calls) == 1
 
     @pytest.mark.asyncio
-    async def test_handle_raises_returns_500(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_handle_raises_returns_500(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(
             cell_id="cell-0",
             cell_type="rollout",
@@ -315,9 +308,7 @@ class TestStartCell:
         assert handle.start_calls == 1
 
     @pytest.mark.asyncio
-    async def test_handle_raises_returns_500(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_handle_raises_returns_500(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(
             cell_id="cell-0",
             cell_type="rollout",
