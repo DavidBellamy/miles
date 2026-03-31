@@ -146,12 +146,12 @@ def create_training_models(args, pgs, rollout_manager):
             num_gpus_per_node=args.critic_num_gpus_per_node,
             pg=pgs["critic"],
         )
-        critic_init_handle = critic_model.async_init(args, role="critic")
+        critic_init_handle = critic_model.async_init(args)
     else:
         critic_model = None
 
     start_rollout_ids = ray.get(
-        actor_model.async_init(args, role="actor")
+        actor_model.async_init(args)
     )
 
     assert len(set(start_rollout_ids)) == 1
