@@ -372,3 +372,75 @@ class TestAsyncTrain:
                 assert any(c[0] == "train" for c in calls)
 
         assert cells[1].is_stopped
+
+    def test_consecutive_async_train_no_reconfigure_overhead(self):
+        """Multiple async_train calls with no state changes should not trigger reconfigure."""
+        all_alive = [0, 1, 2]
+        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
+        group = _make_group_with_cells(cells)
+
+        # Step 1: Three consecutive async_train calls
+        for step in range(3):
+            refs = group.async_train(rollout_id=step, rollout_data_ref="data")
+            ray.get(refs)
+
+        # Step 2: Quorum never bumped
+        assert group._indep_dp_quorum_id == 0
+
+        # Step 3: No reconfigure_indep_dp calls, only train calls
+        for cell in cells:
+            for handle in cell._get_actor_handles():
+                calls = ray.get(handle.get_calls.remote())
+                assert not any(c[0] == "reconfigure_indep_dp" for c in calls)
+                train_calls = [c for c in calls if c[0] == "train"]
+                assert len(train_calls) == 3
+
+    def test_rapid_stop_start_before_async_train(self):
+        """Cell stopped and immediately started before next async_train — healed in one refresh."""
+        all_alive = [0, 1, 2]
+        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
+        group = _make_group_with_cells(cells)
+
+        # Stop and immediately start cell 1
+        group.stop_cell(1)
+        group.start_cell(1)
+
+        # async_train heals cell 1 in one shot
+        refs = group.async_train(rollout_id=0, rollout_data_ref="data")
+        ray.get(refs)
+
+        # All 3 cells alive and trained
+        assert all(c.is_alive for c in cells)
+        for cell in cells:
+            assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
+
+    def test_full_lifecycle_through_async_train(self):
+        """End-to-end: normal → degraded → steady degraded → healing → full."""
+        all_alive = [0, 1, 2]
+        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
+        group = _make_group_with_cells(cells)
+
+        # Step 1: Normal training (no reconfigure)
+        ray.get(group.async_train(rollout_id=0, rollout_data_ref="data"))
+        assert group._indep_dp_quorum_id == 0
+
+        # Step 2: Stop cell 2 → degraded training (triggers reconfigure)
+        group.stop_cell(2)
+        ray.get(group.async_train(rollout_id=1, rollout_data_ref="data"))
+        assert group._indep_dp_quorum_id == 1
+        assert cells[0].indep_dp_info.alive_cell_indices == [0, 1]
+
+        # Step 3: Steady degraded (no reconfigure)
+        ray.get(group.async_train(rollout_id=2, rollout_data_ref="data"))
+        assert group._indep_dp_quorum_id == 1
+
+        # Step 4: Start cell 2 → healing (triggers reconfigure)
+        group.start_cell(2)
+        ray.get(group.async_train(rollout_id=3, rollout_data_ref="data"))
+        assert group._indep_dp_quorum_id == 2
+        assert all(c.is_alive for c in cells)
+        assert cells[2].indep_dp_info.alive_cell_indices == [0, 1, 2]
+
+        # Step 5: Full training again (no reconfigure)
+        ray.get(group.async_train(rollout_id=4, rollout_data_ref="data"))
+        assert group._indep_dp_quorum_id == 2
