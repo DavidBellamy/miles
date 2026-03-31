@@ -1,9 +1,10 @@
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import ray
 from tests.fast.ray.train.conftest import make_alive_cell, make_cell
+from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 from miles.ray.train.group import RayTrainGroup
 
@@ -14,6 +15,100 @@ def _make_group_with_cells(cells: list) -> RayTrainGroup:
     group._cells = cells
     group._indep_dp_quorum_id = 0
     return group
+
+
+def _make_mock_args(*, indep_dp: bool = True, num_cells: int = 3) -> MagicMock:
+    args = MagicMock()
+    args.indep_dp = indep_dp
+    return args
+
+
+def _make_group_via_init(*, num_cells: int = 3, actor_count_per_cell: int = 1) -> RayTrainGroup:
+    """Create a RayTrainGroup through real __init__ with mocked placement group and actor factory."""
+    with patch(
+        "miles.ray.train.group.compute_megatron_world_size_except_dp",
+        return_value=1,
+    ), patch(
+        "miles.ray.train.group.allocate_gpus_for_actor",
+        side_effect=lambda **kwargs: [DummyTrainActor.remote() for _ in range(actor_count_per_cell)],
+    ):
+        group = RayTrainGroup(
+            args=_make_mock_args(indep_dp=True),
+            num_nodes=1,
+            num_gpus_per_node=num_cells,
+            pg=(MagicMock(), list(range(num_cells)), list(range(num_cells))),
+            role="actor",
+            with_ref=False,
+            rollout_manager=None,
+        )
+    return group
+
+
+class TestInit:
+    def test_creates_correct_number_of_cells(self):
+        """__init__ creates num_cells cells, each with correct cell_index."""
+        group = _make_group_via_init(num_cells=3)
+
+        assert len(group._cells) == 3
+        assert [c.cell_index for c in group._cells] == [0, 1, 2]
+
+    def test_cells_are_allocated_after_init(self):
+        """All cells are in allocated (uninitialized) state after __init__."""
+        group = _make_group_via_init(num_cells=2)
+
+        for cell in group._cells:
+            assert cell.is_allocated
+            assert not cell.is_alive
+
+    def test_each_cell_has_own_actors(self):
+        """Each cell has its own actor handles (not shared)."""
+        group = _make_group_via_init(num_cells=3, actor_count_per_cell=2)
+
+        handles_per_cell = [cell._get_actor_handles() for cell in group._cells]
+        assert all(len(h) == 2 for h in handles_per_cell)
+
+        # No handle appears in two cells
+        all_handles = [h for handles in handles_per_cell for h in handles]
+        assert len(set(id(h) for h in all_handles)) == 6
+
+    def test_single_cell_no_tcp_store(self):
+        """With indep_dp but only 1 cell, no TCPStore is created."""
+        with patch(
+            "miles.ray.train.group.compute_megatron_world_size_except_dp",
+            return_value=1,
+        ), patch(
+            "miles.ray.train.group.allocate_gpus_for_actor",
+            side_effect=lambda **kwargs: [DummyTrainActor.remote()],
+        ):
+            args = _make_mock_args(indep_dp=False)
+            group = RayTrainGroup(
+                args=args,
+                num_nodes=1,
+                num_gpus_per_node=1,
+                pg=(MagicMock(), [0], [0]),
+                role="actor",
+                with_ref=False,
+                rollout_manager=None,
+            )
+
+        assert len(group._cells) == 1
+        assert group._indep_dp_store is None
+
+    def test_async_init_marks_all_cells_alive(self):
+        """async_init dispatches init to all cells and marks them alive."""
+        group = _make_group_via_init(num_cells=3)
+
+        refs = group.async_init()
+        ray.get(refs)
+
+        for cell in group._cells:
+            assert cell.is_alive
+            assert cell.indep_dp_info.alive_cell_indices == [0, 1, 2]
+            assert cell.indep_dp_info.alive_size == 3
+
+        assert group._cells[0].indep_dp_info.alive_rank == 0
+        assert group._cells[1].indep_dp_info.alive_rank == 1
+        assert group._cells[2].indep_dp_info.alive_rank == 2
 
 
 class TestStopStartCell:
