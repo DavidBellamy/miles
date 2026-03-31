@@ -153,9 +153,11 @@ class RayTrainGroup:
     # ------------------------ internals for stop/start ------------------------
 
     async def _refresh_cells(self) -> None:
-        was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
-        was_alive_ids = [cell.cell_index for cell in self._cells if cell.is_alive]
-        assert len(was_alive_ids) > 0, "Cannot recover when all cells are dead"
+        will_alive_ids = TODO
+
+        was_pending_indices = [cell.cell_index for cell in self._cells if cell.is_pending]
+        was_alive_indices = [cell.cell_index for cell in self._cells if cell.is_alive]
+        assert len(was_alive_indices) > 0, "Cannot recover when all cells are dead"
         TODO_handle_zero_case
 
         # Step 1: Bump states
@@ -163,22 +165,22 @@ class RayTrainGroup:
 
         # Step 2: Allocate actors
         for cell in self._cells:
-            if cell.cell_index in was_pending_ids:
+            if cell.cell_index in was_pending_indices:
                 cell.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        src_cell_index = was_alive_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        src_cell_index = was_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
         await asyncio.gather(
             *[
                 (
                     cell.prepare_indep_dp_mode_alive(
                         indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
-                        send_ckpt_dst_ranks=was_pending_ids if cell.cell_index == src_cell_index else [],
+                        send_ckpt_dst_ranks=was_pending_indices if cell.cell_index == src_cell_index else [],
                     )
-                    if cell.cell_index in was_alive_ids
+                    if cell.cell_index in was_alive_indices
                     else cell.prepare_indep_dp_mode_healing(
                         indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
-                        recv_ckpt_src_rank=src_cell_index if cell.cell_index in was_pending_ids else None,
+                        recv_ckpt_src_rank=src_cell_index if cell.cell_index in was_pending_indices else None,
                     )
                 )
                 for cell in self._cells
