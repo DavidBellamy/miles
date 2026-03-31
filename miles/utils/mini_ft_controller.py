@@ -173,6 +173,7 @@ class _MiniFTController:
             logger.info("Healing cell %s: suspending", cell_name)
             await self._suspend_cell(cell_name)
 
+            logger.info("Healing cell %s: sleeping for resume_delay seconds", cell_name)
             await asyncio.sleep(self._resume_delay)
 
             logger.info("Healing cell %s: resuming", cell_name)
