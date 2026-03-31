@@ -47,7 +47,6 @@ class RayTrainCell:
         self.role = role
 
         self._creation_kwargs = dict(
-            args=args,
             gpus_per_cell=gpus_per_cell,
             pg=pg,
             num_gpus_per_actor=num_gpus_per_actor,
@@ -80,6 +79,7 @@ class RayTrainCell:
 
         actor_handles = self._allocate_gpus_for_actor(
             **self._creation_kwargs,
+            args=self.args,
             cell_id=self.cell_id,
             num_cells=self.num_cells,
         )
