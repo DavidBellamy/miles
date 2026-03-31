@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Type, Callable, Tuple
 
 import ray
 from pydantic import ConfigDict
@@ -59,34 +60,36 @@ class RayTrainCell:
     # ------------------------ lifecycle management ------------------------
 
     def stop(self) -> None:
-        logger.info(f"stop() start {self.cell_id=}")
-        assert isinstance(self._state, _StateRunning), f"{self.cell_id=} {self._state=}"
+        def _core():
+            if self.is_running:
+                handles = self._get_actor_handles()
+                for actor in handles:
+                    ray.kill(actor)
 
-        handles = self._get_actor_handles()
-        for actor in handles:
-            ray.kill(actor)
+            return _StateStopped()
 
-        self._state = _StateStopped()
-        logger.info(f"stop() done {self.cell_id=}")
+        self._change_state("stop", (_StatePending, _StateRunning), _core)
 
     def mark_pending(self) -> None:
-        logger.info(f"mark_pending() start {self.cell_id=}")
-        assert isinstance(self._state, _StateStopped), f"{self.cell_id=} {self._state=}"
-        self._state = _StatePending()
-        logger.info(f"mark_pending() done {self.cell_id=}")
+        self._change_state("mark_pending", _StateStopped, lambda: _StatePending())
 
     def recreate_actors(self) -> None:
-        logger.info(f"recreate_actors() start {self.cell_id=}")
-        assert isinstance(self._state, _StatePending), f"{self.cell_id=} {self._state=}"
+        def _core():
+            actor_handles = self._allocate_gpus_for_actor(
+                **self._creation_kwargs,
+                args=self.args,
+                cell_id=self.cell_id,
+                num_cells=self.num_cells,
+            )
+            return _StateRunning(actor_handles=actor_handles)
 
-        actor_handles = self._allocate_gpus_for_actor(
-            **self._creation_kwargs,
-            args=self.args,
-            cell_id=self.cell_id,
-            num_cells=self.num_cells,
-        )
-        self._state = _StateRunning(actor_handles=actor_handles)
-        logger.info(f"recreate_actors() done {self.cell_id=}")
+        self._change_state("recreate_actors", (_StatePending, _StateStopped), _core)
+
+    def _change_state(self, debug_name: str, old_state_cls: Type[_CellState] | Tuple[Type[_CellState], ...], fn: Callable[[], _CellState]):
+        logger.info(f"{debug_name} start {self.cell_id=}")
+        assert isinstance(self._state, old_state_cls), f"{self.cell_id=} {self._state=}"
+        self._state = fn()
+        logger.info(f"{debug_name} end {self.cell_id=}")
 
     # ------------------------ actor creation ------------------------
 
