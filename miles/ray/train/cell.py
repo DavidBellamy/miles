@@ -14,17 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class _StatePending(StrictBaseModel):
-    type: Literal["pending"] = "pending"
+    pass
 
 
 class _StateRunning(StrictBaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
-    type: Literal["running"] = "running"
     actor_handles: list[ray.actor.ActorHandle]
 
 
 class _StateStopped(StrictBaseModel):
-    type: Literal["stopped"] = "stopped"
+    pass
 
 
 _CellState = _StatePending | _StateRunning | _StateStopped
