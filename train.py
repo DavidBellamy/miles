@@ -23,14 +23,12 @@ def train(args):
 
     control_server = None
     if args.control_server_port:
-        from miles.utils.control_server import ActorCellHandle, ControlServer, RolloutCellHandle
+        from miles.utils.control_server import ActorCellHandle, ControlServer
 
         control_server = ControlServer(port=args.control_server_port)
         for i in range(len(actor_model._cells)):
             control_server.register(ActorCellHandle(group=actor_model, cell_index=i))
-        num_rollout_cells = ray.get(rollout_manager.get_cell_count.remote())
-        for i in range(num_rollout_cells):
-            control_server.register(RolloutCellHandle(rollout_manager=rollout_manager, cell_index=i))
+        # TODO: register rollout cells (to be implemented separately)
         control_server.start()
 
     if args.offload_rollout:
