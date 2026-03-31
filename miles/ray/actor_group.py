@@ -32,9 +32,10 @@ class RayTrainGroup:
         num_nodes,
         num_gpus_per_node,
         pg: tuple[PlacementGroup, list[int], list[int]],
+        *,
         num_gpus_per_actor: float = 1,
-        role: str = "actor",
-        with_ref: bool = False,
+        role: str,
+        with_ref: bool,
     ) -> None:
         self.args = args
         self._num_nodes = num_nodes
