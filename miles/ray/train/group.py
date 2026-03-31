@@ -92,6 +92,7 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
+        TODO_unify
         return self._async_execute("init", **self._cell_init_kwargs())
 
     def _cell_init_kwargs(self):

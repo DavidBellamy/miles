@@ -85,6 +85,9 @@ class RayTrainCell:
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
+    async def start(self):
+        TODO
+
     def _change_state(
         self,
         debug_name: str,
