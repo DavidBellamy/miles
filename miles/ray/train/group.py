@@ -202,7 +202,7 @@ class RayTrainGroup:
         return IndepDPInfo(
             cell_index=cell_index,
             num_cells=len(self._cells),
-            alive_rank=alive_mapping[cell_index],
+            alive_rank=alive_cell_indices.index(cell_index),
             alive_size=len(alive_cell_indices),
             quorum_id=self._indep_dp_quorum_id,
             alive_cell_indices=alive_cell_indices,
