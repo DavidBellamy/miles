@@ -535,6 +535,30 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=0,
                 help="Port for HTTP control server. 0 = disabled.",
             )
+            parser.add_argument(
+                "--mini-ft-controller-enabled",
+                action="store_true",
+                default=False,
+                help="Enable the mini fault-tolerance controller that auto-heals Fatal cells.",
+            )
+            parser.add_argument(
+                "--mini-ft-controller-poll-interval",
+                type=float,
+                default=10.0,
+                help="Interval in seconds between cell health polls.",
+            )
+            parser.add_argument(
+                "--mini-ft-controller-resume-delay",
+                type=float,
+                default=5.0,
+                help="Delay in seconds between suspending and resuming a cell during heal.",
+            )
+            parser.add_argument(
+                "--mini-ft-controller-max-consecutive-failures",
+                type=int,
+                default=5,
+                help="Maximum consecutive heal failures before giving up on a cell.",
+            )
             return parser
 
         # data
@@ -1776,9 +1800,9 @@ def miles_validate_args(args):
         logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
     if args.indep_dp:
-        per_replica = compute_megatron_world_size_except_dp(args)
-        logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica} (per-cell)")
-        args.world_size = per_replica
+        per_replica_size = compute_megatron_world_size_except_dp(args)
+        logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica_size} (per-cell)")
+        args.world_size = per_replica_size
 
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
