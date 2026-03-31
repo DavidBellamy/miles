@@ -45,7 +45,7 @@ def send_ckpt(
     transport = _create_transport(indep_dp, timeout)
     transport.send_checkpoint(
         dst_ranks=[dst_rank],
-        step=iteration,
+        step=0,
         state_dict=payload,
         timeout=timeout,
     )
