@@ -93,9 +93,7 @@ class RayTrainGroup:
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-        self._assert_all_running_or_pending()
-        if self._has_pending_cells():
-            asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
+        asyncio.get_event_loop().run_until_complete(self._refresh_cells())
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
@@ -148,12 +146,12 @@ class RayTrainGroup:
         return ray.get(running_cells[0].async_execute(fn_name, *args, **kwargs))
 
     def _async_execute(self, fn_name, *args, **kwargs):
-        self._assert_all_running()
+        TODO_not_all_running
         return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     # ------------------------ internals for stop/start ------------------------
 
-    async def _materialize_pending_cells(self) -> None:
+    async def _refresh_cells(self) -> None:
         was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
         assert was_pending_ids, "No pending cells to materialize"
         was_running_ids = [cell.cell_index for cell in self._cells if TODO_cell_is_running]
@@ -194,20 +192,6 @@ class RayTrainGroup:
             alive_size=len(alive_mapping),
             quorum_id=self._indep_dp_quorum_id,
         )
-
-    def _assert_all_running(self) -> None:
-        for cell in self._cells:
-            assert TODO_cell_is_running, f"Cell {cell.cell_index} is not running (state={type(cell._state).__name__})"
-
-    # TODO no need for this after allowing stopped cells
-    def _assert_all_running_or_pending(self) -> None:
-        for cell in self._cells:
-            assert (
-                TODO_cell_is_running or cell.is_pending
-            ), f"Cell {cell.cell_index} is stopped, all cells must be running or pending"
-
-    def _has_pending_cells(self) -> bool:
-        return any(cell.is_pending for cell in self._cells)
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
