@@ -21,6 +21,15 @@ def train(args):
     # create the actor and critic models
     actor_model, critic_model = create_training_models(args, pgs, rollout_manager)
 
+    if args.control_server_port:
+        from miles.utils.control_server import start_control_server
+
+        start_control_server(
+            actor_model=actor_model,
+            rollout_manager=rollout_manager,
+            port=args.control_server_port,
+        )
+
     if args.offload_rollout:
         ray.get(rollout_manager.onload_weights.remote())
 

@@ -15,16 +15,20 @@ logger = logging.getLogger(__name__)
 
 
 def start_control_server(actor_model: object, rollout_manager: object, port: int) -> None:
+    from miles.ray.train.group import RayTrainGroup
+
+    assert isinstance(actor_model, RayTrainGroup)
     registry = _CellRegistry()
 
-    registry.register(_ActorCellHandle(node_ids=actor_model.get_node_ids()))
+    for i in range(len(actor_model._cells)):
+        registry.register(_ActorCellHandle(group=actor_model, cell_index=i))
 
-    cell_infos = ray.get(rollout_manager.list_cells.remote())
-    for cell_info in cell_infos:
+    num_rollout_cells = ray.get(rollout_manager.get_cell_count.remote())
+    for i in range(num_rollout_cells):
         registry.register(
             _RolloutCellHandle(
                 rollout_manager=rollout_manager,
-                cell_id=cell_info["cell_id"],
+                cell_id=f"rollout-{i}",
             )
         )
 
@@ -65,6 +69,11 @@ class _OkResponse(BaseModel):
 
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
+    stop_lock = asyncio.Lock()
+
+    @app.get("/health")
+    async def health() -> _OkResponse:
+        return _OkResponse()
 
     @app.get("/cells")
     async def get_cells() -> list[_CellInfo]:
@@ -90,8 +99,6 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
     async def _call_handle(cell_id: str, action: str, coro) -> _OkResponse:
         try:
             await coro
-        except NotImplementedError as e:
-            raise HTTPException(status_code=500, detail=str(e)) from e
         except Exception:
             logger.error("Failed to %s cell %s", action, cell_id, exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to {action} cell '{cell_id}'") from None
@@ -102,7 +109,20 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
         if body is None:
             body = _StopRequest()
         handle = _get_handle(cell_id)
-        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
+
+        async with stop_lock:
+            if handle.cell_type == "actor":
+                status = await handle.get_status()
+                if status == "running":
+                    actor_handles = [h for h in registry.get_all() if h.cell_type == "actor"]
+                    statuses = await asyncio.gather(*(h.get_status() for h in actor_handles))
+                    running_count = sum(1 for s in statuses if s == "running")
+                    if running_count <= 1:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Cannot stop the last running actor cell",
+                        )
+            return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
 
     @app.post("/cells/{cell_id}/start")
     async def start_cell(cell_id: str) -> _OkResponse:
