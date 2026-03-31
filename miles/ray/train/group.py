@@ -149,6 +149,7 @@ class RayTrainGroup:
         for cell in self._cells:
             assert cell.is_running, f"Cell {cell.cell_id} is not running (state={cell._state.type})"
 
+    # TODO no need for this after allowing stopped cells
     def _assert_all_running_or_pending(self) -> None:
         for cell in self._cells:
             assert (
