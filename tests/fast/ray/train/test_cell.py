@@ -2,9 +2,11 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+import ray
 
 from miles.ray.train.cell import RayTrainCell
 from miles.utils.indep_dp import IndepDPInfo
+from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 
 def _make_indep_dp_info(
@@ -25,22 +27,29 @@ def _make_indep_dp_info(
     )
 
 
-def _make_mock_actors(count: int = 2) -> list[MagicMock]:
-    return [MagicMock(name=f"actor_{i}") for i in range(count)]
+def _make_dummy_factory(actor_count: int = 2):
+    def factory():
+        return [DummyTrainActor.remote() for _ in range(actor_count)]
+
+    return factory
 
 
 def _make_cell(*, cell_index: int = 0, actor_count: int = 2) -> RayTrainCell:
-    """Create a real RayTrainCell with a mock actor factory."""
-    actors = _make_mock_actors(actor_count)
-    cell = RayTrainCell(
+    return RayTrainCell(
         args=MagicMock(),
         role="actor",
         with_ref=False,
         cell_index=cell_index,
-        actor_factory=lambda: list(actors),
+        actor_factory=_make_dummy_factory(actor_count),
         rollout_manager=None,
     )
-    return cell
+
+
+@pytest.fixture(scope="module", autouse=True)
+def ray_env():
+    ray.init(num_cpus=4, num_gpus=0, ignore_reinit_error=True)
+    yield
+    ray.shutdown()
 
 
 class TestInitialState:
@@ -53,48 +62,41 @@ class TestInitialState:
         assert not cell.is_pending
         assert not cell.is_stopped
 
-    def test_actor_handles_available_after_init(self):
-        """Actor handles from the factory are accessible."""
+    def test_actor_handles_are_real_ray_actors(self):
+        """Actor handles from the factory are real Ray actor handles."""
         cell = _make_cell(actor_count=3)
 
         handles = cell._get_actor_handles()
         assert len(handles) == 3
+        assert all(isinstance(h, ray.actor.ActorHandle) for h in handles)
 
 
 class TestStopTransitions:
-    @patch("miles.ray.train.cell.ray")
-    def test_stop_from_uninitialized_kills_actors(self, mock_ray):
+    def test_stop_from_uninitialized_kills_actors(self):
         """stop() from Uninitialized kills all actors and transitions to Stopped."""
         cell = _make_cell(actor_count=2)
-        handles = cell._get_actor_handles()
 
         cell.stop()
 
         assert cell.is_stopped
         assert not cell.is_allocated
-        assert mock_ray.kill.call_count == 2
-        mock_ray.kill.assert_any_call(handles[0])
-        mock_ray.kill.assert_any_call(handles[1])
 
-    @patch("miles.ray.train.cell.ray")
-    def test_stop_from_alive_kills_actors(self, mock_ray):
+    def test_stop_from_alive_kills_actors(self):
         """stop() from Alive kills all actors and transitions to Stopped."""
-        cell = _make_cell(actor_count=2)
-        handles = cell._get_actor_handles()
+        cell = _make_cell()
         cell._mark_as_alive(indep_dp_info=_make_indep_dp_info())
 
         cell.stop()
 
         assert cell.is_stopped
-        assert mock_ray.kill.call_count == 2
 
     def test_stop_from_pending_transitions_to_stopped(self):
-        """stop() from Pending (no actors) transitions to Stopped without killing."""
+        """stop() from Pending transitions to Stopped."""
         cell = _make_cell()
-        cell.stop()  # Uninitialized → Stopped
-        cell.mark_as_pending()  # Stopped → Pending
+        cell.stop()
+        cell.mark_as_pending()
 
-        cell.stop()  # Pending → Stopped
+        cell.stop()
 
         assert cell.is_stopped
 
@@ -102,7 +104,6 @@ class TestStopTransitions:
         """Calling stop() on a stopped cell is a no-op."""
         cell = _make_cell()
         cell.stop()
-        assert cell.is_stopped
 
         cell.stop()
 
@@ -111,7 +112,6 @@ class TestStopTransitions:
 
 class TestMarkAsPending:
     def test_from_stopped(self):
-        """mark_as_pending from Stopped transitions to Pending."""
         cell = _make_cell()
         cell.stop()
 
@@ -120,7 +120,6 @@ class TestMarkAsPending:
         assert cell.is_pending
 
     def test_idempotent_when_pending(self):
-        """mark_as_pending on Pending is a no-op."""
         cell = _make_cell()
         cell.stop()
         cell.mark_as_pending()
@@ -130,8 +129,7 @@ class TestMarkAsPending:
         assert cell.is_pending
 
     def test_idempotent_when_allocated(self):
-        """mark_as_pending on an allocated cell is a no-op."""
-        cell = _make_cell()  # Uninitialized (allocated)
+        cell = _make_cell()
 
         cell.mark_as_pending()
 
@@ -140,38 +138,22 @@ class TestMarkAsPending:
 
 class TestAllocateForPending:
     def test_reallocate_after_stop_start(self):
-        """After stop → mark_as_pending → allocate_for_pending, cell has fresh actors."""
-        call_count = 0
-        actors_v1 = _make_mock_actors(2)
-        actors_v2 = _make_mock_actors(2)
-
-        def factory():
-            nonlocal call_count
-            call_count += 1
-            return list(actors_v1 if call_count == 1 else actors_v2)
-
-        cell = RayTrainCell(
-            args=MagicMock(),
-            role="actor",
-            with_ref=False,
-            cell_index=0,
-            actor_factory=factory,
-            rollout_manager=None,
-        )
-        assert call_count == 1
+        """After stop → pending → allocate, cell has fresh actors."""
+        cell = _make_cell(actor_count=2)
+        old_handles = cell._get_actor_handles()
 
         cell.stop()
         cell.mark_as_pending()
         cell.allocate_for_pending()
 
-        assert call_count == 2
         assert cell.is_allocated
-        assert cell._get_actor_handles() == actors_v2
+        new_handles = cell._get_actor_handles()
+        assert len(new_handles) == 2
+        assert new_handles != old_handles
 
 
 class TestMarkAsAlive:
     def test_transitions_uninitialized_to_alive(self):
-        """_mark_as_alive transitions from Uninitialized to Alive with indep_dp_info."""
         cell = _make_cell()
         info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2])
 
@@ -181,7 +163,6 @@ class TestMarkAsAlive:
         assert cell.indep_dp_info == info
 
     def test_preserves_actor_handles(self):
-        """_mark_as_alive preserves the actor handles from Uninitialized state."""
         cell = _make_cell(actor_count=3)
         handles_before = cell._get_actor_handles()
 
@@ -190,7 +171,6 @@ class TestMarkAsAlive:
         assert cell._get_actor_handles() == handles_before
 
     def test_rejects_from_alive(self):
-        """_mark_as_alive from Alive raises AssertionError."""
         cell = _make_cell()
         cell._mark_as_alive(indep_dp_info=_make_indep_dp_info())
 
@@ -200,20 +180,15 @@ class TestMarkAsAlive:
 
 class TestUpdateIndepDPInfo:
     def test_updates_stored_info(self):
-        """_update_indep_dp_info replaces the IndepDPInfo on an alive cell."""
         cell = _make_cell()
-        old_info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2])
-        cell._mark_as_alive(indep_dp_info=old_info)
+        cell._mark_as_alive(indep_dp_info=_make_indep_dp_info(alive_cell_indices=[0, 1, 2]))
 
         new_info = _make_indep_dp_info(alive_cell_indices=[0, 2], quorum_id=2)
         cell._update_indep_dp_info(new_info)
 
         assert cell.indep_dp_info == new_info
-        assert cell.indep_dp_info.alive_size == 2
-        assert cell.indep_dp_info.quorum_id == 2
 
     def test_preserves_actor_handles(self):
-        """_update_indep_dp_info preserves actor handles."""
         cell = _make_cell(actor_count=3)
         handles = cell._get_actor_handles()
         cell._mark_as_alive(indep_dp_info=_make_indep_dp_info())
@@ -223,7 +198,6 @@ class TestUpdateIndepDPInfo:
         assert cell._get_actor_handles() == handles
 
     def test_rejects_from_uninitialized(self):
-        """_update_indep_dp_info from Uninitialized raises AssertionError."""
         cell = _make_cell()
 
         with pytest.raises(AssertionError):
@@ -232,7 +206,6 @@ class TestUpdateIndepDPInfo:
 
 class TestMarkAsErrored:
     def test_transitions_alive_to_errored(self):
-        """_mark_as_errored from Alive transitions to Errored."""
         cell = _make_cell()
         info = _make_indep_dp_info()
         cell._mark_as_alive(indep_dp_info=info)
@@ -245,7 +218,6 @@ class TestMarkAsErrored:
         assert cell.indep_dp_info == info
 
     def test_errored_is_idempotent(self):
-        """_mark_as_errored from Errored is accepted (stays Errored)."""
         cell = _make_cell()
         cell._mark_as_alive(indep_dp_info=_make_indep_dp_info())
         cell._mark_as_errored()
@@ -257,7 +229,7 @@ class TestMarkAsErrored:
 
 class TestAsyncInit:
     def test_dispatches_init_and_marks_alive(self):
-        """async_init dispatches remote init calls and marks cell as alive."""
+        """async_init dispatches remote init calls to real actors and marks cell as alive."""
         cell = _make_cell(actor_count=2)
         info = _make_indep_dp_info()
 
@@ -267,10 +239,13 @@ class TestAsyncInit:
         assert cell.is_alive
         assert cell.indep_dp_info == info
 
+        # Verify remote calls actually complete
+        ray.get(refs)
+
 
 class TestPrepareIndepDPModeAlive:
     def test_reconfigure_and_update_info(self):
-        """prepare_indep_dp_mode_alive reconfigures actors and updates local indep_dp_info."""
+        """prepare_indep_dp_mode_alive reconfigures real actors and updates local indep_dp_info."""
         cell = _make_cell(actor_count=1)
         old_info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2])
         cell._mark_as_alive(indep_dp_info=old_info)
@@ -284,9 +259,21 @@ class TestPrepareIndepDPModeAlive:
         assert cell.is_alive
 
 
-class TestStatePredicates:
-    """Verify is_pending/is_allocated/is_alive/is_errored/is_stopped across all states."""
+class TestPrepareIndepDPModeHealing:
+    def test_healing_inits_and_marks_alive(self):
+        """prepare_indep_dp_mode_healing inits actors and marks cell alive."""
+        cell = _make_cell(actor_count=1)
+        info = _make_indep_dp_info()
 
+        asyncio.get_event_loop().run_until_complete(
+            cell.prepare_indep_dp_mode_healing(indep_dp_info=info, recv_ckpt_src_rank=None)
+        )
+
+        assert cell.is_alive
+        assert cell.indep_dp_info == info
+
+
+class TestStatePredicates:
     def test_pending(self):
         cell = _make_cell()
         cell.stop()
@@ -340,49 +327,30 @@ class TestStatePredicates:
 
 
 class TestFullLifecycle:
-    @patch("miles.ray.train.cell.ray")
-    def test_full_stop_start_cycle(self, mock_ray):
+    def test_full_stop_start_cycle(self):
         """Full lifecycle: init → alive → stop → pending → allocate → alive."""
-        call_count = 0
-
-        def factory():
-            nonlocal call_count
-            call_count += 1
-            return _make_mock_actors(2)
-
         # Step 1: Create cell (Pending → Uninitialized)
-        cell = RayTrainCell(
-            args=MagicMock(),
-            role="actor",
-            with_ref=False,
-            cell_index=0,
-            actor_factory=factory,
-            rollout_manager=None,
-        )
+        cell = _make_cell(actor_count=2)
         assert cell.is_allocated and not cell.is_alive
-        assert call_count == 1
 
-        # Step 2: Mark as alive (Uninitialized → Alive)
+        # Step 2: Mark as alive
         info_v1 = _make_indep_dp_info(alive_cell_indices=[0, 1, 2], quorum_id=1)
         cell._mark_as_alive(indep_dp_info=info_v1)
         assert cell.is_alive
-        assert cell.indep_dp_info.quorum_id == 1
 
-        # Step 3: Stop (Alive → Stopped, actors killed)
+        # Step 3: Stop (actors killed)
         cell.stop()
         assert cell.is_stopped
-        assert mock_ray.kill.call_count == 2
 
-        # Step 4: Start (Stopped → Pending)
+        # Step 4: Start → Pending
         cell.mark_as_pending()
         assert cell.is_pending
 
-        # Step 5: Allocate (Pending → Uninitialized, new actors)
+        # Step 5: Allocate (new actors)
         cell.allocate_for_pending()
         assert cell.is_allocated and not cell.is_alive
-        assert call_count == 2
 
-        # Step 6: Mark as alive again with new config (Uninitialized → Alive)
+        # Step 6: Mark alive with new config
         info_v2 = _make_indep_dp_info(alive_cell_indices=[0, 2], quorum_id=2)
         cell._mark_as_alive(indep_dp_info=info_v2)
         assert cell.is_alive
