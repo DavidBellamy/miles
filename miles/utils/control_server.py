@@ -208,14 +208,14 @@ class _ActorCellHandle(_CellHandle):
 
     async def get_status(self) -> str:
         cell = self._group._cells[self._cell_index]
-        if cell.is_errored:
-            return "errored"
-        elif cell.is_running:
+        if cell.is_alive:
             return "running"
         elif cell.is_pending:
             return "pending"
-        else:
+        elif cell.is_stopped:
             return "stopped"
+        else:
+            return "errored"
 
     async def get_node_ids(self) -> list[str]:
         return []
