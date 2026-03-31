@@ -59,7 +59,7 @@ class RayTrainCell:
 
             return _StateStopped()
 
-        self._change_state("stop", (_StatePending, _StateAllocated), _core)
+        self._change_state("stop", (_StatePending, _StateAllocatedBase), _core)
 
     def mark_as_pending(self) -> None:
         if self.is_pending or self.is_allocated:
@@ -245,7 +245,7 @@ class RayTrainCell:
 
     @property
     def is_allocated(self) -> bool:
-        return isinstance(self._state, _StateAllocated)
+        return isinstance(self._state, _StateAllocatedBase)
 
     @property
     def is_running(self) -> bool:
@@ -265,7 +265,7 @@ class RayTrainCell:
 
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(
-            self._state, _StateAllocated
+            self._state, _StateAllocatedBase
         ), f"Cell {self.cell_index} is not allocated (state={type(self._state).__name__})"
         return self._state.actor_handles
 
@@ -281,19 +281,19 @@ class _StatePending(_StateBase):
     pass
 
 
-class _StateAllocated(_StateBase):
+class _StateAllocatedBase(_StateBase):
     actor_handles: list[ray.actor.ActorHandle]
 
 
-class _StateUninitialized(_StateAllocated):
+class _StateUninitialized(_StateAllocatedBase):
     pass
 
 
-class _StateAlive(_StateAllocated):
+class _StateAlive(_StateAllocatedBase):
     pass
 
 
-class _StateErrored(_StateAllocated):
+class _StateErrored(_StateAllocatedBase):
     pass
 
 
@@ -301,4 +301,4 @@ class _StateStopped(_StateBase):
     pass
 
 
-_CellState = _StatePending | _StateAllocated | _StateStopped
+_CellState = _StatePending | _StateAllocatedBase | _StateStopped
