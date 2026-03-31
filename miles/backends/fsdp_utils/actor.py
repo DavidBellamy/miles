@@ -53,8 +53,20 @@ class FSDPTrainRayActor(TrainRayActor):
     """
 
     @with_defer(lambda: Timer().start("train_wait"))
-    def init(self, args: Namespace, role: str, with_ref: bool = False) -> int:  # type: ignore[override]
+    def init(
+        self,
+        args: Namespace,
+        role: str,
+        *,
+        with_ref: bool = False,
+        recv_ckpt_src_rank: int | None = None,
+        indep_dp_quorum_id: int,
+    ) -> int | None:
         super().init(args, role, with_ref)
+
+        # Unsupported
+        assert recv_ckpt_src_rank is None
+        assert indep_dp_quorum_id == 0
 
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
