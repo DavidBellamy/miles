@@ -167,10 +167,10 @@ class RayTrainGroup:
         return any(cell.is_pending for cell in self._cells)
 
     async def _materialize_pending_cells(self) -> None:
-        pending_cells = [cell for cell in self._cells if cell.is_pending]
-        assert pending_cells, "No pending cells to materialize"
-        running_cells = [cell for cell in self._cells if cell.is_running]
-        assert running_cells, "No running cells to serve as checkpoint source"
+        pending_cell_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
+        assert pending_cell_ids, "No pending cells to materialize"
+        running_cell_ids = [cell.cell_id for cell in self._cells if cell.is_running]
+        assert running_cell_ids, "No running cells to materialize"
 
         # Step 0: Bump states
         self._indep_dp_quorum_id += 1
