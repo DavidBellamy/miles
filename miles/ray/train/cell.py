@@ -246,16 +246,12 @@ class RayTrainCell:
     # ------------------------ state helpers ------------------------
 
     @property
-    def is_allocated(self) -> bool:
-        return isinstance(self._state, _StateAllocatedBase)
-
-    @property
-    def is_errored(self) -> bool:
-        return isinstance(self._state, _StateAllocatedErrored)
-
-    @property
     def is_pending(self) -> bool:
         return isinstance(self._state, _StatePending)
+
+    @property
+    def is_allocated(self) -> bool:
+        return isinstance(self._state, _StateAllocatedBase)
 
     @property
     def is_stopped(self) -> bool:
