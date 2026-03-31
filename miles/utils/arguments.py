@@ -36,6 +36,9 @@ def reset_arg(parser, name, **kwargs):
         parser.add_argument(name, **kwargs)
 
 
+_FT_CHOICES = ["rollout", "train"]
+
+
 def get_miles_extra_args_provider(add_custom_arguments=None):
     def add_miles_arguments(parser):
         # Ray
@@ -504,7 +507,15 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-fault-tolerance",
                 action="store_true",
                 default=False,
-                help="Whether to enable the fault tolerance function during rollout.",
+                help="Enable fault tolerance. Use --ft-components to select which components.",
+            )
+            parser.add_argument(
+                "--ft-components",
+                nargs="+",
+                default=None,
+                choices=_FT_CHOICES,
+                help="FT components to enable (requires --use-fault-tolerance). "
+                "Choices: rollout, train. Default when omitted: rollout.",
             )
             parser.add_argument(
                 "--rollout-health-check-interval",
@@ -1748,7 +1759,21 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
+_FT_DEFAULT_COMPONENTS: frozenset[str] = frozenset({"rollout"})
+
+
+def _resolve_ft_components(args: argparse.Namespace) -> frozenset[str]:
+    if not args.use_fault_tolerance:
+        if args.ft_components is not None:
+            logger.warning("--ft-components is ignored without --use-fault-tolerance")
+        return frozenset()
+    if args.ft_components is None:
+        return _FT_DEFAULT_COMPONENTS
+    return frozenset(args.ft_components)
+
+
 def miles_validate_args(args):
+    args.ft_components = _resolve_ft_components(args)
     args.eval_datasets = _resolve_eval_datasets(args)
 
     if args.trainer_ft:
