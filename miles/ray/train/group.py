@@ -92,8 +92,14 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        return self._async_execute(
-            "init", self.args, self.role, with_ref=self.with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id
+        return self._async_execute("init", **self._cell_init_kwargs())
+
+    def _cell_init_kwargs(self):
+        return dict(
+            args=self.args,
+            role=self.role,
+            with_ref=self.with_ref,
+            indep_dp_quorum_id=self._indep_dp_quorum_id,
         )
 
     def async_train(self, rollout_id: int, rollout_data_ref):
@@ -167,7 +173,6 @@ class RayTrainGroup:
 
         # Step 0: Bump states
         self._indep_dp_quorum_id += 1
-        qid = self._indep_dp_quorum_id
 
         # Step 1: Recreate actors for each pending cell
         for cell in pending_cells:
@@ -176,7 +181,7 @@ class RayTrainGroup:
         # Step 2: All previously-running cells reconfigure indep_dp PG
         refs = []
         for cell in running_cells:
-            refs.extend(cell.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=qid))
+            refs.extend(cell.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=self._indep_dp_quorum_id))
         await asyncio.gather(*refs)
         del refs
 
@@ -186,14 +191,7 @@ class RayTrainGroup:
             src_cell = running_cells[0]  # TODO support load balancing
             refs.extend(src_cell.async_execute("send_ckpt", dst_rank=cell.cell_id))
             refs.extend(
-                cell.async_execute(
-                    "init",
-                    self.args,
-                    cell.role,
-                    with_ref=self._init_with_ref,
-                    recv_ckpt_src_rank=src_cell.cell_id,
-                    indep_dp_quorum_id=qid,
-                )
+                cell.async_execute("init", **self._cell_init_kwargs(), recv_ckpt_src_rank=src_cell.cell_id)
             )
         await asyncio.gather(*refs)
         del refs
