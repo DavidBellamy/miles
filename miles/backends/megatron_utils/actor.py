@@ -14,7 +14,7 @@ from transformers import AutoConfig
 from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
-from miles.utils.indep_dp import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
@@ -60,32 +60,23 @@ class MegatronTrainRayActor(TrainRayActor):
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
         indep_dp_quorum_id: int,
-        indep_dp_group_info: IndepDPGroupInfo | None = None,
+        indep_dp_info: IndepDPInfo | None = None,
     ) -> int | None:
-        """Initialize the actor.
-
-        Args:
-            args: Runtime arguments.
-            role: Logical role ("actor" or "critic").
-            with_ref: Whether to load a reference model.
-            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_id
-                via PGTransport instead of loading from disk.
-            indep_dp_quorum_id: Quorum ID for the indep_dp process group. Incremented on
-                each stop/start cycle to create fresh groups.
-            indep_dp_group_info: If provided, use this for the indep_dp process group
-                configuration. Otherwise, defaults to alive_rank=cell_id, alive_size=num_cells.
-        """
         monkey_patch_torch_dist()
 
         super().init(args, role, with_ref)
 
+        _indep_dp_info = indep_dp_info or IndepDPInfo(
+            cell_index=self._cell_id,
+            num_cells=self._num_cells,
+            alive_rank=self._cell_id,
+            alive_size=self._num_cells,
+            quorum_id=indep_dp_quorum_id,
+        )
         init(
             args,
-            cell_id=self._cell_id,
-            num_cells=self._num_cells,
             indep_dp_store_addr=self._indep_dp_store_addr,
-            indep_dp_quorum_id=indep_dp_quorum_id,
-            indep_dp_group_info=indep_dp_group_info,
+            indep_dp_info=_indep_dp_info,
         )
 
         if args.dumper_enable:
@@ -636,16 +627,11 @@ class MegatronTrainRayActor(TrainRayActor):
             dst_rank=dst_rank,
         )
 
-    def reconfigure_indep_dp(
-        self,
-        indep_dp_quorum_id: int,
-        indep_dp_group_info: IndepDPGroupInfo,
-    ) -> None:
+    def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
         reconfigure_indep_dp_group(
             parallel_state=self.parallel_state,
             store_addr=self._indep_dp_store_addr,
-            indep_dp_group_info=indep_dp_group_info,
+            indep_dp_info=indep_dp_info,
             megatron_rank=dist.get_rank(),
             megatron_world_size=dist.get_world_size(),
-            indep_dp_quorum_id=indep_dp_quorum_id,
         )

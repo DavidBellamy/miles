@@ -61,6 +61,7 @@ class FSDPTrainRayActor(TrainRayActor):
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
         indep_dp_quorum_id: int,
+        indep_dp_info: object | None = None,
     ) -> int | None:
         super().init(args, role, with_ref)
 

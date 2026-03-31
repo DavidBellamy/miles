@@ -10,7 +10,7 @@ from megatron.core.num_microbatches_calculator import init_num_microbatches_calc
 from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
-from miles.utils.indep_dp import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPInfo
 
 from .indep_dp import create_indep_dp_group
 from .parallel import create_megatron_parallel_state
@@ -62,11 +62,8 @@ def _initialize_distributed(args, get_embedding_ranks=None, get_position_embeddi
 
 def init(
     args,
-    cell_id: int,
-    num_cells: int,
     indep_dp_store_addr: str | None,
-    indep_dp_quorum_id: int,
-    indep_dp_group_info: IndepDPGroupInfo | None = None,
+    indep_dp_info: IndepDPInfo,
 ):
     set_args(args)
     if args.enable_experimental:
@@ -76,18 +73,11 @@ def init(
     # Pytorch distributed.
     _initialize_distributed(args)
 
-    info = indep_dp_group_info or IndepDPGroupInfo(
-        cell_index=cell_id,
-        num_cells=num_cells,
-        alive_rank=cell_id,
-        alive_size=num_cells,
-    )
     indep_dp = create_indep_dp_group(
         store_addr=indep_dp_store_addr,
-        indep_dp_group_info=info,
+        indep_dp_info=indep_dp_info,
         megatron_rank=dist.get_rank(),
         megatron_world_size=dist.get_world_size(),
-        indep_dp_quorum_id=indep_dp_quorum_id,
     )
 
     set_parallel_state(create_megatron_parallel_state(indep_dp=indep_dp))

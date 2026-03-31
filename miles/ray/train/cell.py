@@ -9,7 +9,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.indep_dp import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -114,16 +114,11 @@ class RayTrainCell:
 
     async def prepare_indep_dp_mode_initialized(
         self,
-        indep_dp_quorum_id: int,
-        indep_dp_group_info: IndepDPGroupInfo,
+        indep_dp_info: IndepDPInfo,
         send_ckpt_dst_ranks: list[int],
     ):
         await asyncio.gather(
-            *self.async_execute(
-                "reconfigure_indep_dp",
-                indep_dp_quorum_id=indep_dp_quorum_id,
-                indep_dp_group_info=indep_dp_group_info,
-            ),
+            *self.async_execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info),
         )
 
         for dst_rank in send_ckpt_dst_ranks:
@@ -131,14 +126,13 @@ class RayTrainCell:
 
     async def prepare_indep_dp_mode_healing(
         self,
-        indep_dp_quorum_id: int,
-        indep_dp_group_info: IndepDPGroupInfo,
+        indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None,
     ):
         await asyncio.gather(
             *self.async_init(
-                indep_dp_quorum_id=indep_dp_quorum_id,
-                indep_dp_group_info=indep_dp_group_info,
+                indep_dp_quorum_id=indep_dp_info.quorum_id,
+                indep_dp_info=indep_dp_info,
                 recv_ckpt_src_rank=recv_ckpt_src_rank,
             )
         )
@@ -245,7 +239,7 @@ class RayTrainCell:
         self,
         *,
         indep_dp_quorum_id: int,
-        indep_dp_group_info: IndepDPGroupInfo | None = None,
+        indep_dp_info: IndepDPInfo | None = None,
         recv_ckpt_src_rank: int | None = None,
     ):
         return self.async_execute(
@@ -254,7 +248,7 @@ class RayTrainCell:
             role=self.role,
             with_ref=self.with_ref,
             indep_dp_quorum_id=indep_dp_quorum_id,
-            indep_dp_group_info=indep_dp_group_info,
+            indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
 

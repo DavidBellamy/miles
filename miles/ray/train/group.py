@@ -6,7 +6,7 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell
-from miles.utils.indep_dp import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
 if TYPE_CHECKING:
@@ -88,8 +88,14 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         self._alive_cell_ids = frozenset(cell.cell_id for cell in self._cells)
+        alive_mapping = self._compute_alive_mapping()
         return [
-            future for cell in self._cells for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
+            future
+            for cell in self._cells
+            for future in cell.async_init(
+                indep_dp_quorum_id=self._indep_dp_quorum_id,
+                indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
+            )
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
@@ -171,8 +177,7 @@ class RayTrainGroup:
             if cell.is_running
             for future in cell.async_execute(
                 "reconfigure_indep_dp",
-                indep_dp_quorum_id=self._indep_dp_quorum_id,
-                indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+                indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
             )
         ])
         self._alive_cell_ids = alive_ids
@@ -183,13 +188,13 @@ class RayTrainGroup:
         running = sorted(cell.cell_id for cell in self._cells if cell.is_running)
         return {cell_id: rank for rank, cell_id in enumerate(running)}
 
-    def _make_indep_dp_group_info(self, cell_id: int, alive_mapping: dict[int, int]) -> IndepDPGroupInfo:
-        num_cells = len(self._cells)
-        return IndepDPGroupInfo(
+    def _make_indep_dp_info(self, cell_id: int, alive_mapping: dict[int, int]) -> IndepDPInfo:
+        return IndepDPInfo(
             cell_index=cell_id,
-            num_cells=num_cells,
+            num_cells=len(self._cells),
             alive_rank=alive_mapping[cell_id],
             alive_size=len(alive_mapping),
+            quorum_id=self._indep_dp_quorum_id,
         )
 
     async def _materialize_pending_cells(self) -> None:
@@ -219,14 +224,12 @@ class RayTrainGroup:
             *[
                 (
                     cell.prepare_indep_dp_mode_initialized(
-                        indep_dp_quorum_id=self._indep_dp_quorum_id,
-                        indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
                         send_ckpt_dst_ranks=ckpt_dst_alive_ranks if cell.cell_id == src_cell_id else [],
                     )
                     if cell.cell_id in was_running_ids
                     else cell.prepare_indep_dp_mode_healing(
-                        indep_dp_quorum_id=self._indep_dp_quorum_id,
-                        indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
                         recv_ckpt_src_rank=src_alive_rank if cell.cell_id in was_pending_ids else None,
                     )
                 )
