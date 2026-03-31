@@ -10,10 +10,9 @@ from miles.ray.train.group import RayTrainGroup
 
 
 def _make_group_with_cells(cells: list) -> RayTrainGroup:
-    """Create a RayTrainGroup with pre-set cells, bypassing __init__."""
-    group = object.__new__(RayTrainGroup)
+    """Create a RayTrainGroup via real __init__, then replace cells with the provided ones."""
+    group = _make_group_via_init(num_cells=len(cells))
     group._cells = cells
-    group._indep_dp_quorum_id = 0
     return group
 
 
