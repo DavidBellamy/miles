@@ -196,7 +196,7 @@ class RayTrainGroup:
                     )
                 )
                 for c in self._cells
-                if c in will_alive_indices
+                if c.cell_index in will_alive_indices
             ]
         )
 
