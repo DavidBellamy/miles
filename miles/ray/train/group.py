@@ -160,28 +160,18 @@ class RayTrainGroup:
         return any(cell.is_pending for cell in self._cells)
 
     async def _materialize_pending_cells(self) -> None:
-        """Materialize all pending cells: recreate actors, reconfigure PGs, transfer ckpt.
-
-        Flow:
-        1. Recreate actors for each pending cell
-        2. All running cells reconfigure indep_dp PG (new quorum_id)
-        3. In parallel per pending cell:
-           - Src cell sends ckpt
-           - Pending cell init (blocks on recv until send arrives)
-        """
         pending_cells = [cell for cell in self._cells if cell.is_pending]
         assert pending_cells, "No pending cells to materialize"
-
         running_cells = [cell for cell in self._cells if cell.is_running]
         assert running_cells, "No running cells to serve as checkpoint source"
 
-        for cell in pending_cells:
-            cell.materialize_pending()
-
+        # Step 0: Bump states
         self._indep_dp_quorum_id += 1
         qid = self._indep_dp_quorum_id
 
-        logger.info(f"Materializing pending cells {[c.cell_id for c in pending_cells]}, " f"indep_dp_quorum_id={qid}")
+        # Step 1: Recreate actors for each pending cell
+        for cell in pending_cells:
+            cell.materialize_pending()
 
         # Step 2: All previously-running cells reconfigure indep_dp PG
         reconfigure_refs = []
