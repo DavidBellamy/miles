@@ -92,7 +92,9 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        return self._async_execute("init", self.args, self.role, with_ref=self.with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
+        return self._async_execute(
+            "init", self.args, self.role, with_ref=self.with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id
+        )
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
