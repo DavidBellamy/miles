@@ -56,6 +56,7 @@ class RayTrainGroup:
 
         self._indep_dp_quorum_id = 0
         self._last_alive_cell_indexs: frozenset[int] | None = None
+        self._alive_mapping: dict[int, int] = {}
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -88,12 +89,12 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         self._last_alive_cell_indexs = frozenset(cell.cell_index for cell in self._cells)
-        alive_mapping = self._compute_alive_mapping()
+        self._alive_mapping = self._compute_alive_mapping()
         return [
             future
             for cell in self._cells
             for future in cell.async_init(
-                indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                indep_dp_info=self._make_indep_dp_info(cell.cell_index),
             )
         ]
 
@@ -101,7 +102,7 @@ class RayTrainGroup:
         """Do one rollout training"""
         if self._has_pending_cells():
             asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
-        self._reconfigure_if_alive_changed()
+        self._snapshot_alive_and_maybe_reconfigure()
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
@@ -160,15 +161,15 @@ class RayTrainGroup:
 
     # ------------------------ internals for alive tracking ------------------------
 
-    def _reconfigure_if_alive_changed(self) -> None:
+    def _snapshot_alive_and_maybe_reconfigure(self) -> None:
         current_alive = frozenset(cell.cell_index for cell in self._cells if cell.is_running)
         assert current_alive, "No running cells available for training"
-        if current_alive != self._last_alive_cell_indexs:
-            self._reconfigure_running_cells(current_alive)
+        if current_alive == self._last_alive_cell_indexs:
+            return
 
-    def _reconfigure_running_cells(self, alive_ids: frozenset[int]) -> None:
         self._indep_dp_quorum_id += 1
-        alive_mapping = self._compute_alive_mapping()
+        self._alive_mapping = self._compute_alive_mapping()
+        self._last_alive_cell_indexs = current_alive
 
         ray.get([
             future
@@ -176,10 +177,9 @@ class RayTrainGroup:
             if cell.is_running
             for future in cell.async_execute(
                 "reconfigure_indep_dp",
-                indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                indep_dp_info=self._make_indep_dp_info(cell.cell_index),
             )
         ])
-        self._last_alive_cell_indexs = alive_ids
 
     # ------------------------ internals for stop/start ------------------------
 
@@ -187,12 +187,12 @@ class RayTrainGroup:
         running = sorted(cell.cell_index for cell in self._cells if cell.is_running)
         return {cell_index: rank for rank, cell_index in enumerate(running)}
 
-    def _make_indep_dp_info(self, cell_index: int, alive_mapping: dict[int, int]) -> IndepDPInfo:
+    def _make_indep_dp_info(self, cell_index: int) -> IndepDPInfo:
         return IndepDPInfo(
             cell_index=cell_index,
             num_cells=len(self._cells),
-            alive_rank=alive_mapping[cell_index],
-            alive_size=len(alive_mapping),
+            alive_rank=self._alive_mapping[cell_index],
+            alive_size=len(self._alive_mapping),
             quorum_id=self._indep_dp_quorum_id,
         )
 
@@ -210,25 +210,26 @@ class RayTrainGroup:
             if cell.cell_index in was_pending_ids:
                 cell.allocate_for_pending()
 
-        # Step 3: Compute alive mapping (all previously running + newly allocated are now running)
-        alive_mapping = self._compute_alive_mapping()
+        # Step 3: Snapshot alive mapping (all previously running + newly allocated are now running)
+        self._alive_mapping = self._compute_alive_mapping()
+        self._last_alive_cell_indexs = frozenset(self._alive_mapping.keys())
 
         # Step 4: Convert ckpt transfer ranks to alive_rank
         src_cell_index = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        ckpt_dst_alive_ranks = [alive_mapping[cid] for cid in was_pending_ids]
-        src_alive_rank = alive_mapping[src_cell_index]
+        ckpt_dst_alive_ranks = [self._alive_mapping[cid] for cid in was_pending_ids]
+        src_alive_rank = self._alive_mapping[src_cell_index]
 
         # Step 5: Cooperatively prepare
         await asyncio.gather(
             *[
                 (
                     cell.prepare_indep_dp_mode_initialized(
-                        indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_index),
                         send_ckpt_dst_ranks=ckpt_dst_alive_ranks if cell.cell_index == src_cell_index else [],
                     )
                     if cell.cell_index in was_running_ids
                     else cell.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._make_indep_dp_info(cell.cell_index, alive_mapping),
+                        indep_dp_info=self._make_indep_dp_info(cell.cell_index),
                         recv_ckpt_src_rank=src_alive_rank if cell.cell_index in was_pending_ids else None,
                     )
                 )
@@ -236,8 +237,6 @@ class RayTrainGroup:
                 if cell.is_running
             ]
         )
-
-        self._last_alive_cell_indexs = frozenset(cell.cell_index for cell in self._cells if cell.is_running)
 
     def _has_pending_cells(self) -> bool:
         return any(cell.is_pending for cell in self._cells)

@@ -34,6 +34,7 @@ def _make_group_with_cells(cells: list[_MockCell]) -> RayTrainGroup:
     group._cells = cells
     group._indep_dp_quorum_id = 0
     group._last_alive_cell_indexs = frozenset(c.cell_index for c in cells if c.is_running)
+    group._alive_mapping = {c.cell_index: i for i, c in enumerate(c for c in cells if c.is_running)}
     return group
 
 
@@ -76,10 +77,10 @@ class TestAsyncExecuteSkipsStoppedCells:
         assert stopped_cell._execute_calls == []
 
 
-class TestReconfigureTriggeredOnAliveChange:
+class TestSnapshotAliveAndMaybeReconfigure:
     @patch("miles.ray.train.group.ray")
     def test_reconfigure_triggers_on_change(self, mock_ray: MagicMock):
-        """When a cell is stopped, _reconfigure_if_alive_changed triggers reconfiguration."""
+        """When a cell is stopped, reconfiguration is triggered."""
         mock_ray.get.return_value = None
 
         cells = [_MockCell(0), _MockCell(1), _MockCell(2)]
@@ -89,7 +90,7 @@ class TestReconfigureTriggeredOnAliveChange:
         # Stop cell 1
         cells[1]._is_running = False
 
-        group._reconfigure_if_alive_changed()
+        group._snapshot_alive_and_maybe_reconfigure()
 
         assert group._indep_dp_quorum_id == initial_quorum + 1
         assert group._last_alive_cell_indexs == frozenset({0, 2})
@@ -121,7 +122,7 @@ class TestReconfigureTriggeredOnAliveChange:
         group = _make_group_with_cells(cells)
         initial_quorum = group._indep_dp_quorum_id
 
-        group._reconfigure_if_alive_changed()
+        group._snapshot_alive_and_maybe_reconfigure()
 
         assert group._indep_dp_quorum_id == initial_quorum
         assert cells[0]._execute_calls == []
