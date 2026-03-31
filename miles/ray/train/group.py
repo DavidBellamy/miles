@@ -176,7 +176,7 @@ class RayTrainGroup:
         # Step 2: All previously-running cells reconfigure indep_dp PG
         refs = []
         for cell in running_cells:
-            refs.extend(cell.async_execute("reconfigure_indep_dp", qid))
+            refs.extend(cell.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=qid))
         await asyncio.gather(*refs)
         del refs
 
@@ -184,7 +184,7 @@ class RayTrainGroup:
         refs: list[ray.ObjectRef] = []
         for cell in pending_cells:
             src_cell = running_cells[0]
-            refs.extend(src_cell.async_execute("send_ckpt", cell.cell_id))
+            refs.extend(src_cell.async_execute("send_ckpt", dst_rank=cell.cell_id))
             refs.extend(
                 cell.async_execute(
                     "init",
