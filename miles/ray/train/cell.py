@@ -66,6 +66,10 @@ class RayTrainCell:
     # ------------------------ state transition ------------------------
 
     def stop(self) -> None:
+        if self.is_stopped:
+            logger.info(f"stop: cell {self.cell_id} already stopped, skipping")
+            return
+
         def _core():
             if self.is_running:
                 handles = self._get_actor_handles()
@@ -77,6 +81,10 @@ class RayTrainCell:
         self._change_state("stop", (_StatePending, _StateRunning), _core)
 
     def mark_as_pending(self) -> None:
+        if self.is_pending or self.is_running:
+            logger.info(f"mark_as_pending: cell {self.cell_id} already {type(self._state).__name__}, skipping")
+            return
+
         self._change_state("mark_as_pending", _StateStopped, _StatePending)
 
     def allocate_for_pending(self) -> None:
