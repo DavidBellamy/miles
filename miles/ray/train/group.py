@@ -171,7 +171,7 @@ class RayTrainGroup:
         assert running_cells, "No running cells to serve as checkpoint source"
 
         for cell in pending_cells:
-            cell.create_pending_actors()
+            cell.materialize_pending()
 
         self._indep_dp_quorum_id += 1
         qid = self._indep_dp_quorum_id
