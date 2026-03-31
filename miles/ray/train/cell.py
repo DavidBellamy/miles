@@ -14,18 +14,18 @@ from miles.utils.indep_dp import IndepDPInfo
 logger = logging.getLogger(__name__)
 
 
+ActorFactory = Callable[[], list[ray.actor.ActorHandle]]
+
+
 class RayTrainCell:
     def __init__(
         self,
         *,
         args,
-        gpus_per_cell: int,
-        pg: tuple[PlacementGroup, list[int], list[int]],
-        num_gpus_per_actor: float,
         role: str,
         with_ref: bool,
         cell_index: int,
-        indep_dp_store_addr: str,
+        actor_factory: ActorFactory,
         rollout_manager: object | None,
     ) -> None:
         self.args = args
@@ -33,13 +33,7 @@ class RayTrainCell:
         self.role = role
         self.with_ref = with_ref
         self.rollout_manager = rollout_manager
-
-        self._creation_kwargs = dict(
-            gpus_per_cell=gpus_per_cell,
-            pg=pg,
-            num_gpus_per_actor=num_gpus_per_actor,
-            indep_dp_store_addr=indep_dp_store_addr,
-        )
+        self._actor_factory = actor_factory
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
@@ -71,10 +65,7 @@ class RayTrainCell:
 
     def allocate_for_pending(self) -> None:
         def _core():
-            actor_handles = self._allocate_gpus_for_actor(
-                **self._creation_kwargs,
-                args=self.args,
-            )
+            actor_handles = self._actor_factory()
             return _StateAllocatedUninitialized(actor_handles=actor_handles)
 
         self._change_state("allocate_for_pending", _StatePending, _core)
@@ -149,85 +140,6 @@ class RayTrainCell:
         )
 
         await asyncio.gather(*self.async_set_rollout_manager())
-
-    # ------------------------ actor creation ------------------------
-
-    # TODO make it outside class (mechanically move)
-    @staticmethod
-    def _allocate_gpus_for_actor(
-        args,
-        gpus_per_cell: int,
-        pg: tuple[PlacementGroup, list[int], list[int]],
-        num_gpus_per_actor: float,
-        indep_dp_store_addr: str,
-    ):
-        world_size = gpus_per_cell
-
-        # Use placement group to lock resources for models of same type
-        assert pg is not None
-        pg, reordered_bundle_indices, _reordered_gpu_ids = pg
-
-        env_vars = {
-            # because sglang will always set NCCL_CUMEM_ENABLE to 0
-            # we need also set it to 0 to prevent nccl error.
-            "NCCL_CUMEM_ENABLE": os.environ.get("NCCL_CUMEM_ENABLE", "0"),
-            "NVTE_FP8_BLOCK_SCALING_FP32_SCALES": "1",
-            **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
-            **args.train_env_vars,
-        }
-
-        if source_patcher_config := args.dumper_source_patcher_config_train:
-            env_vars["DUMPER_SOURCE_PATCHER_CONFIG"] = source_patcher_config
-
-        if args.offload_train and args.train_backend == "megatron":
-            import torch_memory_saver
-
-            dynlib_path = os.path.join(
-                os.path.dirname(os.path.dirname(torch_memory_saver.__file__)),
-                "torch_memory_saver_hook_mode_preload.abi3.so",
-            )
-            assert os.path.exists(dynlib_path), f"LD_PRELOAD so file {dynlib_path} does not exist."
-
-            env_vars["LD_PRELOAD"] = dynlib_path
-            env_vars["TMS_INIT_ENABLE"] = "1"
-            env_vars["TMS_INIT_ENABLE_CPU_BACKUP"] = "1"
-
-        backend = args.train_backend
-        if backend == "megatron":
-            from miles.backends.megatron_utils.actor import MegatronTrainRayActor
-
-            actor_impl = MegatronTrainRayActor
-
-        else:
-            from miles.backends.fsdp_utils import FSDPTrainRayActor
-
-            actor_impl = FSDPTrainRayActor
-
-        TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
-
-        # Create worker actors
-        actor_handles = []
-        master_addr, master_port = None, None
-        for rank in range(world_size):
-            actor = TrainRayActor.options(
-                num_cpus=num_gpus_per_actor,
-                num_gpus=num_gpus_per_actor,
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg,
-                    placement_group_bundle_index=reordered_bundle_indices[rank],
-                ),
-            ).remote(
-                world_size,
-                rank,
-                master_addr,
-                master_port,
-                indep_dp_store_addr=indep_dp_store_addr,
-            )
-            if rank == 0:
-                master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
-            actor_handles.append(actor)
-
-        return actor_handles
 
     # ------------------------ forward calls to actors ------------------------
 
@@ -344,3 +256,83 @@ class _StateStopped(_StateBase):
 
 
 _CellState = _StatePending | _StateAllocatedBase | _StateStopped
+
+
+# ------------------------ Actor factory ------------------------
+
+
+def _allocate_gpus_for_actor(
+    args,
+    gpus_per_cell: int,
+    pg: tuple[PlacementGroup, list[int], list[int]],
+    num_gpus_per_actor: float,
+    indep_dp_store_addr: str,
+):
+    world_size = gpus_per_cell
+
+    # Use placement group to lock resources for models of same type
+    assert pg is not None
+    pg, reordered_bundle_indices, _reordered_gpu_ids = pg
+
+    env_vars = {
+        # because sglang will always set NCCL_CUMEM_ENABLE to 0
+        # we need also set it to 0 to prevent nccl error.
+        "NCCL_CUMEM_ENABLE": os.environ.get("NCCL_CUMEM_ENABLE", "0"),
+        "NVTE_FP8_BLOCK_SCALING_FP32_SCALES": "1",
+        **{name: "1" for name in NOSET_VISIBLE_DEVICES_ENV_VARS_LIST},
+        **args.train_env_vars,
+    }
+
+    if source_patcher_config := args.dumper_source_patcher_config_train:
+        env_vars["DUMPER_SOURCE_PATCHER_CONFIG"] = source_patcher_config
+
+    if args.offload_train and args.train_backend == "megatron":
+        import torch_memory_saver
+
+        dynlib_path = os.path.join(
+            os.path.dirname(os.path.dirname(torch_memory_saver.__file__)),
+            "torch_memory_saver_hook_mode_preload.abi3.so",
+        )
+        assert os.path.exists(dynlib_path), f"LD_PRELOAD so file {dynlib_path} does not exist."
+
+        env_vars["LD_PRELOAD"] = dynlib_path
+        env_vars["TMS_INIT_ENABLE"] = "1"
+        env_vars["TMS_INIT_ENABLE_CPU_BACKUP"] = "1"
+
+    backend = args.train_backend
+    if backend == "megatron":
+        from miles.backends.megatron_utils.actor import MegatronTrainRayActor
+
+        actor_impl = MegatronTrainRayActor
+
+    else:
+        from miles.backends.fsdp_utils import FSDPTrainRayActor
+
+        actor_impl = FSDPTrainRayActor
+
+    TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
+
+    # Create worker actors
+    actor_handles = []
+    master_addr, master_port = None, None
+    for rank in range(world_size):
+        actor = TrainRayActor.options(
+            num_cpus=num_gpus_per_actor,
+            num_gpus=num_gpus_per_actor,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+                placement_group_bundle_index=reordered_bundle_indices[rank],
+            ),
+        ).remote(
+            world_size,
+            rank,
+            master_addr,
+            master_port,
+            indep_dp_store_addr=indep_dp_store_addr,
+        )
+        if rank == 0:
+            master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
+        actor_handles.append(actor)
+
+    return actor_handles
+
