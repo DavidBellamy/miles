@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import init_process_group
 
-from .distributed_mixin import DistBucketedWeightUpdateMixin
+from .mixin import DistBucketedWeightUpdateMixin
 
 
 class UpdateWeightFromDistributed(DistBucketedWeightUpdateMixin):

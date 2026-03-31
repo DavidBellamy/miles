@@ -29,7 +29,7 @@ from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
 from ..training_utils.cp_utils import slice_with_cp
 from ..training_utils.data import DataIterator, get_data_iterator, get_rollout_data, sync_actor_critic_data
-from ..training_utils.log_utils import log_perf_data, log_rollout_data
+from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollout_data
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
 from .checkpoint import load_checkpoint
 from .initialize import init, is_megatron_main_rank
@@ -38,9 +38,9 @@ from .model import forward_only, initialize_model_and_optimizer, save, train
 from .parallel import create_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
-from .update_weight.update_weight_from_distributed import UpdateWeightFromDistributed
+from .update_weight.update_weight_from_distributed.broadcast import UpdateWeightFromDistributed
+from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
 from .update_weight.update_weight_from_tensor import UpdateWeightFromTensor
-from .update_weight.update_weight_p2p import UpdateWeightP2P
 
 logging.getLogger("megatron").setLevel(logging.WARNING)
 
@@ -192,6 +192,9 @@ class MegatronTrainRayActor(TrainRayActor):
         torch_memory_saver.pause()
 
         print_memory("after offload model")
+
+        if self._is_main_rank and hasattr(self, "_last_rollout_id"):
+            log_cpu_memory(self._last_rollout_id, self.args, "after_offload_train")
 
     @timer
     def wake_up(self) -> None:

@@ -9,8 +9,8 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
-from ..megatron_to_hf import convert_to_hf
-from .common import all_gather_param, collect_named_tensors_for_weight_transfer, post_process_weights
+from ...megatron_to_hf import convert_to_hf
+from ..common import all_gather_param, collect_named_tensors_for_weight_transfer, post_process_weights
 
 
 class DistBucketedWeightUpdateMixin:

@@ -147,8 +147,9 @@ class P2PTransferManager:
     and tracks futures for bulk waiting.
     """
 
-    def __init__(self, num_workers: int = 8):
+    def __init__(self, num_workers: int = 8, transfer_timeout: float = 30.0):
         self.num_workers = num_workers
+        self.transfer_timeout = transfer_timeout
         self.executor: ThreadPoolExecutor | None = None
         self.transfer_futures: list[Future] = []
 
@@ -174,7 +175,7 @@ class P2PTransferManager:
         """Wait for all submitted tasks to complete."""
         for future in self.transfer_futures:
             try:
-                future.result(timeout=30.0)
+                future.result(timeout=self.transfer_timeout)
             except Exception as e:
                 logger.error(f"[P2P] Transfer future failed: {e}")
 

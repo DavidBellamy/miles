@@ -18,8 +18,8 @@ from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group
 
-from .common import post_process_weights
-from .distributed_mixin import DistBucketedWeightUpdateMixin
+from ..common import post_process_weights
+from .mixin import DistBucketedWeightUpdateMixin
 from .p2p_transfer_utils import (
     P2PTransferManager,
     RemoteTransferPlan,
@@ -66,8 +66,10 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         self._tensor_update_pending: dict[str, int] = {}
 
         self._staged_tensors: dict[str, list[tuple[str, torch.Tensor]]] = {}
-        num_workers = 4
-        self.transfer_manager = P2PTransferManager(num_workers=num_workers)
+        self.transfer_manager = P2PTransferManager(
+            num_workers=getattr(args, "p2p_transfer_num_workers", 4),
+            transfer_timeout=getattr(args, "p2p_transfer_timeout", 30.0),
+        )
 
     @property
     def _is_source(self):
@@ -373,4 +375,4 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
 
         ret = self._transfer_engine.batch_transfer_sync_write(session_id, source_ptrs, target_ptrs, source_lens)
         if ret < 0:
-            logger.error(f"[P2P-Shared] Transfer failed for session {session_id}, error: {ret}")
+            raise RuntimeError(f"[P2P-Shared] Transfer failed for session {session_id}, error: {ret}")

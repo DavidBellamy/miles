@@ -485,6 +485,18 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="broadcast",
                 help="The method to transfer weights to remote rollout engines during update weight.",
             )
+            parser.add_argument(
+                "--p2p-transfer-num-workers",
+                type=int,
+                default=4,
+                help="Number of thread pool workers for P2P weight transfer.",
+            )
+            parser.add_argument(
+                "--p2p-transfer-timeout",
+                type=float,
+                default=30.0,
+                help="Timeout in seconds for each P2P transfer operation.",
+            )
             return parser
 
         def add_fault_tolerance_arguments(parser):
@@ -1877,6 +1889,15 @@ def miles_validate_args(args):
     )
 
     # always true on offload for colocate at the moment.
+    if getattr(args, "update_weight_transfer_mode", "broadcast") == "p2p":
+        assert not args.colocate, (
+            "P2P weight transfer mode is not compatible with --colocate. "
+            "Please use broadcast mode or disable colocate."
+        )
+        assert (
+            getattr(args, "prefill_num_servers", None) is None
+        ), "P2P weight transfer mode has not been tested when PD is enabled."
+
     if args.colocate:
         if args.offload_train is None:
             args.offload_train = True
