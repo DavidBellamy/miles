@@ -163,7 +163,7 @@ class RayTrainGroup:
 
     def _reconfigure_running_cells(self, alive_ids: frozenset[int]) -> None:
         self._indep_dp_quorum_id += 1
-        alive_mapping = {cell_id: rank for rank, cell_id in enumerate(sorted(alive_ids))}
+        alive_mapping = self._compute_alive_mapping()
 
         ray.get([
             future
