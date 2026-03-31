@@ -1,57 +1,14 @@
 import asyncio
-from unittest.mock import MagicMock
 
 import pytest
 import ray
 
-from miles.ray.train.cell import RayTrainCell
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.indep_dp import IndepDPInfo
-from tests.fast.ray.train.dummy_actor import DummyTrainActor
+from tests.fast.ray.train.conftest import make_alive_cell, make_cell, make_indep_dp_info
 
 
-@pytest.fixture(scope="module", autouse=True)
-def ray_env():
-    ray.init(num_cpus=4, num_gpus=0, ignore_reinit_error=True)
-    yield
-    ray.shutdown()
-
-
-def _make_dummy_factory(actor_count: int = 2):
-    def factory():
-        return [DummyTrainActor.remote() for _ in range(actor_count)]
-
-    return factory
-
-
-def _make_cell(cell_index: int, *, actor_count: int = 1) -> RayTrainCell:
-    return RayTrainCell(
-        args=MagicMock(),
-        role="actor",
-        with_ref=False,
-        cell_index=cell_index,
-        actor_factory=_make_dummy_factory(actor_count),
-        rollout_manager=None,
-    )
-
-
-def _make_alive_cell(cell_index: int, *, alive_cell_indices: list[int], quorum_id: int = 0) -> RayTrainCell:
-    """Create a cell and transition it to Alive state."""
-    cell = _make_cell(cell_index)
-    cell._mark_as_alive(
-        indep_dp_info=IndepDPInfo(
-            cell_index=cell_index,
-            num_cells=3,
-            alive_rank=alive_cell_indices.index(cell_index),
-            alive_size=len(alive_cell_indices),
-            quorum_id=quorum_id,
-            alive_cell_indices=alive_cell_indices,
-        )
-    )
-    return cell
-
-
-def _make_group_with_cells(cells: list[RayTrainCell]) -> RayTrainGroup:
+def _make_group_with_cells(cells: list) -> RayTrainGroup:
     """Create a RayTrainGroup with pre-set cells, bypassing __init__."""
     group = object.__new__(RayTrainGroup)
     group._cells = cells
@@ -61,8 +18,7 @@ def _make_group_with_cells(cells: list[RayTrainCell]) -> RayTrainGroup:
 
 class TestComputeIndepDPInfo:
     def test_all_alive(self):
-        """Correct IndepDPInfo for all-alive scenario."""
-        group = _make_group_with_cells([_make_cell(i) for i in range(3)])
+        group = _make_group_with_cells([make_cell(i) for i in range(3)])
 
         info = group._compute_indep_dp_info(cell_index=2, alive_cell_indices=[0, 1, 2])
 
@@ -72,8 +28,7 @@ class TestComputeIndepDPInfo:
         assert info.alive_cell_indices == [0, 1, 2]
 
     def test_with_gap(self):
-        """When cell 1 is missing, cell 2 gets alive_rank=1."""
-        group = _make_group_with_cells([_make_cell(i) for i in range(3)])
+        group = _make_group_with_cells([make_cell(i) for i in range(3)])
 
         info = group._compute_indep_dp_info(cell_index=2, alive_cell_indices=[0, 2])
 
@@ -83,9 +38,8 @@ class TestComputeIndepDPInfo:
 
 class TestAsyncExecuteAlive:
     def test_skips_stopped_cells(self):
-        """_async_execute_alive only dispatches to alive cells."""
-        alive_cell = _make_alive_cell(0, alive_cell_indices=[0])
-        stopped_cell = _make_cell(1)
+        alive_cell = make_alive_cell(0, alive_cell_indices=[0])
+        stopped_cell = make_cell(1)
         stopped_cell.stop()
         group = _make_group_with_cells([alive_cell, stopped_cell])
 
@@ -94,14 +48,12 @@ class TestAsyncExecuteAlive:
         assert len(refs) == 1
         ray.get(refs)
 
-        # Verify alive cell's actor received the call
         for handle in alive_cell._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "train" for c in calls)
 
     def test_asserts_on_no_alive_cells(self):
-        """_async_execute_alive asserts when no cells are alive."""
-        stopped = _make_cell(0)
+        stopped = make_cell(0)
         stopped.stop()
         group = _make_group_with_cells([stopped])
 
@@ -113,7 +65,7 @@ class TestRefreshCellsReconfigure:
     def test_reconfigure_triggers_on_alive_change(self):
         """When a cell is stopped, _refresh_cells reconfigures remaining alive cells."""
         all_alive = [0, 1, 2]
-        cells = [_make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
+        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(3)]
         group = _make_group_with_cells(cells)
         initial_quorum = group._indep_dp_quorum_id
 
@@ -139,16 +91,15 @@ class TestRefreshCellsReconfigure:
         # Step 5: Stopped cell untouched
         assert cells[1].is_stopped
 
-        # Step 6: Alive cells' actors received reconfigure_indep_dp
+        # Step 6: Actors received reconfigure_indep_dp
         for cell in [cells[0], cells[2]]:
             for handle in cell._get_actor_handles():
                 calls = ray.get(handle.get_calls.remote())
                 assert any(c[0] == "reconfigure_indep_dp" for c in calls)
 
     def test_no_reconfigure_when_unchanged(self):
-        """When alive set has not changed, no reconfiguration happens."""
         all_alive = [0, 1]
-        cells = [_make_alive_cell(i, alive_cell_indices=all_alive) for i in range(2)]
+        cells = [make_alive_cell(i, alive_cell_indices=all_alive) for i in range(2)]
         group = _make_group_with_cells(cells)
         initial_quorum = group._indep_dp_quorum_id
 
@@ -162,10 +113,10 @@ class TestRefreshCellsHealing:
         """A pending cell goes through allocate + healing with correct alive_rank."""
         # Step 1: cells [0, 1] alive, cell 2 pending
         cells = [
-            _make_alive_cell(0, alive_cell_indices=[0, 1]),
-            _make_alive_cell(1, alive_cell_indices=[0, 1]),
+            make_alive_cell(0, alive_cell_indices=[0, 1]),
+            make_alive_cell(1, alive_cell_indices=[0, 1]),
         ]
-        pending_cell = _make_cell(2)
+        pending_cell = make_cell(2)
         pending_cell.stop()
         pending_cell.mark_as_pending()
         cells.append(pending_cell)
@@ -187,16 +138,21 @@ class TestRefreshCellsHealing:
         assert cells[1].indep_dp_info.alive_rank == 1
         assert cells[2].indep_dp_info.alive_rank == 2
 
+        # Step 5: Healed cell's actors received init
+        for handle in cells[2]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert any(c[0] == "init" for c in calls)
+
     def test_pending_cell_with_stopped_cell(self):
         """Pending + stopped: only alive and pending participate, stopped excluded."""
         cells = [
-            _make_alive_cell(0, alive_cell_indices=[0]),
+            make_alive_cell(0, alive_cell_indices=[0]),
         ]
-        stopped_cell = _make_cell(1)
+        stopped_cell = make_cell(1)
         stopped_cell.stop()
         cells.append(stopped_cell)
 
-        pending_cell = _make_cell(2)
+        pending_cell = make_cell(2)
         pending_cell.stop()
         pending_cell.mark_as_pending()
         cells.append(pending_cell)
