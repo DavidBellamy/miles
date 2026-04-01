@@ -10,7 +10,7 @@ import hashlib
 import logging
 from argparse import Namespace
 from collections.abc import Iterator, Sequence
-from typing import Any
+from typing import Any, NamedTuple
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -21,6 +21,14 @@ from miles.utils.event_logger.logger import get_event_logger, is_event_logger_in
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo
 
 logger = logging.getLogger(__name__)
+
+
+class _MainParamId(NamedTuple):
+    tensor_id: int
+
+    @classmethod
+    def from_tensor(cls, tensor: torch.Tensor) -> "_MainParamId":
+        return cls(tensor_id=id(tensor))
 
 
 def dump_local_weight_checksums(
@@ -100,29 +108,30 @@ def _collect_optimizer_hashes(
     return result
 
 
-def _build_name_by_tensor_id(model: Sequence[DDP]) -> dict[int, str]:
-    """Build id(fp32_main_param) → name mapping from model parameters."""
-    name_map: dict[int, str] = {}
+def _build_name_by_tensor_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
+    """Build _MainParamId(fp32_main_param) → name mapping from model parameters."""
+    name_map: dict[_MainParamId, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, param in model_chunk.named_parameters():
             assert param is not None, f"pp{pp_idx}.{name}: param is None"
             main_param = getattr(param, "main_param", None)
             assert main_param is not None, f"pp{pp_idx}.{name}: param has no main_param attribute"
-            name_map[id(main_param)] = f"pp{pp_idx}.{name}"
+            name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
     return name_map
 
 
 def _build_param_names_for_optimizer(
     inner: torch.optim.Optimizer,
-    name_by_tensor_id: dict[int, str],
+    name_by_tensor_id: dict[_MainParamId, str],
 ) -> dict[int, str]:
     """Build state_dict index → name mapping by walking optimizer's param_groups."""
     param_names: dict[int, str] = {}
     idx = 0
     for group in inner.param_groups:
         for fp32_param in group["params"]:
-            name = name_by_tensor_id.get(id(fp32_param))
-            assert name is not None, f"fp32 param id={id(fp32_param)} not found in model name mapping"
+            key = _MainParamId.from_tensor(fp32_param)
+            name = name_by_tensor_id.get(key)
+            assert name is not None, f"fp32 param {key} not found in model name mapping"
             param_names[idx] = name
             idx += 1
     return param_names
