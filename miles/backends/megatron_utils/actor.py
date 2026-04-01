@@ -397,7 +397,6 @@ class MegatronTrainRayActor(TrainRayActor):
                     if_sp_region=m.if_sp_region,
                 )
 
-        train_step_outcome = TrainStepOutcome.COMMITTED
         with inverse_timer("train_wait"), timer("train"):
             if self.args.compute_advantages_and_returns:
                 if "ref" in self.weights_backuper.backup_tags:
