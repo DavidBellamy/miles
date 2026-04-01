@@ -1917,8 +1917,8 @@ def miles_validate_args(args):
     if args.over_sampling_batch_size < args.rollout_batch_size:
         logger.warning(
             f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to "
-            f"rollout_batch_size {args.rollout_batch_size}, if you use dynamic filtering, you can ignore "
-            f"this warning."
+            f"rollout_batch_size {args.rollout_batch_size}, but if you use dynamic filtering, you can"
+            f"ignore this warning."
         )
 
     if args.num_epoch is not None:
