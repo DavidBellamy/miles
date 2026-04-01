@@ -637,52 +637,39 @@ NORMAL = TrainStepOutcome.NORMAL
 DISCARDED = TrainStepOutcome.DISCARDED_SHOULD_RETRY
 
 
+_ERR = RuntimeError("boom")
+_ERR2 = ValueError("boom2")
+
+
 class TestDoesTrainOneAttemptSucceed:
-    def test_all_normal_single_cell_single_actor(self):
-        assert RayTrainGroup._does_train_one_attempt_succeed([[NORMAL]]) is True
+    @pytest.mark.parametrize(
+        "results, expected",
+        [
+            # all normal
+            ([[NORMAL]], True),  # single cell, single actor
+            ([[NORMAL, NORMAL], [NORMAL]], True),  # multi cell, multi actor
 
-    def test_all_normal_multi_cell_multi_actor(self):
-        assert RayTrainGroup._does_train_one_attempt_succeed([[NORMAL, NORMAL], [NORMAL]]) is True
+            # all discarded
+            ([[DISCARDED]], False),  # single cell
+            ([[DISCARDED], [DISCARDED, DISCARDED]], False),  # multi cell
 
-    def test_all_discarded_single_cell(self):
-        assert RayTrainGroup._does_train_one_attempt_succeed([[DISCARDED]]) is False
+            # mixed outcomes
+            ([[NORMAL, DISCARDED]], False),  # mixed within same cell
+            ([[NORMAL], [DISCARDED]], False),  # mixed across cells
 
-    def test_all_discarded_multi_cell(self):
-        assert RayTrainGroup._does_train_one_attempt_succeed([[DISCARDED], [DISCARDED, DISCARDED]]) is False
+            # exception cells are filtered out; remaining cells decide
+            ([_ERR], True),  # all errored → vacuously True
+            ([_ERR, [NORMAL, NORMAL]], True),  # errored + normal → True
+            ([_ERR, [DISCARDED]], False),  # errored + discarded → False
+            ([_ERR, _ERR2], True),  # multiple errored, no successful → vacuously True
 
-    def test_mixed_normal_and_discarded_within_cell(self):
-        """One actor NORMAL, another DISCARDED in same cell → False."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([[NORMAL, DISCARDED]]) is False
-
-    def test_mixed_across_cells(self):
-        """Cell 0 all NORMAL, cell 1 all DISCARDED → False."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([[NORMAL], [DISCARDED]]) is False
-
-    def test_exception_only(self):
-        """All cells errored → no non-exception cells → all() on empty is True."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([RuntimeError("boom")]) is True
-
-    def test_exception_plus_normal(self):
-        """One cell errored, other cells NORMAL → True (exception filtered out)."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([RuntimeError("boom"), [NORMAL, NORMAL]]) is True
-
-    def test_exception_plus_discarded(self):
-        """One cell errored, other cells DISCARDED → False."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([RuntimeError("boom"), [DISCARDED]]) is False
-
-    def test_empty_results(self):
-        """No cells at all → all() on empty is True."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([]) is True
-
-    def test_cell_with_empty_actor_list(self):
-        """Cell returned empty list (no actors) → inner all() on empty is True."""
-        assert RayTrainGroup._does_train_one_attempt_succeed([[]]) is True
-
-    def test_multiple_exceptions_no_normal(self):
-        """Multiple errored cells, no successful cells → True (vacuously)."""
-        assert RayTrainGroup._does_train_one_attempt_succeed(
-            [RuntimeError("a"), ValueError("b")]
-        ) is True
+            # edge cases
+            ([], True),  # no cells at all → vacuously True
+            ([[]], True),  # cell with empty actor list → vacuously True
+        ],
+    )
+    def test_outcomes(self, results, expected):
+        assert RayTrainGroup._does_train_one_attempt_succeed(results) is expected
 
 
 async def _set_all_train_return(group: RayTrainGroup, value: TrainStepOutcome) -> None:
