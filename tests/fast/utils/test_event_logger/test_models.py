@@ -5,12 +5,12 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from miles.utils.event_logger.models import (
-    CellStateChanged,
-    CheckpointTransferCompleted,
+    CellStateChangedEventEvent,
+    CheckpointTransferCompletedEventEvent,
     Event,
     GenericEvent,
-    HeartbeatTimeout,
-    QuorumChanged,
+    HeartbeatTimeoutEventEvent,
+    QuorumChangedEventEvent,
 )
 from miles.utils.process_identity import MainProcessIdentity, RolloutManagerProcessIdentity, TrainProcessIdentity
 
@@ -21,7 +21,7 @@ _FIXED_TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 class TestEventModelsDiscriminatedUnion:
     def test_cell_state_changed_roundtrip(self) -> None:
-        event = CellStateChanged(
+        event = CellStateChangedEvent(
             timestamp=_FIXED_TS,
             cell_index=0,
             old_state="pending",
@@ -29,12 +29,12 @@ class TestEventModelsDiscriminatedUnion:
         )
         raw = event.model_dump_json()
         parsed = _event_adapter.validate_json(raw)
-        assert isinstance(parsed, CellStateChanged)
+        assert isinstance(parsed, CellStateChangedEvent)
         assert parsed.type == "cell_state_changed"
         assert parsed.cell_index == 0
 
     def test_quorum_changed_roundtrip(self) -> None:
-        event = QuorumChanged(
+        event = QuorumChangedEvent(
             timestamp=_FIXED_TS,
             quorum_id=3,
             alive_cell_indices=[0, 2],
@@ -42,11 +42,11 @@ class TestEventModelsDiscriminatedUnion:
         )
         raw = event.model_dump_json()
         parsed = _event_adapter.validate_json(raw)
-        assert isinstance(parsed, QuorumChanged)
+        assert isinstance(parsed, QuorumChangedEvent)
         assert parsed.quorum_id == 3
 
     def test_heartbeat_timeout_roundtrip(self) -> None:
-        event = HeartbeatTimeout(
+        event = HeartbeatTimeoutEvent(
             timestamp=_FIXED_TS,
             cell_index=1,
             last_active_timestamp=1000.0,
@@ -54,10 +54,10 @@ class TestEventModelsDiscriminatedUnion:
         )
         raw = event.model_dump_json()
         parsed = _event_adapter.validate_json(raw)
-        assert isinstance(parsed, HeartbeatTimeout)
+        assert isinstance(parsed, HeartbeatTimeoutEvent)
 
     def test_checkpoint_transfer_completed_roundtrip(self) -> None:
-        event = CheckpointTransferCompleted(
+        event = CheckpointTransferCompletedEvent(
             timestamp=_FIXED_TS,
             src_cell_index=0,
             dst_cell_indices=[1, 2],
@@ -65,17 +65,17 @@ class TestEventModelsDiscriminatedUnion:
         )
         raw = event.model_dump_json()
         parsed = _event_adapter.validate_json(raw)
-        assert isinstance(parsed, CheckpointTransferCompleted)
+        assert isinstance(parsed, CheckpointTransferCompletedEvent)
         assert parsed.duration_seconds == pytest.approx(3.14)
 
     def test_discriminator_distinguishes_types(self) -> None:
-        e1 = CellStateChanged(
+        e1 = CellStateChangedEvent(
             timestamp=_FIXED_TS,
             cell_index=0,
             old_state="a",
             new_state="b",
         )
-        e2 = QuorumChanged(
+        e2 = QuorumChangedEvent(
             timestamp=_FIXED_TS,
             quorum_id=1,
             alive_cell_indices=[0],
@@ -97,16 +97,16 @@ class TestEventModelsStrictRejectExtraFields:
             "bogus_field": 123,
         }
         with pytest.raises(ValidationError, match="bogus_field"):
-            CellStateChanged.model_validate(data)
+            CellStateChangedEvent.model_validate(data)
 
 
 class TestEventBaseTimestampOptional:
     def test_timestamp_defaults_to_none(self) -> None:
-        event = CellStateChanged(cell_index=0, old_state="a", new_state="b")
+        event = CellStateChangedEvent(cell_index=0, old_state="a", new_state="b")
         assert event.timestamp is None
 
     def test_timestamp_accepted_when_provided(self) -> None:
-        event = CellStateChanged(timestamp=_FIXED_TS, cell_index=0, old_state="a", new_state="b")
+        event = CellStateChangedEvent(timestamp=_FIXED_TS, cell_index=0, old_state="a", new_state="b")
         assert event.timestamp == _FIXED_TS
 
 

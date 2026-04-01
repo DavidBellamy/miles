@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from miles.utils.event_logger.logger import EventLogger, get_event_logger, set_event_logger
-from miles.utils.event_logger.models import CellStateChanged, GenericEvent
+from miles.utils.event_logger.models import CellStateChangedEvent, GenericEvent
 from miles.utils.process_identity import MainProcessIdentity, TrainProcessIdentity
 
 _TEST_SOURCE = MainProcessIdentity()
@@ -16,8 +16,8 @@ def _make_logger(log_dir: Path, file_name: str = "events.jsonl") -> EventLogger:
     return EventLogger(log_dir=log_dir, file_name=file_name, source=_TEST_SOURCE)
 
 
-def _make_event() -> CellStateChanged:
-    return CellStateChanged(
+def _make_event() -> CellStateChangedEvent:
+    return CellStateChangedEvent(
         cell_index=0,
         old_state="pending",
         new_state="alive",
