@@ -665,7 +665,7 @@ class TestDoesTrainOneAttemptSucceed:
         ],
     )
     def test_outcomes(self, results, expected):
-        assert RayTrainGroup._does_train_one_attempt_succeed(results) is expected
+        assert RayTrainGroup._check_train_one_attempt(results) is expected
 
 
 async def _set_all_train_return(group: RayTrainGroup, value: TrainStepOutcome) -> None:
