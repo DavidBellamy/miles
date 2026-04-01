@@ -6,22 +6,18 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
 class _ProcessIdentityBase(FrozenStrictBaseModel):
+    component: str
+
     def to_name(self) -> str:
-        raise NotImplementedError
+        return self.component
 
 
 class MainProcessIdentity(_ProcessIdentityBase):
     component: Literal["main"] = "main"
 
-    def to_name(self) -> str:
-        return "main"
-
 
 class RolloutManagerProcessIdentity(_ProcessIdentityBase):
     component: Literal["rollout_manager"] = "rollout_manager"
-
-    def to_name(self) -> str:
-        return "rollout_manager"
 
 
 class TrainProcessIdentity(_ProcessIdentityBase):
