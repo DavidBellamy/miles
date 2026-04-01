@@ -38,7 +38,7 @@ from .checkpoint_transfer import send_ckpt as _send_ckpt
 from .indep_dp import reconfigure_indep_dp_group
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
-from .model import forward_only, initialize_model_and_optimizer, save, train
+from .model import StepOutcome, forward_only, initialize_model_and_optimizer, save, train
 from .parallel import verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
@@ -328,7 +328,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    def train(self, rollout_id: int, rollout_data_ref: Box) -> bool:
+    def train(self, rollout_id: int, rollout_data_ref: Box) -> StepOutcome:
         self._heartbeat.bump()
         self._last_rollout_id = rollout_id
         if self.args.offload_train:
@@ -338,14 +338,14 @@ class MegatronTrainRayActor(TrainRayActor):
             rollout_data = get_rollout_data(self.args, rollout_data_ref, self.parallel_state)
             if self.args.debug_rollout_only:
                 log_rollout_data(rollout_id, self.args, rollout_data, self.parallel_state)
-                return True
+                return StepOutcome.COMMITTED
 
         if self.role == "critic":
             return self.train_critic(rollout_id, rollout_data)
         else:
             return self.train_actor(rollout_id, rollout_data)
 
-    def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> bool:
+    def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> StepOutcome:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
         rollout_data.update(
@@ -365,7 +365,7 @@ class MegatronTrainRayActor(TrainRayActor):
         compute_advantages_and_returns(self.args, self.parallel_state, rollout_data)
 
         self.args.loss_type = "value_loss"
-        all_steps_valid: bool = train(
+        rollout_outcome: StepOutcome = train(
             rollout_id,
             self.model,
             self.optimizer,
@@ -376,12 +376,12 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         self._heartbeat.bump()
-        return all_steps_valid
+        return rollout_outcome
 
     def _use_rollout_replay(self, m) -> bool:
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
-    def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> bool:
+    def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> StepOutcome:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
 
@@ -397,7 +397,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     if_sp_region=m.if_sp_region,
                 )
 
-        all_steps_valid: bool = True
+        rollout_outcome = StepOutcome.COMMITTED
         with inverse_timer("train_wait"), timer("train"):
             if self.args.compute_advantages_and_returns:
                 if "ref" in self.weights_backuper.backup_tags:
@@ -450,7 +450,7 @@ class MegatronTrainRayActor(TrainRayActor):
             # Train
             self._set_replay_stage("replay_backward")
             with timer("actor_train"):
-                all_steps_valid = train(
+                rollout_outcome = train(
                     rollout_id,
                     self.model,
                     self.optimizer,
@@ -468,7 +468,7 @@ class MegatronTrainRayActor(TrainRayActor):
             if m.enabled:
                 m.clear_all()
 
-        if all_steps_valid:
+        if rollout_outcome == StepOutcome.COMMITTED:
             # update the cpu actor weight to the latest model
             self.weights_backuper.backup("actor")
 
@@ -486,7 +486,7 @@ class MegatronTrainRayActor(TrainRayActor):
         log_perf_data(rollout_id, self.args, self.parallel_state)
 
         self._heartbeat.bump()
-        return all_steps_valid
+        return rollout_outcome
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
