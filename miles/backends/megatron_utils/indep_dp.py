@@ -80,9 +80,7 @@ def _intra_cell_consensus(*, success: bool, gloo_group: dist.ProcessGroup) -> bo
 
 
 
-def _allreduce_grads_across_replicas(
-    args, model: Sequence["DDP"], parallel_state: ParallelState, *, gloo_group: dist.ProcessGroup
-) -> bool:
+def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_state: ParallelState) -> bool:
     assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
     assert parallel_state.intra_dp.size == 1, (
         f"indep_dp requires intra_dp.size == 1, got {parallel_state.intra_dp.size}. "
@@ -103,4 +101,4 @@ def _allreduce_grads_across_replicas(
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
 
-    return _intra_cell_consensus(success=allreduce_success, gloo_group=gloo_group)
+    return _intra_cell_consensus(success=allreduce_success, gloo_group=parallel_state.indep_dp.gloo_group)
