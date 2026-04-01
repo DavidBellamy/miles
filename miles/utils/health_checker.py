@@ -5,10 +5,10 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
-from enum import Enum
 from typing import Any
 
 from miles.utils.clock import Clock, RealClock
+from miles.utils.control_server.models import TriState
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -50,16 +50,10 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
         )
 
 
-class HealthStatus(str, Enum):
-    HEALTHY = "healthy"
-    UNHEALTHY = "unhealthy"
-    UNKNOWN = "unknown"
-
-
 class BaseHealthChecker(abc.ABC):
     @property
     @abc.abstractmethod
-    def status(self) -> HealthStatus: ...
+    def status(self) -> TriState: ...
 
     @abc.abstractmethod
     async def start(self) -> None: ...
@@ -96,13 +90,13 @@ class SimpleHealthChecker(BaseHealthChecker):
         self._config = config
         self._clock = clock or RealClock()
 
-        self._status = HealthStatus.UNKNOWN
+        self._status = TriState.UNKNOWN
         self._paused: bool = False
         self._need_first_wait: bool = True
         self._task: asyncio.Task[None] | None = None
 
     @property
-    def status(self) -> HealthStatus:
+    def status(self) -> TriState:
         return self._status
 
     async def start(self) -> None:
@@ -117,18 +111,18 @@ class SimpleHealthChecker(BaseHealthChecker):
             logger.info(f"[{self._name}] Stopping health checker")
             self._task.cancel()
             self._task = None
-        self._status = HealthStatus.UNKNOWN
+        self._status = TriState.UNKNOWN
 
     def pause(self) -> None:
         logger.info(f"[{self._name}] Pausing health checker")
         self._paused = True
-        self._status = HealthStatus.UNKNOWN
+        self._status = TriState.UNKNOWN
 
     def resume(self) -> None:
         logger.info(f"[{self._name}] Resuming health checker")
         self._paused = False
         self._need_first_wait = True
-        self._status = HealthStatus.UNKNOWN
+        self._status = TriState.UNKNOWN
 
     async def _loop(self) -> None:
         while True:
@@ -146,7 +140,7 @@ class SimpleHealthChecker(BaseHealthChecker):
                     logger.error(f"[{self._name}] Health check failed", exc_info=True)
 
                 prev_status = self._status
-                self._status = HealthStatus.HEALTHY if success else HealthStatus.UNHEALTHY
+                self._status = TriState.TRUE if success else TriState.FALSE
                 if prev_status != self._status:
                     logger.info(f"[{self._name}] Status changed: {prev_status.value} -> {self._status.value}")
 
@@ -158,8 +152,8 @@ class SimpleHealthChecker(BaseHealthChecker):
 
 class NoopHealthChecker(BaseHealthChecker):
     @property
-    def status(self) -> HealthStatus:
-        return HealthStatus.UNKNOWN
+    def status(self) -> TriState:
+        return TriState.UNKNOWN
 
     async def start(self) -> None:
         pass

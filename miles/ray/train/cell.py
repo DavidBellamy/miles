@@ -10,8 +10,8 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.control_server.models import CellCondition, CellStatus
-from miles.utils.health_checker import BaseHealthChecker, HealthStatus, SimpleHealthChecker, SimpleHealthCheckerConfig
+from miles.utils.control_server.models import CellCondition, CellStatus, TriState
+from miles.utils.health_checker import BaseHealthChecker, SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -389,21 +389,21 @@ def create_trainer_cell_health_checker(
     )
 
 
-def _compute_cell_status(state: _CellState, health_status: HealthStatus):
+def _compute_cell_status(state: _CellState, health_checker_status: TriState) -> CellStatus:
     match state:
         case _StateAllocatedAlive():
-            if health_status == HealthStatus.UNHEALTHY:
-                healthy = CellCondition.healthy("False", reason="HealthCheckFailed")
+            if health_checker_status == TriState.FALSE:
+                healthy = CellCondition.healthy(TriState.FALSE, reason="HealthCheckFailed")
             else:
-                healthy = CellCondition.healthy("True")
-            return CellStatus(phase="Running", conditions=[CellCondition.allocated("True"), healthy])
+                healthy = CellCondition.healthy(TriState.TRUE)
+            return CellStatus(phase="Running", conditions=[CellCondition.allocated(TriState.TRUE), healthy])
 
         case _StateAllocatedUninitialized():
             return CellStatus(
                 phase="Running",
                 conditions=[
-                    CellCondition.allocated("True"),
-                    CellCondition.healthy("True"),
+                    CellCondition.allocated(TriState.TRUE),
+                    CellCondition.healthy(TriState.TRUE),
                 ],
             )
 
@@ -411,16 +411,16 @@ def _compute_cell_status(state: _CellState, health_status: HealthStatus):
             return CellStatus(
                 phase="Running",
                 conditions=[
-                    CellCondition.allocated("True"),
-                    CellCondition.healthy("False", reason="ExecutionErrored"),
+                    CellCondition.allocated(TriState.TRUE),
+                    CellCondition.healthy(TriState.FALSE, reason="ExecutionErrored"),
                 ],
             )
 
         case _StatePending():
-            return CellStatus(phase="Pending", conditions=[CellCondition.allocated("False")])
+            return CellStatus(phase="Pending", conditions=[CellCondition.allocated(TriState.FALSE)])
 
         case _StateStopped():
-            return CellStatus(phase="Suspended", conditions=[CellCondition.allocated("False")])
+            return CellStatus(phase="Suspended", conditions=[CellCondition.allocated(TriState.FALSE)])
 
         case _:
             raise NotImplementedError(f"Unknown state: {state}")

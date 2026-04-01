@@ -2,7 +2,8 @@ import asyncio
 
 
 from miles.utils.clock import FakeClock
-from miles.utils.health_checker import HealthStatus, NoopHealthChecker, SimpleHealthChecker
+from miles.utils.control_server.models import TriState
+from miles.utils.health_checker import NoopHealthChecker, SimpleHealthChecker
 
 
 def _make_checker(
@@ -269,17 +270,17 @@ class TestNeedFirstWait:
         checker.stop()
 
 
-class TestHealthStatus:
+class TestTriState:
     async def test_initial_status_is_unknown(self):
         checker, _ = _make_checker()
-        assert checker.status == HealthStatus.UNKNOWN
+        assert checker.status == TriState.UNKNOWN
 
     async def test_healthy_after_successful_check(self):
         checker, clock = _make_checker()
         await checker.start()
         await asyncio.sleep(0)
 
-        assert checker.status == HealthStatus.HEALTHY
+        assert checker.status == TriState.TRUE
         checker.stop()
 
     async def test_unhealthy_after_failed_check(self):
@@ -290,37 +291,37 @@ class TestHealthStatus:
         await checker.start()
         await asyncio.sleep(0)
 
-        assert checker.status == HealthStatus.UNHEALTHY
+        assert checker.status == TriState.FALSE
         checker.stop()
 
     async def test_stop_resets_to_unknown(self):
         checker, clock = _make_checker()
         await checker.start()
         await asyncio.sleep(0)
-        assert checker.status == HealthStatus.HEALTHY
+        assert checker.status == TriState.TRUE
 
         checker.stop()
-        assert checker.status == HealthStatus.UNKNOWN
+        assert checker.status == TriState.UNKNOWN
 
     async def test_pause_resets_to_unknown(self):
         checker, clock = _make_checker()
         await checker.start()
         await asyncio.sleep(0)
-        assert checker.status == HealthStatus.HEALTHY
+        assert checker.status == TriState.TRUE
 
         checker.pause()
-        assert checker.status == HealthStatus.UNKNOWN
+        assert checker.status == TriState.UNKNOWN
         checker.stop()
 
     async def test_resume_resets_to_unknown(self):
         checker, clock = _make_checker()
         await checker.start()
         await asyncio.sleep(0)
-        assert checker.status == HealthStatus.HEALTHY
+        assert checker.status == TriState.TRUE
 
         checker.pause()
         checker.resume()
-        assert checker.status == HealthStatus.UNKNOWN
+        assert checker.status == TriState.UNKNOWN
         checker.stop()
 
     async def test_recovers_from_unhealthy_to_healthy(self):
@@ -336,10 +337,10 @@ class TestHealthStatus:
         await checker.start()
 
         await asyncio.sleep(0)
-        assert checker.status == HealthStatus.UNHEALTHY
+        assert checker.status == TriState.FALSE
 
         await clock.elapse(5.0)
-        assert checker.status == HealthStatus.HEALTHY
+        assert checker.status == TriState.TRUE
 
         checker.stop()
 
@@ -347,4 +348,4 @@ class TestHealthStatus:
 class TestNoopHealthChecker:
     def test_noop_status_is_always_unknown(self):
         checker = NoopHealthChecker()
-        assert checker.status == HealthStatus.UNKNOWN
+        assert checker.status == TriState.UNKNOWN

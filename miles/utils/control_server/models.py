@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 from miles.utils.pydantic_utils import StrictBaseModel
+
+
+class TriState(str, Enum):
+    """K8s condition status: ``"True"``, ``"False"``, or ``"Unknown"``."""
+    TRUE = "True"
+    FALSE = "False"
+    UNKNOWN = "Unknown"
 
 
 class _OkResponse(StrictBaseModel):
@@ -11,17 +19,17 @@ class _OkResponse(StrictBaseModel):
 
 class CellCondition(StrictBaseModel):
     type: Literal["Allocated", "Healthy"]
-    status: Literal["True", "False", "Unknown"]
+    status: TriState
     reason: str | None = None
     message: str | None = None
     lastTransitionTime: str | None = None
 
     @classmethod
-    def allocated(cls, status: Literal["True", "False"]) -> CellCondition:
+    def allocated(cls, status: TriState) -> CellCondition:
         return cls(type="Allocated", status=status)
 
     @classmethod
-    def healthy(cls, status: Literal["True", "False"], *, reason: str | None = None) -> CellCondition:
+    def healthy(cls, status: TriState, *, reason: str | None = None) -> CellCondition:
         return cls(type="Healthy", status=status, reason=reason)
 
 
