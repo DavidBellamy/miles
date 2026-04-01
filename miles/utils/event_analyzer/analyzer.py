@@ -33,6 +33,7 @@ def run_analysis(event_dir: Path) -> list[ChecksumMismatch]:
     if not events:
         return []
 
+    # TODO: more check rules
     mismatches = check_weight_checksums(events)
 
     for m in mismatches:
