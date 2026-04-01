@@ -1,10 +1,15 @@
 """Rule: cross-replica weight checksum consistency."""
 
 from collections import defaultdict
-from typing import Any
+from typing import Any, NamedTuple
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
+
+
+class _RankHashes(NamedTuple):
+    rank: int
+    hashes: dict[str, str]
 
 
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
@@ -41,23 +46,23 @@ def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
     yield from _compare_flat_dicts(
         step=step,
         category="param",
-        entries=[(e.rank, e.param_hashes) for e in events],
+        entries=[_RankHashes(rank=e.rank, hashes=e.param_hashes) for e in events],
     )
 
     yield from _compare_flat_dicts(
         step=step,
         category="buffer",
-        entries=[(e.rank, e.buffer_hashes) for e in events],
+        entries=[_RankHashes(rank=e.rank, hashes=e.buffer_hashes) for e in events],
     )
 
     for opt_idx in range(len(events[0].optimizer_hashes)):
-        flat_dicts = []
+        flat_dicts: list[_RankHashes] = []
         for e in events:
             assert opt_idx < len(e.optimizer_hashes), (
                 f"step {step} rank {e.rank}: expected optimizer_hashes[{opt_idx}] but only has {len(e.optimizer_hashes)}"
             )
             flat = _flatten_nested(e.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
-            flat_dicts.append((e.rank, flat))
+            flat_dicts.append(_RankHashes(rank=e.rank, hashes=flat))
 
         yield from _compare_flat_dicts(
             step=step,
@@ -86,20 +91,20 @@ def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = N
 def _compare_flat_dicts(
     step: int,
     category: str,
-    entries: list[tuple[int, dict[str, str]]],
+    entries: list[_RankHashes],
 ) -> list[ChecksumMismatchIssue]:
     """Compare flat string dicts across replicas."""
     mismatches: list[ChecksumMismatchIssue] = []
 
     all_keys: set[str] = set()
-    for _, d in entries:
-        all_keys.update(d.keys())
+    for entry in entries:
+        all_keys.update(entry.hashes.keys())
 
     for key in sorted(all_keys):
         value_by_rank: dict[str, list[int]] = defaultdict(list)
-        for rank, d in entries:
-            v = d.get(key, "<missing>")
-            value_by_rank[v].append(rank)
+        for entry in entries:
+            v = entry.hashes.get(key, "<missing>")
+            value_by_rank[v].append(entry.rank)
 
         if len(value_by_rank) > 1:
             cell_indices: list[int] = []
