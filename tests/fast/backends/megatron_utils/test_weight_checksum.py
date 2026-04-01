@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import torch
 
 from miles.backends.megatron_utils.weight_checksum import (
-    dump_weight_checksums,
+    dump_local_weight_checksums,
     _compute_weight_checksums,
 )
 from miles.utils.event_logger.logger import EventLogger, set_event_logger
@@ -159,7 +159,7 @@ class TestComputeAndDumpWeightChecksums:
         model = [_make_mock_model_chunk(params={})]
         optimizer = _make_mock_optimizer()
 
-        dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
+        dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
 
     def test_dumps_when_enabled(self, tmp_path: Path) -> None:
         event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
@@ -170,7 +170,7 @@ class TestComputeAndDumpWeightChecksums:
             optimizer = _make_mock_optimizer()
 
             with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=7):
-                dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
+                dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
             event_logger.close()
 

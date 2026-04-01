@@ -25,7 +25,7 @@ class _MainParamId(NamedTuple):
         return cls(tensor_id=id(tensor))
 
 
-def dump_weight_checksums(
+def dump_local_weight_checksums(
     args: Namespace,
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
