@@ -13,7 +13,7 @@ from miles.ray.train.cell_state import (
     StateStopped,
     CellState,
 )
-from miles.ray.train.cell_status import compute_cell_status
+from miles.ray.train.cell_monitor import compute_cell_status
 from miles.utils.control_server.models import CellStatus
 from miles.utils.health_checker import BaseHealthChecker
 from miles.utils.indep_dp import IndepDPInfo
