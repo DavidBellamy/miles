@@ -144,20 +144,24 @@ class RayTrainCell:
     # ------------------------ forward calls to actors ------------------------
 
     async def execute(self, fn_name: str, *args, **kwargs) -> None:
+        return await self._execute_raw(fn_name, compute_args=lambda _: args, compute_kwargs=lambda _: kwargs)
+
+    async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs) -> None:
         handles = self._get_actor_handles()
         try:
-            await asyncio.gather(*[getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles])
+            await asyncio.gather(*[
+                getattr(actor, fn_name).remote(*compute_args(i), **compute_kwargs(i))
+                for i, actor in enumerate(handles)
+            ])
         except Exception:
             logger.error(f"Cell {self.cell_index} failed in {fn_name}", exc_info=True)
             self._mark_as_errored()
             raise
 
     async def connect(self, critic_cell: "RayTrainCell"):
-        handles = self._get_actor_handles()
         critic_handles = critic_cell._get_actor_handles()
-        return [
-            actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
-        ]
+        return await self._execute_raw("connect_actor_critic", compute_args=lambda i: critic_handles[i],
+                                       compute_kwargs=lambda _: {})
 
     async def async_init(
         self,
