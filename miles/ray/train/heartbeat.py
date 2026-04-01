@@ -10,7 +10,7 @@ class HeartbeatStatus:
 
 class SimpleHeartbeat:
     def __init__(self) -> None:
-        self._status = HeartbeatStatus(last_active_timestamp=0.0, bump_count=0)
+        self._status = HeartbeatStatus(last_active_timestamp=time.time(), bump_count=0)
 
     def bump(self) -> None:
         self._status = HeartbeatStatus(
