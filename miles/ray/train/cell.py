@@ -48,7 +48,7 @@ class RayTrainCell:
         self.health_checker = health_checker
         self.allocate_for_pending()
 
-    # ------------------------ APIs ------------------------
+    # ------------------------ API ------------------------
 
     async def init(
             self,
@@ -79,6 +79,31 @@ class RayTrainCell:
         if (m := self.rollout_manager) is not None:
             return await self.execute("set_rollout_manager", m)
         return []
+
+    # ------------------------ API :: cooperatively prepare ------------------------
+
+    async def prepare_indep_dp_mode_alive(
+            self,
+            indep_dp_info: IndepDPInfo,
+            send_ckpt_dst_ranks: list[int],
+    ):
+        await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
+        self._update_indep_dp_info(indep_dp_info)
+
+        for dst_rank in send_ckpt_dst_ranks:
+            await self.execute("send_ckpt", dst_rank=dst_rank)
+
+    async def prepare_indep_dp_mode_healing(
+            self,
+            indep_dp_info: IndepDPInfo,
+            recv_ckpt_src_rank: int | None,
+    ):
+        await self.init(
+            indep_dp_info=indep_dp_info,
+            recv_ckpt_src_rank=recv_ckpt_src_rank,
+        )
+
+        await self.set_rollout_manager()
 
     # ------------------------ state transition ------------------------
 
@@ -151,31 +176,6 @@ class RayTrainCell:
         assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
         self._state = fn()
         logger.info(f"{debug_name} end {self.cell_index=} new={self._state}")
-
-    # ------------------------ cooperatively prepare ------------------------
-
-    async def prepare_indep_dp_mode_alive(
-        self,
-        indep_dp_info: IndepDPInfo,
-        send_ckpt_dst_ranks: list[int],
-    ):
-        await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
-        self._update_indep_dp_info(indep_dp_info)
-
-        for dst_rank in send_ckpt_dst_ranks:
-            await self.execute("send_ckpt", dst_rank=dst_rank)
-
-    async def prepare_indep_dp_mode_healing(
-        self,
-        indep_dp_info: IndepDPInfo,
-        recv_ckpt_src_rank: int | None,
-    ):
-        await self.init(
-            indep_dp_info=indep_dp_info,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
-        )
-
-        await self.set_rollout_manager()
 
     # ------------------------ forward calls to actors ------------------------
 
