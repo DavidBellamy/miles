@@ -10,7 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.health_checker import SimpleHealthChecker
+from miles.utils.health_checker import SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -93,21 +93,8 @@ class RayTrainCell:
             ),
         )
 
-    def setup_health_checker(
-        self,
-        *,
-        interval: float,
-        timeout: float,
-        staleness: float,
-        first_wait: float,
-    ) -> None:
-        self.health_checker = _create_health_checker(
-            cell=self,
-            interval=interval,
-            timeout=timeout,
-            staleness=staleness,
-            first_wait=first_wait,
-        )
+    def setup_health_checker(self, *, config: SimpleHealthCheckerConfig) -> None:
+        self.health_checker = _create_health_checker(cell=self, config=config)
 
     def _mark_as_errored(self) -> None:
         self._change_state(
@@ -387,10 +374,7 @@ def allocate_gpus_for_actor(
 def _create_health_checker(
     *,
     cell: RayTrainCell,
-    interval: float,
-    timeout: float,
-    staleness: float,
-    first_wait: float,
+    config: SimpleHealthCheckerConfig,
 ) -> SimpleHealthChecker:
     async def _check() -> None:
         if not cell.is_alive:
@@ -400,18 +384,22 @@ def _create_health_checker(
         futures = [actor.get_heartbeat_status.remote() for actor in cell._get_actor_handles()]
 
         for future in futures:
-            status = await asyncio.wait_for(future, timeout=timeout)
+            status = await asyncio.wait_for(future, timeout=config.timeout)
             delta = now - status.last_active_timestamp
-            if delta > staleness:
+            if delta > config.staleness:
                 raise RuntimeError(
                     f"Heartbeat stale: last_active={status.last_active_timestamp:.1f}, "
                     f"now={now:.1f}, delta={delta:.1f}s, bump_count={status.bump_count}"
                 )
 
+    def _on_result(success: bool) -> None:
+        if not success:
+            cell._mark_as_errored()
+
     return SimpleHealthChecker(
         name=f"trainer-cell-{cell.cell_index}",
         check_fn=_check,
-        on_failure=cell._mark_as_errored,
-        interval=interval,
-        first_wait=first_wait,
+        on_result=_on_result,
+        interval=config.interval,
+        first_wait=config.first_wait,
     )

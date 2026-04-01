@@ -13,6 +13,7 @@ from miles.backends.sglang_utils.arguments import validate_args as sglang_valida
 from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
+from miles.utils.health_checker import SimpleHealthCheckerConfig
 from miles.utils.logging_utils import configure_logger
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.misc import load_function
@@ -553,30 +554,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=10.0,
                 help="Delay in seconds between suspending and resuming a cell during heal.",
             )
-            parser.add_argument(
-                "--trainer-heartbeat-checker-interval",
-                type=float,
-                default=30.0,
-                help="Interval in seconds between trainer heartbeat checks.",
-            )
-            parser.add_argument(
-                "--trainer-heartbeat-checker-timeout",
-                type=float,
-                default=10.0,
-                help="Timeout in seconds for a single heartbeat RPC.",
-            )
-            parser.add_argument(
-                "--trainer-heartbeat-checker-staleness",
-                type=float,
-                default=90.0,
-                help="Maximum allowed staleness of the last-active timestamp before marking a cell as errored.",
-            )
-            parser.add_argument(
-                "--trainer-heartbeat-checker-first-wait",
-                type=float,
-                default=300.0,
-                help="Initial grace period in seconds before starting heartbeat checks (for compilation/init).",
-            )
+            SimpleHealthCheckerConfig.add_arguments(parser, prefix="trainer-heartbeat-checker")
             return parser
 
         # data

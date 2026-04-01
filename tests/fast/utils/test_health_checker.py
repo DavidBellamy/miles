@@ -9,7 +9,7 @@ from miles.utils.health_checker import SimpleHealthChecker
 def _make_checker(
     *,
     check_fn=None,
-    on_failure=None,
+    on_result=None,
     interval: float = 1.0,
     first_wait: float = 0.0,
     name: str = "test",
@@ -20,13 +20,13 @@ def _make_checker(
         async def check_fn() -> None:
             pass
 
-    if on_failure is None:
-        on_failure = lambda: None
+    if on_result is None:
+        on_result = lambda success: None
 
     return SimpleHealthChecker(
         name=name,
         check_fn=check_fn,
-        on_failure=on_failure,
+        on_result=on_result,
         interval=interval,
         first_wait=first_wait,
         clock=clock or FakeClock(),
@@ -74,11 +74,9 @@ class TestCheckFnCalled:
         checker = _make_checker(check_fn=check_fn)
         await checker.start()
 
-        # Step 1: After start, first_wait=0 so first check runs immediately
         await _tick()
         assert call_count == 1
 
-        # Step 2: FakeClock.sleep is instant, so loop ticks again
         await _tick()
         assert call_count == 2
 
@@ -94,54 +92,56 @@ class TestCheckFnCalled:
         checker = _make_checker(check_fn=check_fn, first_wait=300.0)
         await checker.start()
 
-        # Step 1: FakeClock.sleep returns immediately regardless of duration,
-        # so even with first_wait=300 the check runs after a tick
+        # FakeClock.sleep returns immediately, so check runs after a tick
         await _tick()
         assert call_count == 1
 
         checker.stop()
 
 
-class TestOnFailure:
-    async def test_on_failure_called_when_check_raises(self):
-        failure_count = 0
+class TestOnResult:
+    async def test_on_result_true_on_success(self):
+        results: list[bool] = []
 
-        async def check_fn() -> None:
-            raise RuntimeError("boom")
-
-        def on_failure() -> None:
-            nonlocal failure_count
-            failure_count += 1
-
-        checker = _make_checker(check_fn=check_fn, on_failure=on_failure)
+        checker = _make_checker(on_result=lambda s: results.append(s))
         await checker.start()
         await _tick()
         checker.stop()
 
-        assert failure_count == 1
+        assert results == [True]
+
+    async def test_on_result_false_on_failure(self):
+        results: list[bool] = []
+
+        async def check_fn() -> None:
+            raise RuntimeError("boom")
+
+        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
+        await checker.start()
+        await _tick()
+        checker.stop()
+
+        assert results == [False]
 
     async def test_loop_continues_after_failure(self):
-        failure_count = 0
+        results: list[bool] = []
 
         async def check_fn() -> None:
             raise RuntimeError("boom")
 
-        def on_failure() -> None:
-            nonlocal failure_count
-            failure_count += 1
-
-        checker = _make_checker(check_fn=check_fn, on_failure=on_failure)
+        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
         await checker.start()
 
         await _tick()
         await _tick()
         checker.stop()
 
-        assert failure_count >= 2
+        assert len(results) >= 2
+        assert all(r is False for r in results)
 
-    async def test_intermittent_failure_does_not_stop_loop(self):
+    async def test_intermittent_failure(self):
         call_count = 0
-        failure_count = 0
+        results: list[bool] = []
 
         async def check_fn() -> None:
             nonlocal call_count
@@ -149,19 +149,16 @@ class TestOnFailure:
             if call_count % 2 == 0:
                 raise RuntimeError("intermittent")
 
-        def on_failure() -> None:
-            nonlocal failure_count
-            failure_count += 1
-
-        checker = _make_checker(check_fn=check_fn, on_failure=on_failure)
+        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
         await checker.start()
 
         for _ in range(5):
             await _tick()
         checker.stop()
 
-        assert call_count >= 4
-        assert failure_count >= 1
+        assert len(results) >= 4
+        assert True in results
+        assert False in results
 
 
 class TestPauseResume:

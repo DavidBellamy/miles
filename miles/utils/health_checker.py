@@ -1,31 +1,77 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 from miles.utils.clock import Clock, RealClock
+from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
 
 
+class SimpleHealthCheckerConfig(StrictBaseModel):
+    interval: float = 30.0
+    timeout: float = 10.0
+    staleness: float = 90.0
+    first_wait: float = 0.0
+
+    @staticmethod
+    def add_arguments(parser: argparse.ArgumentParser, *, prefix: str) -> None:
+        parser.add_argument(
+            f"--{prefix}-interval",
+            type=float,
+            default=30.0,
+            help=f"Interval in seconds between {prefix} health checks.",
+        )
+        parser.add_argument(
+            f"--{prefix}-timeout",
+            type=float,
+            default=10.0,
+            help=f"Timeout in seconds for a single {prefix} health check RPC.",
+        )
+        parser.add_argument(
+            f"--{prefix}-staleness",
+            type=float,
+            default=90.0,
+            help=f"Maximum allowed staleness (seconds) before marking as errored.",
+        )
+        parser.add_argument(
+            f"--{prefix}-first-wait",
+            type=float,
+            default=300.0,
+            help=f"Initial grace period (seconds) before starting {prefix} health checks.",
+        )
+
+    @staticmethod
+    def from_args(args: object, *, prefix: str) -> SimpleHealthCheckerConfig:
+        attr_prefix = prefix.replace("-", "_")
+        return SimpleHealthCheckerConfig(
+            interval=getattr(args, f"{attr_prefix}_interval"),
+            timeout=getattr(args, f"{attr_prefix}_timeout"),
+            staleness=getattr(args, f"{attr_prefix}_staleness"),
+            first_wait=getattr(args, f"{attr_prefix}_first_wait"),
+        )
+
+
 class SimpleHealthChecker:
-    """Periodic async health checker. Calls *check_fn*; on failure calls *on_failure*."""
+    """Periodic async health checker. Calls *check_fn*; reports result via *on_result*."""
 
     def __init__(
         self,
         *,
         name: str,
         check_fn: Callable[[], Coroutine[Any, Any, None]],
-        on_failure: Callable[[], None],
+        on_result: Callable[[bool], None],
         interval: float,
         first_wait: float = 0.0,
         clock: Clock | None = None,
     ) -> None:
         self._name = name
         self._check_fn = check_fn
-        self._on_failure = on_failure
+        self._on_result = on_result
         self._interval = interval
         self._first_wait = first_wait
         self._clock = clock or RealClock()
@@ -54,11 +100,14 @@ class SimpleHealthChecker:
 
         while True:
             if not self._paused:
+                success = False
                 try:
                     await self._check_fn()
+                    success = True
                 except Exception:
                     logger.error(f"Health check failed for {self._name}", exc_info=True)
-                    self._on_failure()
+
+                self._on_result(success)
 
             await self._clock.sleep(self._interval)
 
@@ -68,9 +117,8 @@ def create_rollout_cell_health_checker(
     *,
     cell_id: str,
     get_engines: Callable[[], list[object]],
-    interval: float,
-    timeout: float,
-    on_failure: Callable[[], None],
+    config: SimpleHealthCheckerConfig,
+    on_result: Callable[[bool], None],
 ) -> SimpleHealthChecker:
 
     async def _check() -> None:
@@ -82,11 +130,11 @@ def create_rollout_cell_health_checker(
         if lead_engine is None:
             raise RuntimeError("Lead engine is None")
 
-        await asyncio.wait_for(lead_engine.health_generate.remote(), timeout=timeout)
+        await asyncio.wait_for(lead_engine.health_generate.remote(), timeout=config.timeout)
 
     return SimpleHealthChecker(
         name=f"rollout-cell-{cell_id}",
         check_fn=_check,
-        on_failure=on_failure,
-        interval=interval,
+        on_result=on_result,
+        interval=config.interval,
     )

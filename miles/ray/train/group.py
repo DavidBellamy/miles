@@ -6,6 +6,7 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor
+from miles.utils.health_checker import SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
@@ -82,13 +83,11 @@ class RayTrainGroup:
             )
 
         if len(self._cells) > 1:
+            health_checker_config = SimpleHealthCheckerConfig.from_args(
+                args, prefix="trainer_heartbeat_checker",
+            )
             for cell in self._cells:
-                cell.setup_health_checker(
-                    interval=args.trainer_heartbeat_checker_interval,
-                    timeout=args.trainer_heartbeat_checker_timeout,
-                    staleness=args.trainer_heartbeat_checker_staleness,
-                    first_wait=args.trainer_heartbeat_checker_first_wait,
-                )
+                cell.setup_health_checker(config=health_checker_config)
 
     # ------------------------ APIs ------------------------
 
