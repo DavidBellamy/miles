@@ -604,8 +604,8 @@ class TestHeartbeatMonitor:
         """When heartbeat returns recent timestamp, cells stay alive."""
         group = await _make_alive_group(num_cells=2)
 
-        for checker in group._health_checkers:
-            await checker._check_fn()
+        for cell in group._cells:
+            await cell._health_checker._check_fn()
 
         assert all(c.is_alive for c in group._cells)
 
@@ -619,8 +619,8 @@ class TestHeartbeatMonitor:
 
         # Step 2: Cell 1's checker raises, cell 0's passes
         with pytest.raises(RuntimeError, match="Heartbeat stale"):
-            await group._health_checkers[1]._check_fn()
-        await group._health_checkers[0]._check_fn()
+            await group._cells[1]._health_checker._check_fn()
+        await group._cells[0]._health_checker._check_fn()
 
     async def test_heartbeat_timeout_marks_errored(self):
         """When heartbeat call fails (actor unresponsive), cell is marked errored."""
@@ -630,16 +630,16 @@ class TestHeartbeatMonitor:
             ray.get(handle.set_heartbeat_fail.remote(True))
 
         with pytest.raises(RuntimeError, match="Injected heartbeat failure"):
-            await group._health_checkers[0]._check_fn()
+            await group._cells[0]._health_checker._check_fn()
 
-    async def test_pause_resume_all_checkers(self):
-        """Pause/resume propagates to all per-cell checkers."""
+    async def test_pause_resume(self):
+        """Pause/resume on cell propagates to its checker."""
         group = await _make_alive_group(num_cells=2)
 
-        for checker in group._health_checkers:
-            checker.pause()
-        assert all(c._paused for c in group._health_checkers)
+        for cell in group._cells:
+            cell.pause_health_checker()
+        assert all(c._health_checker._paused for c in group._cells)
 
-        for checker in group._health_checkers:
-            checker.resume()
-        assert all(not c._paused for c in group._health_checkers)
+        for cell in group._cells:
+            cell.resume_health_checker()
+        assert all(not c._health_checker._paused for c in group._cells)

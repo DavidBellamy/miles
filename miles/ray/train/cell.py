@@ -9,6 +9,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
+from miles.utils.health_checker import SimpleHealthChecker, create_trainer_cell_health_checker
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class RayTrainCell:
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
+        self._health_checker: SimpleHealthChecker | None = None
         self.allocate_for_pending()
 
     # ------------------------ state transition ------------------------
@@ -90,7 +92,34 @@ class RayTrainCell:
             ),
         )
 
-    # TODO call this function (probably within cell?)
+    def setup_health_checker(
+        self,
+        *,
+        interval: float,
+        timeout: float,
+        staleness: float,
+        first_wait: float,
+    ) -> None:
+        self._health_checker = create_trainer_cell_health_checker(
+            cell=self,
+            interval=interval,
+            timeout=timeout,
+            staleness=staleness,
+            first_wait=first_wait,
+        )
+
+    async def start_health_checker(self) -> None:
+        if self._health_checker is not None:
+            await self._health_checker.start()
+
+    def pause_health_checker(self) -> None:
+        if self._health_checker is not None:
+            self._health_checker.pause()
+
+    def resume_health_checker(self) -> None:
+        if self._health_checker is not None:
+            self._health_checker.resume()
+
     def _mark_as_errored(self) -> None:
         self._change_state(
             "_mark_as_errored",
