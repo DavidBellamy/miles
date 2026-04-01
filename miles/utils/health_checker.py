@@ -59,7 +59,6 @@ class SimpleHealthChecker:
                 except Exception:
                     logger.error(f"Health check failed for {self._name}", exc_info=True)
                     self._on_failure()
-                    return
 
             await asyncio.sleep(self._interval)
 
