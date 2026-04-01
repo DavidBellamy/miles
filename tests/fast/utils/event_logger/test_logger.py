@@ -152,3 +152,18 @@ class TestEventLoggerClose:
         logger.log(_make_event())
         logger.close()
         assert logger._file.closed
+
+
+class TestReadEventsMalformedJsonl:
+    def test_malformed_line_skipped_with_warning(self, tmp_path: Path) -> None:
+        from miles.utils.event_logger.logger import read_events
+
+        logger = _make_logger(tmp_path)
+        logger.log(_make_event())
+        logger.close()
+
+        with open(tmp_path / "events.jsonl", "a") as f:
+            f.write("this is not valid json\n")
+
+        events = read_events(tmp_path)
+        assert len(events) == 1
