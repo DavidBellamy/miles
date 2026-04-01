@@ -208,7 +208,7 @@ class RayTrainCell:
                 self._mark_as_errored()
             raise
 
-    # ------------------------ state helpers ------------------------
+    # ------------------------ state and misc queries ------------------------
 
     @property
     def is_pending(self) -> bool:
