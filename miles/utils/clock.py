@@ -4,6 +4,7 @@ import abc
 import asyncio
 import heapq
 import time
+from typing import NamedTuple
 
 
 class Clock(abc.ABC):
@@ -25,6 +26,12 @@ class RealClock(Clock):
 _DRAIN_ITERATIONS = 20
 
 
+class _Waiter(NamedTuple):
+    target: float
+    seq: int
+    future: asyncio.Future[None]
+
+
 class FakeClock(Clock):
     """Deterministic clock for testing async time-dependent code.
 
@@ -35,7 +42,7 @@ class FakeClock(Clock):
 
     def __init__(self, start: float = 0.0) -> None:
         self._now = start
-        self._waiters: list[tuple[float, int, asyncio.Future[None]]] = []
+        self._waiters: list[_Waiter] = []
         self._counter: int = 0
 
     def time(self) -> float:
@@ -48,7 +55,7 @@ class FakeClock(Clock):
         target = self._now + seconds
         future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._counter += 1
-        heapq.heappush(self._waiters, (target, self._counter, future))
+        heapq.heappush(self._waiters, _Waiter(target=target, seq=self._counter, future=future))
         await future
 
     async def elapse(self, seconds: float) -> None:
@@ -62,11 +69,11 @@ class FakeClock(Clock):
             self._resolve_ready()
 
     def _resolve_ready(self) -> None:
-        while self._waiters and self._waiters[0][0] <= self._now:
-            _, _, future = heapq.heappop(self._waiters)
-            if not future.done():
-                future.set_result(None)
+        while self._waiters and self._waiters[0].target <= self._now:
+            waiter = heapq.heappop(self._waiters)
+            if not waiter.future.done():
+                waiter.future.set_result(None)
 
     @property
     def pending_count(self) -> int:
-        return sum(1 for _, _, f in self._waiters if not f.done())
+        return sum(1 for w in self._waiters if not w.future.done())
