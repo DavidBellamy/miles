@@ -86,7 +86,11 @@ class _OptimizerTensorExtractor:
 
     @classmethod
     def _extract_chained_optimizer(cls, optimizer: ChainedOptimizer):
-        return TODO
+        for chained_optimizer in optimizer.chained_optimizers:
+            yield from cls.extract(
+                optimizer=chained_optimizer,
+                prefix=TODO,
+            )
 
     @classmethod
     def _extract_distributed_optimizer(cls, optimizer: DistributedOptimizer):
