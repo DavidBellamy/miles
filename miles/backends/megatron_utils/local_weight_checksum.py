@@ -49,6 +49,7 @@ def _compute_weight_checksums(
     rank: int,
 ) -> LocalWeightChecksumEvent:
     param_hashes = _hash_named_tensors(model, accessor="named_parameters")
+    assert param_hashes, "No parameters found in model"
     buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
 
     name_by_fp32_id = _build_name_by_fp32_id(model)
@@ -56,6 +57,9 @@ def _compute_weight_checksums(
         optimizer=optimizer,
         name_by_fp32_id=name_by_fp32_id,
     )
+
+    assert master_param_hashes, "No master (fp32) params found — optimizer may not be initialized"
+    assert optimizer_state_hashes, "No optimizer states found — optimizer may not have stepped yet"
 
     return LocalWeightChecksumEvent(
         step=step,
