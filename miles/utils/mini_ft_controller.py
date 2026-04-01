@@ -87,12 +87,10 @@ class _MiniFTControllerRunner:
 
 
 def _compute_cell_snapshot(cell: Cell) -> _CellSnapshot:
-    healthy = True
-    for condition in cell.status.conditions:
-        if condition.type == "Healthy":
-            healthy = condition.status == "True"
-            break
-
+    healthy = any(
+        condition.type == "Healthy" and condition.status == "True"
+        for condition in cell.status.conditions
+    )
     return _CellSnapshot(name=cell.metadata.name, healthy=healthy)
 
 
