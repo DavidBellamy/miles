@@ -1,7 +1,6 @@
 import logging
 import random
 import socket
-import time
 from argparse import Namespace
 from contextlib import nullcontext
 
@@ -330,7 +329,7 @@ class MegatronTrainRayActor(TrainRayActor):
             )
 
     def train(self, rollout_id: int, rollout_data_ref: Box) -> bool:
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
         self._last_rollout_id = rollout_id
         if self.args.offload_train:
             self.wake_up()
@@ -376,7 +375,7 @@ class MegatronTrainRayActor(TrainRayActor):
             self.parallel_state,
         )
 
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
         return all_steps_valid
 
     def _use_rollout_replay(self, m) -> bool:
@@ -486,12 +485,12 @@ class MegatronTrainRayActor(TrainRayActor):
 
         log_perf_data(rollout_id, self.args, self.parallel_state)
 
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
         return all_steps_valid
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
         if self.args.debug_rollout_only:
             return
 
@@ -519,7 +518,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
     @timer
     def update_weights(self) -> None:
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 

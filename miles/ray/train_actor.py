@@ -2,7 +2,6 @@ import abc
 import logging
 import os
 import random
-import time
 from datetime import timedelta
 
 import ray
@@ -11,6 +10,7 @@ import torch.distributed as dist
 
 import miles.utils.eval_config
 from miles.ray.ray_actor import RayActor
+from miles.ray.train.heartbeat import ActorHeartbeat, HeartbeatStatus
 from miles.utils.distributed_utils import init_gloo_group
 from miles.utils.env_report import collect_and_print_node_env_report
 from miles.utils.logging_utils import configure_logger
@@ -38,7 +38,7 @@ class TrainRayActor(RayActor):
     ):
         configure_logger()
 
-        self._last_active_timestamp: float = 0.0
+        self._heartbeat = ActorHeartbeat()
         self._world_size = world_size
         self._rank = rank
         self._indep_dp_store_addr = indep_dp_store_addr
@@ -113,11 +113,11 @@ class TrainRayActor(RayActor):
         except Exception as e:
             logger.info(f"Warning: Failed to set NUMA affinity: {e}")
 
-        self._last_active_timestamp = time.time()
+        self._heartbeat.bump()
 
     @ray.method(concurrency_group="heartbeat")
-    def heartbeat(self) -> float:
-        return self._last_active_timestamp
+    def heartbeat(self) -> HeartbeatStatus:
+        return self._heartbeat.status()
 
     def clear_memory(self):
         print_memory("before TrainRayActor.clear_memory")

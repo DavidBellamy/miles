@@ -305,11 +305,12 @@ class RayTrainGroup:
             if cell.is_errored:
                 continue
             try:
-                ts: float = ray.get(future, timeout=self._hb_timeout)
-                if now - ts > self._hb_staleness:
+                status = ray.get(future, timeout=self._hb_timeout)
+                if now - status.last_active_timestamp > self._hb_staleness:
                     logger.error(
                         f"Cell {cell.cell_index} heartbeat stale: "
-                        f"last_active={ts:.1f}, now={now:.1f}, delta={now - ts:.1f}s"
+                        f"last_active={status.last_active_timestamp:.1f}, now={now:.1f}, "
+                        f"delta={now - status.last_active_timestamp:.1f}s, bump_count={status.bump_count}"
                     )
                     cell._mark_as_errored()
             except Exception:
