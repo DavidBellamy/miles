@@ -149,7 +149,7 @@ class RayTrainCell:
     async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs):
         handles = self._get_actor_handles()
         try:
-            await asyncio.gather(
+            return await asyncio.gather(
                 *[
                     getattr(actor, fn_name).remote(*compute_args(i), **compute_kwargs(i))
                     for i, actor in enumerate(handles)
@@ -386,7 +386,7 @@ def create_trainer_cell_health_checker(
         now = time.time()
         results = await cell.execute("get_heartbeat_status")
 
-        for result in results:
+        for status in results:
             delta = now - status.last_active_timestamp
             if delta > config.staleness:
                 raise RuntimeError(
