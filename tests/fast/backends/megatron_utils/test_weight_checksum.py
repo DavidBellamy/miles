@@ -7,13 +7,11 @@ from unittest.mock import MagicMock, patch
 import torch
 
 from miles.backends.megatron_utils.weight_checksum import (
-    WeightChecksumEntry,
     compute_and_dump_weight_checksums,
     _compute_weight_checksums,
-    _dump_weight_checksums,
 )
 from miles.utils.event_logger.logger import EventLogger, set_event_logger
-from miles.utils.event_logger.models import WeightChecksumDumped
+from miles.utils.event_logger.models import WeightChecksumInfo
 from miles.utils.process_identity import MainProcessIdentity
 
 
@@ -155,60 +153,6 @@ class TestComputeWeightChecksums:
         assert "pp0.weight/exp_avg_sq" in entry.optimizer_state_hashes
 
 
-class TestDumpWeightChecksums:
-    def test_logs_event_via_event_logger(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        set_event_logger(event_logger)
-        try:
-            entry = WeightChecksumEntry(
-                param_hashes={"pp0.weight": "abc123"},
-                buffer_hashes={},
-                master_param_hashes={},
-                optimizer_state_hashes={},
-            )
-
-            _dump_weight_checksums(entry=entry, step=42, rank=3)
-            event_logger.close()
-
-            from miles.utils.event_logger.logger import read_events
-
-            events = read_events(tmp_path)
-            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
-            assert len(checksum_events) == 1
-            assert checksum_events[0].step == 42
-            assert checksum_events[0].rank == 3
-            assert checksum_events[0].param_hashes["pp0.weight"] == "abc123"
-        finally:
-            set_event_logger(None)
-
-    def test_round_trip_preserves_all_fields(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        set_event_logger(event_logger)
-        try:
-            entry = WeightChecksumEntry(
-                param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"},
-                buffer_hashes={"pp0.running_mean": "ccc"},
-                master_param_hashes={"pp0.weight": "ddd"},
-                optimizer_state_hashes={"pp0.weight/exp_avg": "eee"},
-            )
-
-            _dump_weight_checksums(entry=entry, step=10, rank=0)
-            event_logger.close()
-
-            from miles.utils.event_logger.logger import read_events
-
-            events = read_events(tmp_path)
-            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
-            assert len(checksum_events) == 1
-            e = checksum_events[0]
-            assert e.param_hashes == entry.param_hashes
-            assert e.buffer_hashes == entry.buffer_hashes
-            assert e.master_param_hashes == entry.master_param_hashes
-            assert e.optimizer_state_hashes == entry.optimizer_state_hashes
-        finally:
-            set_event_logger(None)
-
-
 class TestComputeAndDumpWeightChecksums:
     def test_does_nothing_when_disabled(self, tmp_path: Path) -> None:
         args = Namespace(save_local_weight_checksum=False)
@@ -233,7 +177,7 @@ class TestComputeAndDumpWeightChecksums:
             from miles.utils.event_logger.logger import read_events
 
             events = read_events(tmp_path)
-            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+            checksum_events = [e for e in events if isinstance(e, WeightChecksumInfo)]
             assert len(checksum_events) == 1
             assert checksum_events[0].step == 4
             assert checksum_events[0].rank == 7

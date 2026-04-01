@@ -11,17 +11,9 @@ from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import WeightChecksumDumped
-from miles.utils.pydantic_utils import StrictBaseModel
+from miles.utils.event_logger.models import WeightChecksumInfo
 
 logger = logging.getLogger(__name__)
-
-
-class WeightChecksumEntry(StrictBaseModel):
-    param_hashes: dict[str, str]
-    buffer_hashes: dict[str, str]
-    master_param_hashes: dict[str, str]
-    optimizer_state_hashes: dict[str, str]
 
 
 def compute_and_dump_weight_checksums(
@@ -35,16 +27,21 @@ def compute_and_dump_weight_checksums(
     if not args.save_local_weight_checksum:
         return
 
-    entry = _compute_weight_checksums(model=model, optimizer=optimizer)
-    rank: int = torch.distributed.get_rank()
+    if not is_event_logger_initialized():
+        logger.warning("EventLogger not initialized, skipping weight checksum dump")
+        return
 
-    _dump_weight_checksums(entry=entry, step=step, rank=rank)
+    info = _compute_weight_checksums(model=model, optimizer=optimizer, step=step, rank=torch.distributed.get_rank())
+    get_event_logger().log(info)
+    logger.info("Weight checksum logged for step=%d rank=%d", info.step, info.rank)
 
 
 def _compute_weight_checksums(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
-) -> WeightChecksumEntry:
+    step: int,
+    rank: int,
+) -> WeightChecksumInfo:
     master_param_hashes: dict[str, str] = {}
     optimizer_state_hashes: dict[str, str] = {}
 
@@ -59,34 +56,14 @@ def _compute_weight_checksums(
                 optimizer_state_hashes=optimizer_state_hashes,
             )
 
-    return WeightChecksumEntry(
+    return WeightChecksumInfo(
+        step=step,
+        rank=rank,
         param_hashes=param_hashes,
         buffer_hashes=buffer_hashes,
         master_param_hashes=master_param_hashes,
         optimizer_state_hashes=optimizer_state_hashes,
     )
-
-
-def _dump_weight_checksums(
-    entry: WeightChecksumEntry,
-    step: int,
-    rank: int,
-) -> None:
-    """Log a weight checksum entry via the EventLogger."""
-    if not is_event_logger_initialized():
-        logger.warning("EventLogger not initialized, skipping weight checksum dump")
-        return
-
-    event = WeightChecksumDumped(
-        step=step,
-        rank=rank,
-        param_hashes=entry.param_hashes,
-        buffer_hashes=entry.buffer_hashes,
-        master_param_hashes=entry.master_param_hashes,
-        optimizer_state_hashes=entry.optimizer_state_hashes,
-    )
-    get_event_logger().log(event)
-    logger.info("Weight checksum logged for step=%d rank=%d", step, rank)
 
 
 def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str]:
