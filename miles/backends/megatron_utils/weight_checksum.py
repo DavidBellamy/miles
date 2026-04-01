@@ -32,8 +32,7 @@ def compute_and_dump_weight_checksums(
         return
 
     info = _compute_weight_checksums(model=model, optimizer=optimizer, step=step, rank=torch.distributed.get_rank())
-    get_event_logger().log(info)
-    logger.info("Weight checksum logged for step=%d rank=%d", info.step, info.rank)
+    get_event_logger().log(info, print_log=False)
 
 
 def _compute_weight_checksums(
