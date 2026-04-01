@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import ray
 from ray.util.placement_group import PlacementGroup
 
+from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor, create_trainer_cell_health_checker
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
@@ -119,7 +120,7 @@ class RayTrainGroup:
     async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
         await self._refresh_cells()
         results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
-        return all(not isinstance(r, BaseException) for r in results)
+        return all(r == TrainStepOutcome.NORMAL for r in results)
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
