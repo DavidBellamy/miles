@@ -79,7 +79,6 @@ def _intra_cell_consensus(*, success: bool, gloo_group: dist.ProcessGroup) -> bo
     return tensor.item() > 0.5
 
 
-
 def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_state: ParallelState) -> bool:
     assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
     assert parallel_state.intra_dp.size == 1, (

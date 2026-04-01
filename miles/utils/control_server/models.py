@@ -8,6 +8,7 @@ from miles.utils.pydantic_utils import StrictBaseModel
 
 class TriState(str, Enum):
     """K8s condition status: ``"True"``, ``"False"``, or ``"Unknown"``."""
+
     TRUE = "True"
     FALSE = "False"
     UNKNOWN = "Unknown"

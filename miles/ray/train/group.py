@@ -101,16 +101,18 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        await asyncio.gather(*[
-            cell.init(
-                indep_dp_info=self._compute_indep_dp_info(
-                    cell_index=cell.cell_index,
-                    # all cells will be alive for this first initialization
-                    alive_cell_indices=list(range(len(self._cells))),
+        await asyncio.gather(
+            *[
+                cell.init(
+                    indep_dp_info=self._compute_indep_dp_info(
+                        cell_index=cell.cell_index,
+                        # all cells will be alive for this first initialization
+                        alive_cell_indices=list(range(len(self._cells))),
+                    )
                 )
-            )
-            for cell in self._cells
-        ])
+                for cell in self._cells
+            ]
+        )
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
@@ -177,8 +179,6 @@ class RayTrainGroup:
     def start_cell(self, cell_index: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in train()."""
         self._cells[cell_index].mark_as_pending()
-
-
 
     # ------------------------ utils to forward calls to cells ------------------------
 

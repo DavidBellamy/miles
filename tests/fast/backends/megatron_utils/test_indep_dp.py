@@ -1,7 +1,7 @@
 import torch.distributed as dist
+from tests.fast.dist_utils import init_gloo, run_multiprocess
 
 from miles.backends.megatron_utils.indep_dp import _intra_cell_consensus
-from tests.fast.dist_utils import init_gloo, run_multiprocess
 
 
 def _worker_consensus(

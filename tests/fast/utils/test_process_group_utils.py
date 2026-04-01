@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 import torch.distributed as dist
+from tests.fast.dist_utils import init_gloo, run_multiprocess
 from torch.distributed.device_mesh import init_device_mesh
 
 from miles.utils.process_group_utils import (
@@ -17,7 +18,6 @@ from miles.utils.process_group_utils import (
     _NativePGUtil,
     _RawPGUtil,
 )
-from tests.fast.dist_utils import init_gloo, run_multiprocess
 
 
 def _make_mesh():

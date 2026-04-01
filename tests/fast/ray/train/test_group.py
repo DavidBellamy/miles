@@ -648,21 +648,17 @@ class TestDoesTrainOneAttemptSucceed:
             # all normal
             ([[NORMAL]], True),  # single cell, single actor
             ([[NORMAL, NORMAL], [NORMAL]], True),  # multi cell, multi actor
-
             # all discarded
             ([[DISCARDED]], False),  # single cell
             ([[DISCARDED], [DISCARDED, DISCARDED]], False),  # multi cell
-
             # mixed outcomes
             ([[NORMAL, DISCARDED]], False),  # mixed within same cell
             ([[NORMAL], [DISCARDED]], False),  # mixed across cells
-
             # exception cells are filtered out; remaining cells decide
             ([_ERR], True),  # all errored → vacuously True
             ([_ERR, [NORMAL, NORMAL]], True),  # errored + normal → True
             ([_ERR, [DISCARDED]], False),  # errored + discarded → False
             ([_ERR, _ERR2], True),  # multiple errored, no successful → vacuously True
-
             # edge cases
             ([], True),  # no cells at all → vacuously True
             ([[]], True),  # cell with empty actor list → vacuously True
