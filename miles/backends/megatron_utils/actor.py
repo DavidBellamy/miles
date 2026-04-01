@@ -138,10 +138,10 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         if getattr(args, "enable_witness", False):
-            from miles.utils.witness import WitnessIdAllocator, set_witness_id_allocator
+            from miles.utils.witness import DataWitness, WitnessIdAllocator, set_witness_id_allocator
 
             for model_chunk in self.model:
-                head_witness = getattr(model_chunk.module, "head_witness", None)
+                head_witness: DataWitness | None = getattr(model_chunk.module, "head_witness", None)
                 if head_witness is not None:
                     set_witness_id_allocator(WitnessIdAllocator(
                         ring_buffer_size=args.witness_ring_buffer_size,
