@@ -156,8 +156,7 @@ class RayTrainGroup:
         await asyncio.gather(*refs)
 
     async def set_rollout_manager(self):
-        refs = [future for cell in self._cells for future in cell.async_set_rollout_manager()]
-        await asyncio.gather(*refs)
+        await asyncio.gather(*[cell.set_rollout_manager() for cell in self._cells])
 
     def stop_cell(self, cell_index: int) -> None:
         self._cells[cell_index].stop()

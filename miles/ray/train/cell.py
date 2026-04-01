@@ -123,13 +123,11 @@ class RayTrainCell:
         indep_dp_info: IndepDPInfo,
         send_ckpt_dst_ranks: list[int],
     ):
-        await asyncio.gather(
-            *self.async_execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info),
-        )
+        await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
         self._update_indep_dp_info(indep_dp_info)
 
         for dst_rank in send_ckpt_dst_ranks:
-            await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
+            await self.execute("send_ckpt", dst_rank=dst_rank)
 
     async def prepare_indep_dp_mode_healing(
         self,
@@ -147,13 +145,10 @@ class RayTrainCell:
 
     # ------------------------ forward calls to actors ------------------------
 
-    def async_execute(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
-        handles = self._get_actor_handles()
-        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
-
     async def execute(self, fn_name: str, *args, **kwargs) -> None:
+        handles = self._get_actor_handles()
         try:
-            await asyncio.gather(*self.async_execute(fn_name, *args, **kwargs))
+            await asyncio.gather(*[getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles])
         except Exception:
             logger.error(f"Cell {self.cell_index} failed in {fn_name}", exc_info=True)
             self._mark_as_errored()
@@ -166,13 +161,14 @@ class RayTrainCell:
             actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
 
-    def async_init(
+    async def async_init(
         self,
         *,
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None = None,
     ):
-        handles = self.async_execute(
+        self._mark_as_alive(indep_dp_info=indep_dp_info)
+        return await self.execute(
             "init",
             args=self.args,
             role=self.role,
@@ -180,12 +176,10 @@ class RayTrainCell:
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
-        self._mark_as_alive(indep_dp_info=indep_dp_info)
-        return handles
 
-    def async_set_rollout_manager(self):
+    async def set_rollout_manager(self):
         if (m := self.rollout_manager) is not None:
-            return self.async_execute("set_rollout_manager", m)
+            return await self.execute("set_rollout_manager", m)
         return []
 
     # ------------------------ state helpers ------------------------
