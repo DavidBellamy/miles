@@ -226,14 +226,10 @@ class RayTrainGroup:
         self._indep_dp_quorum_id += 1
 
         # Step 2: Allocate pending actors
-        try:
-            for c in self._cells:
-                if c.cell_index in snapshotted_pending_indices:
-                    c.allocate_for_pending()
-        except Exception:
-            logger.exception("refresh_cells failed at allocate_for_pending phase")
-            TODO
-            return
+        # We currently do not consider this phase to have errors (because it does not touch GPUs)
+        for c in self._cells:
+            if c.cell_index in snapshotted_pending_indices:
+                c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
