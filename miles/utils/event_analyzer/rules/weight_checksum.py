@@ -11,6 +11,8 @@ _PRIMITIVE_TYPES = (str, int, float, bool)
 
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
     key: str
+    label_a: str
+    label_b: str
     value_a: str
     value_b: str
 
@@ -68,13 +70,15 @@ def _compare_flat_dicts(
     all_keys = sorted(set(a.keys()) | set(b.keys()))
 
     for key in all_keys:
-        val_a = a.get(key, "<missing>")
-        val_b = b.get(key, "<missing>")
-        if val_a != val_b:
+        value_a = a.get(key, "<missing>")
+        value_b = b.get(key, "<missing>")
+        if value_a != value_b:
             yield ChecksumMismatchIssue(
                 key=key,
-                value_a=f"{label_a}: {val_a}",
-                value_b=f"{label_b}: {val_b}",
+                label_a=label_a,
+                label_b=label_b,
+                value_a=value_a,
+                value_b=value_b,
             )
 
 
