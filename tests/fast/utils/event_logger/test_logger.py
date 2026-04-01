@@ -154,7 +154,7 @@ class TestEventLoggerClose:
         assert logger._file.closed
 
 
-class TestReadEventsMalformedJsonl:
+class TestReadEvents:
     def test_malformed_line_skipped_with_warning(self, tmp_path: Path) -> None:
         from miles.utils.event_logger.logger import read_events
 
@@ -167,3 +167,18 @@ class TestReadEventsMalformedJsonl:
 
         events = read_events(tmp_path)
         assert len(events) == 1
+
+    def test_reads_multiple_jsonl_files(self, tmp_path: Path) -> None:
+        from miles.utils.event_logger.logger import read_events
+
+        logger_a = EventLogger(log_dir=tmp_path, file_name="a.jsonl", source=_TEST_SOURCE)
+        logger_a.log(_make_event())
+        logger_a.close()
+
+        logger_b = EventLogger(log_dir=tmp_path, file_name="b.jsonl", source=_TEST_SOURCE)
+        logger_b.log(_make_event())
+        logger_b.log(_make_event())
+        logger_b.close()
+
+        events = read_events(tmp_path)
+        assert len(events) == 3

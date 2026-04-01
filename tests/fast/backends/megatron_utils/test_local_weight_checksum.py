@@ -14,7 +14,7 @@ from miles.backends.megatron_utils.local_weight_checksum import (
 )
 from miles.utils.event_logger.logger import EventLogger, read_events, set_event_logger
 from miles.utils.event_logger.models import LocalWeightChecksumEvent
-from miles.utils.process_identity import MainProcessIdentity
+from miles.utils.process_identity import MainProcessIdentity, TrainProcessIdentity
 
 
 def _make_mock_model_chunk(
@@ -69,7 +69,7 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params)]
         optimizer = _make_mock_optimizer_with_state_dict(params=list(params.values()))
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
         assert set(entry.param_hashes.keys()) == {
             "pp0.module.layers.0.weight",
@@ -82,8 +82,8 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params)]
         optimizer = _make_mock_optimizer_with_state_dict(params=[tensor])
 
-        entry1 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
-        entry2 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry1 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
+        entry2 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
         assert entry1.param_hashes == entry2.param_hashes
 
@@ -95,8 +95,8 @@ class TestComputeWeightChecksums:
         opt_a = _make_mock_optimizer_with_state_dict(params=[tensor_a])
         opt_b = _make_mock_optimizer_with_state_dict(params=[tensor_b])
 
-        entry_a = _compute_weight_checksums(model=model_a, optimizer=opt_a, step=0, rank=0)
-        entry_b = _compute_weight_checksums(model=model_b, optimizer=opt_b, step=0, rank=0)
+        entry_a = _compute_weight_checksums(model=model_a, optimizer=opt_a, step=0, cell_index=0, rank_within_cell=0)
+        entry_b = _compute_weight_checksums(model=model_b, optimizer=opt_b, step=0, cell_index=0, rank_within_cell=0)
 
         assert entry_a.param_hashes["pp0.weight"] != entry_b.param_hashes["pp0.weight"]
 
@@ -106,7 +106,7 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params, buffers=buffers)]
         optimizer = _make_mock_optimizer_with_state_dict(params=list(params.values()))
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
         assert "pp0.running_mean" in entry.buffer_hashes
         assert "pp0.running_var" in entry.buffer_hashes
@@ -122,7 +122,7 @@ class TestComputeWeightChecksums:
             states={0: {"exp_avg": exp_avg, "step": torch.tensor(5)}},
         )
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
         assert len(entry.optimizer_hashes) == 1
         info = entry.optimizer_hashes[0]
@@ -163,7 +163,7 @@ class TestTransformTensorToHash:
         all_params = list(params_0.values()) + list(params_1.values())
         optimizer = _make_mock_optimizer_with_state_dict(params=all_params)
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
         assert "pp0.embed.weight" in entry.param_hashes
         assert "pp1.head.weight" in entry.param_hashes
@@ -186,8 +186,7 @@ class TestFailFastAssertions:
             optimizer = _make_mock_optimizer_with_state_dict(params=[torch.randn(2, 2)])
 
             with pytest.raises(AssertionError, match="EventLogger is not initialized"):
-                with patch("miles.backends.megatron_utils.local_weight_checksum.torch.distributed.get_rank", return_value=0):
-                    dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
+                dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
         finally:
             mod._event_logger = original
 
@@ -197,7 +196,7 @@ class TestFailFastAssertions:
         optimizer.chained_optimizers = []
 
         with pytest.raises(AssertionError, match="No parameters found"):
-            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
     def test_assert_no_sub_optimizers_fails(self) -> None:
         model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
@@ -205,7 +204,7 @@ class TestFailFastAssertions:
         optimizer.chained_optimizers = []
 
         with pytest.raises(AssertionError, match="No sub-optimizers found"):
-            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, cell_index=0, rank_within_cell=0)
 
     def test_assert_param_without_main_param_fails(self) -> None:
         from miles.backends.megatron_utils.local_weight_checksum import _build_name_by_tensor_id
@@ -216,6 +215,16 @@ class TestFailFastAssertions:
 
         with pytest.raises(AssertionError, match="no main_param"):
             _build_name_by_tensor_id([chunk])
+
+    def test_assert_unmapped_fp32_param_fails(self) -> None:
+        from miles.backends.megatron_utils.local_weight_checksum import _build_param_names_for_optimizer
+
+        unmapped_param = torch.randn(2, 2)
+        inner = MagicMock(spec=torch.optim.Adam)
+        inner.param_groups = [{"params": [unmapped_param]}]
+
+        with pytest.raises(AssertionError, match="not found in model name mapping"):
+            _build_param_names_for_optimizer(inner, name_by_tensor_id={})
 
 
 class TestDumpLocalWeightChecksums:
@@ -228,7 +237,8 @@ class TestDumpLocalWeightChecksums:
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
 
     def test_dumps_when_enabled(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        source = TrainProcessIdentity(component="actor", cell_index=2, rank_within_cell=7)
+        event_logger = EventLogger(log_dir=tmp_path, source=source)
         set_event_logger(event_logger)
         try:
             weight = torch.randn(2, 2)
@@ -236,8 +246,7 @@ class TestDumpLocalWeightChecksums:
             model = [_make_mock_model_chunk(params={"w": weight})]
             optimizer = _make_mock_optimizer_with_state_dict(params=[weight])
 
-            with patch("miles.backends.megatron_utils.local_weight_checksum.torch.distributed.get_rank", return_value=7):
-                dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
+            dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
             event_logger.close()
 
@@ -245,6 +254,7 @@ class TestDumpLocalWeightChecksums:
             checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
             assert len(checksum_events) == 1
             assert checksum_events[0].step == 4
+            assert checksum_events[0].cell_index == 2
             assert checksum_events[0].rank_within_cell == 7
         finally:
             set_event_logger(None)

@@ -85,6 +85,10 @@ class TestCheck:
     def test_empty_events_no_mismatches(self) -> None:
         assert check([]) == []
 
+    def test_single_replica_no_comparison(self) -> None:
+        events = [_make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"})]
+        assert check(events) == []
+
     def test_buffer_mismatch_detected(self) -> None:
         events = [
             _make_event(step=0, rank=0, buffer_hashes={"pp0.running_mean": "aaa"}),
