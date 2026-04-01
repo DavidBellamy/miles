@@ -15,7 +15,7 @@ class ChecksumMismatchIssue(FrozenStrictBaseModel):
     values: list[str]
 
 
-def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
+def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
     """Verify cross-replica weight checksum consistency from events.
 
     Returns:

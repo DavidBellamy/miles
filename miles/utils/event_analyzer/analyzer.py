@@ -5,7 +5,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
-from miles.utils.event_analyzer.rules.weight_checksum import ChecksumMismatchIssue, check_weight_checksums
+from miles.utils.event_analyzer.rules import weight_checksum
 from miles.utils.event_logger.logger import read_events
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,6 @@ def run_analysis(event_dir: Path) -> list[Any]:
         return []
 
     # TODO: more check rules
-    issues = check_weight_checksums(events)
+    issues = weight_checksum.check(events)
 
     return issues
