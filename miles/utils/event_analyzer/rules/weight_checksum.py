@@ -32,35 +32,37 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
     all_mismatches: list[ChecksumMismatchIssue] = []
 
     for step in sorted(entries_by_step.keys()):
-        step_entries = entries_by_step[step]
-
-        all_mismatches.extend(_compare_flat_dicts(
-            step=step,
-            category="param",
-            entries=[(rank, e.param_hashes) for rank, e in step_entries],
-        ))
-        all_mismatches.extend(_compare_flat_dicts(
-            step=step,
-            category="buffer",
-            entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
-        ))
-
-        for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
-            flat_dicts = []
-            for rank, event in step_entries:
-                assert opt_idx < len(event.optimizer_hashes), (
-                    f"step {step} rank {rank}: expected optimizer_hashes[{opt_idx}] but only has {len(event.optimizer_hashes)}"
-                )
-                flat = _flatten_nested(event.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
-                flat_dicts.append((rank, flat))
-
-            all_mismatches.extend(_compare_flat_dicts(
-                step=step,
-                category="optimizer",
-                entries=flat_dicts,
-            ))
+        _check_one_step(all_mismatches, entries_by_step, step)
 
     return all_mismatches
+
+
+def _check_one_step(all_mismatches, entries_by_step, step):
+    step_entries = entries_by_step[step]
+    all_mismatches.extend(_compare_flat_dicts(
+        step=step,
+        category="param",
+        entries=[(rank, e.param_hashes) for rank, e in step_entries],
+    ))
+    all_mismatches.extend(_compare_flat_dicts(
+        step=step,
+        category="buffer",
+        entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
+    ))
+    for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
+        flat_dicts = []
+        for rank, event in step_entries:
+            assert opt_idx < len(event.optimizer_hashes), (
+                f"step {step} rank {rank}: expected optimizer_hashes[{opt_idx}] but only has {len(event.optimizer_hashes)}"
+            )
+            flat = _flatten_nested(event.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
+            flat_dicts.append((rank, flat))
+
+        all_mismatches.extend(_compare_flat_dicts(
+            step=step,
+            category="optimizer",
+            entries=flat_dicts,
+        ))
 
 
 def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = None) -> dict[str, str]:
