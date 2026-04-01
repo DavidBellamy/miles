@@ -171,33 +171,20 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    def _dispatch_alive(self, fn_name: str, *args, **kwargs) -> list[tuple[RayTrainCell, list[ray.ObjectRef]]]:
+    async def _broadcast_alive(self, fn_name: str, *args, **kwargs) -> None:
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        return [(cell, cell.async_execute(fn_name, *args, **kwargs)) for cell in alive_cells]
+        await asyncio.gather(*[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells], return_exceptions=True)
 
-    async def _broadcast_alive(self, fn_name, *args, **kwargs):
-        dispatched = self._dispatch_alive(fn_name, *args, **kwargs)
-
-        async def _await_cell(cell: RayTrainCell, futures: list[ray.ObjectRef]) -> None:
-            try:
-                await asyncio.gather(*futures)
-            except Exception:
-                logger.error(f"Cell {cell.cell_index} failed in {fn_name}", exc_info=True)
-                cell.mark_as_errored()
-
-        await asyncio.gather(*[_await_cell(cell, fs) for cell, fs in dispatched])
-
-    async def _execute_first_alive(self, fn_name, *args, **kwargs):
+    async def _execute_first_alive(self, fn_name: str, *args, **kwargs) -> None:
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
         for cell in alive_cells:
             try:
-                await asyncio.gather(*cell.async_execute(fn_name, *args, **kwargs))
+                await cell.execute(fn_name, *args, **kwargs)
                 return
             except Exception:
-                logger.error(f"Cell {cell.cell_index} failed in {fn_name}", exc_info=True)
-                cell.mark_as_errored()
+                pass
         raise RuntimeError(f"All cells failed for {fn_name}")
 
     # ------------------------ internals for stop/start ------------------------

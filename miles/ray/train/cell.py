@@ -95,9 +95,9 @@ class RayTrainCell:
             ),
         )
 
-    def mark_as_errored(self) -> None:
+    def _mark_as_errored(self) -> None:
         self._change_state(
-            "mark_as_errored",
+            "_mark_as_errored",
             (_StateAllocatedAlive, _StateAllocatedErrored),
             lambda: _StateAllocatedErrored(
                 actor_handles=self._state.actor_handles,
@@ -147,9 +147,17 @@ class RayTrainCell:
 
     # ------------------------ forward calls to actors ------------------------
 
-    def async_execute(self, fn_name, *args, **kwargs):
+    def async_execute(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
         handles = self._get_actor_handles()
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
+
+    async def execute(self, fn_name: str, *args, **kwargs) -> None:
+        try:
+            await asyncio.gather(*self.async_execute(fn_name, *args, **kwargs))
+        except Exception:
+            logger.error(f"Cell {self.cell_index} failed in {fn_name}", exc_info=True)
+            self._mark_as_errored()
+            raise
 
     def async_connect(self, critic_cell: "RayTrainCell"):
         handles = self._get_actor_handles()
