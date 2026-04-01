@@ -173,7 +173,10 @@ class RayTrainGroup:
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
         )
         await asyncio.gather(
-            *[cell.connect_actor_critic(critic_cell) for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)]
+            *[
+                cell.connect_actor_critic(critic_cell)
+                for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
+            ]
         )
 
     async def set_rollout_manager(self):

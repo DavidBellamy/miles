@@ -2,12 +2,12 @@ import time
 from typing import TYPE_CHECKING
 
 from miles.ray.train.cell_state import (
+    CellState,
     StateAllocatedAlive,
     StateAllocatedErrored,
     StateAllocatedUninitialized,
     StatePending,
     StateStopped,
-    CellState,
 )
 from miles.utils.control_server.models import CellCondition, CellStatus, TriState
 from miles.utils.health_checker import SimpleHealthChecker, SimpleHealthCheckerConfig

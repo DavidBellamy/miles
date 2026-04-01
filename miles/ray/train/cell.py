@@ -4,16 +4,16 @@ from collections.abc import Callable
 
 import ray
 
+from miles.ray.train.cell_monitor import compute_cell_status
 from miles.ray.train.cell_state import (
+    CellState,
     StateAllocatedAlive,
     StateAllocatedBase,
     StateAllocatedErrored,
     StateAllocatedUninitialized,
     StatePending,
     StateStopped,
-    CellState,
 )
-from miles.ray.train.cell_monitor import compute_cell_status
 from miles.utils.control_server.models import CellStatus
 from miles.utils.health_checker import BaseHealthChecker
 from miles.utils.indep_dp import IndepDPInfo
@@ -51,10 +51,10 @@ class RayTrainCell:
     # ------------------------ API ------------------------
 
     async def init(
-            self,
-            *,
-            indep_dp_info: IndepDPInfo,
-            recv_ckpt_src_rank: int | None = None,
+        self,
+        *,
+        indep_dp_info: IndepDPInfo,
+        recv_ckpt_src_rank: int | None = None,
     ):
         self._mark_as_alive(indep_dp_info=indep_dp_info)
         await self.execute(
@@ -83,9 +83,9 @@ class RayTrainCell:
     # ------------------------ API :: cooperatively prepare ------------------------
 
     async def prepare_indep_dp_mode_alive(
-            self,
-            indep_dp_info: IndepDPInfo,
-            send_ckpt_dst_ranks: list[int],
+        self,
+        indep_dp_info: IndepDPInfo,
+        send_ckpt_dst_ranks: list[int],
     ):
         await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
         self._update_indep_dp_info(indep_dp_info)
@@ -94,9 +94,9 @@ class RayTrainCell:
             await self.execute("send_ckpt", dst_rank=dst_rank)
 
     async def prepare_indep_dp_mode_healing(
-            self,
-            indep_dp_info: IndepDPInfo,
-            recv_ckpt_src_rank: int | None,
+        self,
+        indep_dp_info: IndepDPInfo,
+        recv_ckpt_src_rank: int | None,
     ):
         await self.init(
             indep_dp_info=indep_dp_info,
@@ -128,25 +128,29 @@ class RayTrainCell:
     def allocate_for_pending(self) -> None:
         actor_handles = self._actor_factory()
         self._change_state(
-            "allocate_for_pending", StatePending,
+            "allocate_for_pending",
+            StatePending,
             StateAllocatedUninitialized(actor_handles=actor_handles),
         )
 
     def _mark_as_alive(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
-            "_mark_as_alive", StateAllocatedUninitialized,
+            "_mark_as_alive",
+            StateAllocatedUninitialized,
             StateAllocatedAlive(actor_handles=self._state.actor_handles, indep_dp_info=indep_dp_info),
         )
 
     def _update_indep_dp_info(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
-            "_update_indep_dp_info", StateAllocatedAlive,
+            "_update_indep_dp_info",
+            StateAllocatedAlive,
             StateAllocatedAlive(actor_handles=self._state.actor_handles, indep_dp_info=indep_dp_info),
         )
 
     def _mark_as_errored(self) -> None:
         self._change_state(
-            "_mark_as_errored", (StateAllocatedAlive, StateAllocatedErrored),
+            "_mark_as_errored",
+            (StateAllocatedAlive, StateAllocatedErrored),
             StateAllocatedErrored(actor_handles=self._state.actor_handles, indep_dp_info=self._state.indep_dp_info),
         )
 
