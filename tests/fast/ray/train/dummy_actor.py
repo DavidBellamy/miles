@@ -65,7 +65,10 @@ class DummyTrainActor:
         self._heartbeat_fail = fail
 
     def set_last_active_timestamp(self, ts: float) -> None:
-        self._heartbeat._last_active_timestamp = ts
+        self._heartbeat._status = HeartbeatStatus(
+            last_active_timestamp=ts,
+            bump_count=self._heartbeat._status.bump_count,
+        )
 
     def heartbeat(self) -> HeartbeatStatus:
         if self._heartbeat_fail:
