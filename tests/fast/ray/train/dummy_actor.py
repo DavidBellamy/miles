@@ -7,6 +7,7 @@ from typing import Any
 
 import ray
 
+from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.heartbeat_utils import HeartbeatStatus, SimpleHeartbeat
 
 
@@ -16,12 +17,16 @@ class DummyTrainActor:
     def __init__(self):
         self._calls: list[tuple[str, tuple, dict]] = []
         self._fail_methods: set[str] = set()
+        self._train_return_value: Any = TrainStepOutcome.NORMAL
         self._heartbeat = SimpleHeartbeat()
         self._heartbeat.bump()
         self._heartbeat_fail: bool = False
 
     def set_fail_methods(self, methods: list[str]) -> None:
         self._fail_methods = set(methods)
+
+    def set_train_return_value(self, value: Any) -> None:
+        self._train_return_value = value
 
     def _record(self, method: str, args: tuple, kwargs: dict) -> None:
         self._calls.append((method, args, kwargs))
@@ -40,8 +45,9 @@ class DummyTrainActor:
     def send_ckpt(self, *args: Any, **kwargs: Any) -> None:
         self._record("send_ckpt", args, kwargs)
 
-    def train(self, *args: Any, **kwargs: Any) -> None:
+    def train(self, *args: Any, **kwargs: Any) -> Any:
         self._record("train", args, kwargs)
+        return self._train_return_value
 
     def set_rollout_manager(self, *args: Any, **kwargs: Any) -> None:
         self._record("set_rollout_manager", args, kwargs)
