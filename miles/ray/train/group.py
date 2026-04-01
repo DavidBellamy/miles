@@ -119,10 +119,10 @@ class RayTrainGroup:
     async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
         await self._refresh_cells()
 
-        rets = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
+        results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
         TODO
 
-        return True
+        return all(not isinstance(r, BaseException) for r in results)
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
@@ -169,18 +169,18 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    async def _broadcast_alive(self, fn_name: str, *args, return_exceptions=False, **kwargs) -> None:
+    async def _broadcast_alive(self, fn_name: str, *args, return_exceptions=False, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        await asyncio.gather(
+        return await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
             return_exceptions=return_exceptions,
         )
 
-    async def _execute_first_alive(self, fn_name: str, *args, **kwargs) -> None:
+    async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        await alive_cells[0].execute(fn_name, *args, **kwargs)
+        return await alive_cells[0].execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
 
