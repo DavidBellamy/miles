@@ -8,11 +8,11 @@ from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 
 
 def allocate_gpus_for_actor(
-        args,
-        gpus_per_cell: int,
-        pg: tuple[PlacementGroup, list[int], list[int]],
-        num_gpus_per_actor: float,
-        indep_dp_store_addr: str,
+    args,
+    gpus_per_cell: int,
+    pg: tuple[PlacementGroup, list[int], list[int]],
+    num_gpus_per_actor: float,
+    indep_dp_store_addr: str,
 ):
     world_size = gpus_per_cell
 
@@ -85,5 +85,3 @@ def allocate_gpus_for_actor(
         actor_handles.append(actor)
 
     return actor_handles
-
-
