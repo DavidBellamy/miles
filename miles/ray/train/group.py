@@ -6,7 +6,7 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor
-from miles.ray.train.heartbeat_monitor import TrainerHeartbeatMonitor
+from miles.utils.health_checker import SimpleHealthChecker, create_trainer_cell_health_checker
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
@@ -82,19 +82,18 @@ class RayTrainGroup:
                 )
             )
 
-        self._heartbeat_monitor: TrainerHeartbeatMonitor | None = None
+        self._health_checkers: list[SimpleHealthChecker] = []
         if len(self._cells) > 1:
-            self._heartbeat_monitor = TrainerHeartbeatMonitor(
-                cells=self._cells,
-                first_wait=args.trainer_heartbeat_checker_first_wait,
-                interval=args.trainer_heartbeat_checker_interval,
-                timeout=args.trainer_heartbeat_checker_timeout,
-                staleness=args.trainer_heartbeat_checker_staleness,
-            )
-
-    async def _start_heartbeat_monitor(self) -> None:
-        if self._heartbeat_monitor is not None:
-            await self._heartbeat_monitor.start()
+            self._health_checkers = [
+                create_trainer_cell_health_checker(
+                    cell=cell,
+                    interval=args.trainer_heartbeat_checker_interval,
+                    timeout=args.trainer_heartbeat_checker_timeout,
+                    staleness=args.trainer_heartbeat_checker_staleness,
+                    first_wait=args.trainer_heartbeat_checker_first_wait,
+                )
+                for cell in self._cells
+            ]
 
     # ------------------------ APIs ------------------------
 
@@ -114,7 +113,8 @@ class RayTrainGroup:
             )
         ]
         result = await asyncio.gather(*refs)
-        await self._start_heartbeat_monitor()
+        for checker in self._health_checkers:
+            await checker.start()
         return result
 
     async def train(self, rollout_id: int, rollout_data_ref):
@@ -133,12 +133,12 @@ class RayTrainGroup:
 
     async def onload(self):
         await self._broadcast_alive("wake_up")
-        if self._heartbeat_monitor is not None:
-            self._heartbeat_monitor.resume()
+        for checker in self._health_checkers:
+            checker.resume()
 
     async def offload(self):
-        if self._heartbeat_monitor is not None:
-            self._heartbeat_monitor.pause()
+        for checker in self._health_checkers:
+            checker.pause()
         await self._broadcast_alive("sleep")
 
     async def clear_memory(self):

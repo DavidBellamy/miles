@@ -1,13 +1,3 @@
-"""Per-cell async health checkers.
-
-``SimpleHealthChecker`` is the reusable primitive: a single async loop that
-periodically calls ``check_fn`` and invokes ``on_failure`` when it raises.
-
-``TrainerCellHealthChecker`` and ``RolloutCellHealthChecker`` are thin
-factories that construct a ``SimpleHealthChecker`` with domain-specific
-check logic.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -22,17 +12,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Generic primitive
-# ---------------------------------------------------------------------------
-
-
 class SimpleHealthChecker:
-    """Async periodic health checker (single target).
-
-    Calls *check_fn* every *interval* seconds.  If *check_fn* raises,
-    *on_failure* is called and the loop stops.
-    """
+    """Periodic async health checker. Calls *check_fn*; on failure calls *on_failure* and stops."""
 
     def __init__(
         self,
@@ -83,11 +64,6 @@ class SimpleHealthChecker:
             await asyncio.sleep(self._interval)
 
 
-# ---------------------------------------------------------------------------
-# Trainer cell
-# ---------------------------------------------------------------------------
-
-
 def create_trainer_cell_health_checker(
     *,
     cell: "RayTrainCell",
@@ -96,7 +72,6 @@ def create_trainer_cell_health_checker(
     staleness: float,
     first_wait: float,
 ) -> SimpleHealthChecker:
-    """Create a health checker that monitors trainer actor heartbeats for one cell."""
 
     async def _check() -> None:
         if not cell.is_alive:
@@ -123,11 +98,6 @@ def create_trainer_cell_health_checker(
     )
 
 
-# ---------------------------------------------------------------------------
-# Rollout cell
-# ---------------------------------------------------------------------------
-
-
 def create_rollout_cell_health_checker(
     *,
     cell_id: str,
@@ -136,7 +106,6 @@ def create_rollout_cell_health_checker(
     timeout: float,
     on_failure: Callable[[], None],
 ) -> SimpleHealthChecker:
-    """Create a health checker that probes the lead rollout engine for one cell."""
 
     async def _check() -> None:
         engines = get_engines()

@@ -604,11 +604,9 @@ class TestHeartbeatMonitor:
         """When heartbeat returns recent timestamp, cells stay alive."""
         group = await _make_alive_group(num_cells=2)
 
-        # Step 1: Invoke each per-cell checker
-        for checker in group._heartbeat_monitor._checkers:
+        for checker in group._health_checkers:
             await checker._check_fn()
 
-        # Step 2: All cells alive
         assert all(c.is_alive for c in group._cells)
 
     async def test_heartbeat_stale_timestamp_marks_errored(self):
@@ -619,34 +617,29 @@ class TestHeartbeatMonitor:
         for handle in group._cells[1]._get_actor_handles():
             ray.get(handle.set_last_active_timestamp.remote(0.0))
 
-        # Step 2: Check cell 1's checker — should raise (stale)
+        # Step 2: Cell 1's checker raises, cell 0's passes
         with pytest.raises(RuntimeError, match="Heartbeat stale"):
-            await group._heartbeat_monitor._checkers[1]._check_fn()
-
-        # Step 3: Check cell 0's checker — should pass
-        await group._heartbeat_monitor._checkers[0]._check_fn()
+            await group._health_checkers[1]._check_fn()
+        await group._health_checkers[0]._check_fn()
 
     async def test_heartbeat_timeout_marks_errored(self):
         """When heartbeat call fails (actor unresponsive), cell is marked errored."""
         group = await _make_alive_group(num_cells=2)
 
-        # Step 1: Make cell 0's heartbeat fail
         for handle in group._cells[0]._get_actor_handles():
             ray.get(handle.set_heartbeat_fail.remote(True))
 
-        # Step 2: Check cell 0's checker — should raise
         with pytest.raises(RuntimeError, match="Injected heartbeat failure"):
-            await group._heartbeat_monitor._checkers[0]._check_fn()
+            await group._health_checkers[0]._check_fn()
 
     async def test_pause_resume_all_checkers(self):
         """Pause/resume propagates to all per-cell checkers."""
         group = await _make_alive_group(num_cells=2)
 
-        monitor = group._heartbeat_monitor
-        assert monitor is not None
+        for checker in group._health_checkers:
+            checker.pause()
+        assert all(c._paused for c in group._health_checkers)
 
-        monitor.pause()
-        assert all(c._paused for c in monitor._checkers)
-
-        monitor.resume()
-        assert all(not c._paused for c in monitor._checkers)
+        for checker in group._health_checkers:
+            checker.resume()
+        assert all(not c._paused for c in group._health_checkers)
