@@ -211,31 +211,17 @@ class TestDumpWeightChecksums:
 
 class TestComputeAndDumpWeightChecksums:
     def test_does_nothing_when_disabled(self, tmp_path: Path) -> None:
-        args = Namespace(weight_checksum_enable=False)
+        args = Namespace(save_local_weight_checksum=False)
         model = [_make_mock_model_chunk(params={})]
         optimizer = _make_mock_optimizer()
 
         compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
 
-    def test_does_nothing_when_step_not_on_interval(self, tmp_path: Path) -> None:
-        args = Namespace(
-            weight_checksum_enable=True,
-            weight_checksum_interval=5,
-        )
-        model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
-        optimizer = _make_mock_optimizer()
-
-        with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=0):
-            compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=3)
-
-    def test_dumps_when_enabled_and_on_interval(self, tmp_path: Path) -> None:
+    def test_dumps_when_enabled(self, tmp_path: Path) -> None:
         event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
         set_event_logger(event_logger)
         try:
-            args = Namespace(
-                weight_checksum_enable=True,
-                weight_checksum_interval=2,
-            )
+            args = Namespace(save_local_weight_checksum=True)
             model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
             optimizer = _make_mock_optimizer()
 

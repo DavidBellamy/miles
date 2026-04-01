@@ -153,11 +153,7 @@ def compute_and_dump_weight_checksums(
 ) -> None:
     """Compute and dump weight checksums if enabled."""
 
-    if not args.weight_checksum_enable:
-        return
-
-    interval = args.weight_checksum_interval
-    if step % interval != 0:
+    if not args.save_local_weight_checksum:
         return
 
     entry = compute_weight_checksums(model=model, optimizer=optimizer)
