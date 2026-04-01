@@ -16,6 +16,14 @@ class CellCondition(StrictBaseModel):
     message: str | None = None
     lastTransitionTime: str | None = None
 
+    @classmethod
+    def allocated(cls, status: Literal["True", "False"]) -> CellCondition:
+        return cls(type="Allocated", status=status)
+
+    @classmethod
+    def healthy(cls, status: Literal["True", "False"], *, reason: str | None = None) -> CellCondition:
+        return cls(type="Healthy", status=status, reason=reason)
+
 
 class CellStatus(StrictBaseModel):
     phase: Literal["Pending", "Running", "Suspended"]

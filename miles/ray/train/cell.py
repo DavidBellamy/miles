@@ -203,34 +203,31 @@ class RayTrainCell:
         return isinstance(self._state, _StateStopped)
 
     def get_cell_status(self) -> CellStatus:
-        _allocated_true = CellCondition(type="Allocated", status="True")
-        _allocated_false = CellCondition(type="Allocated", status="False")
-
         match self._state:
             case _StateAllocatedAlive():
                 if self.health_checker.status == HealthStatus.UNHEALTHY:
-                    healthy = CellCondition(type="Healthy", status="False", reason="HealthCheckFailed")
+                    healthy = CellCondition.healthy("False", reason="HealthCheckFailed")
                 else:
-                    healthy = CellCondition(type="Healthy", status="True")
-                return CellStatus(phase="Running", conditions=[_allocated_true, healthy])
+                    healthy = CellCondition.healthy("True")
+                return CellStatus(phase="Running", conditions=[CellCondition.allocated("True"), healthy])
 
             case _StateAllocatedUninitialized():
                 return CellStatus(phase="Running", conditions=[
-                    _allocated_true,
-                    CellCondition(type="Healthy", status="True"),
+                    CellCondition.allocated("True"),
+                    CellCondition.healthy("True"),
                 ])
 
             case _StateAllocatedErrored():
                 return CellStatus(phase="Running", conditions=[
-                    _allocated_true,
-                    CellCondition(type="Healthy", status="False", reason="ExecutionErrored"),
+                    CellCondition.allocated("True"),
+                    CellCondition.healthy("False", reason="ExecutionErrored"),
                 ])
 
             case _StatePending():
-                return CellStatus(phase="Pending", conditions=[_allocated_false])
+                return CellStatus(phase="Pending", conditions=[CellCondition.allocated("False")])
 
             case _StateStopped():
-                return CellStatus(phase="Suspended", conditions=[_allocated_false])
+                return CellStatus(phase="Suspended", conditions=[CellCondition.allocated("False")])
 
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")
