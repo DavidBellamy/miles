@@ -332,7 +332,7 @@ def train_one_step(
     opt_param_scheduler: OptimizerParamScheduler,
     num_microbatches: int,
     parallel_state: ParallelState,
-) -> tuple[dict[str, float], float]:
+) -> tuple[dict[str, float], float, bool]:
     """Execute a single pipeline-parallel training step.
 
     Runs forward/backward over ``num_microbatches``, applies optimizer step and
@@ -349,7 +349,7 @@ def train_one_step(
         num_microbatches: Number of microbatches to process.
 
     Returns:
-        Reduced loss dictionary (last stage only) and gradient norm for logging.
+        Tuple of (reduced loss dict, gradient norm, valid_step flag).
     """
     args = get_args()
     dumper_phase_util = DumperMegatronUtil(args, model, DumperPhase.FWD_BWD)
@@ -460,10 +460,13 @@ def train_one_step(
         forward_only=False,
     )
 
-    if parallel_state.indep_dp.size > 1:
-        _allreduce_grads_across_replicas(args, model, parallel_state)
-
     valid_step = True
+    if parallel_state.indep_dp.size > 1:
+        try:
+            _allreduce_grads_across_replicas(args, model, parallel_state)
+        except Exception:
+            logger.exception("Gradient allreduce across replicas failed, discarding step")
+            valid_step = False
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
         found_inf_flag = optimizer.prepare_grads()
         if found_inf_flag:
@@ -500,8 +503,8 @@ def train_one_step(
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
-        return loss_reduced, grad_norm
-    return {}, grad_norm
+        return loss_reduced, grad_norm, valid_step
+    return {}, grad_norm, valid_step
 
 
 def _allreduce_grads_across_replicas(args, model: Sequence[DDP], parallel_state: ParallelState) -> None:
@@ -538,7 +541,7 @@ def train(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
-) -> None:
+) -> bool:
     """Run training over a rollout consisting of multiple steps.
 
     The model is switched to train mode, training hooks are configured, and
@@ -617,12 +620,13 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
+    all_steps_valid = True
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
 
         # Run training step.
-        loss_dict, grad_norm = train_one_step(
+        loss_dict, grad_norm, valid_step = train_one_step(
             args,
             rollout_id,
             step_id,
@@ -633,6 +637,11 @@ def train(
             num_microbatches[step_id],
             parallel_state,
         )
+
+        if not valid_step:
+            logger.warning(f"Step {step_id} invalid, stopping remaining steps in rollout {rollout_id}")
+            all_steps_valid = False
+            break
 
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
@@ -707,6 +716,8 @@ def train(
     # Close out pre-hooks if using distributed optimizer and overlapped param gather.
     if pre_hook_enabled:
         disable_forward_pre_hook(model)
+
+    return all_steps_valid
 
 
 def save(
