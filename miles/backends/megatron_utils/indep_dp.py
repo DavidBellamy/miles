@@ -79,12 +79,6 @@ def _intra_cell_consensus(*, success: bool, gloo_group: dist.ProcessGroup) -> bo
     return tensor.item() > 0.5
 
 
-def _zero_grad_buffers(model: Sequence["DDP"]) -> None:
-    for model_chunk in model:
-        for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
-            for bucket in bucket_group.buckets:
-                bucket.grad_data.zero_()
-
 
 def _allreduce_grads_across_replicas(
     args, model: Sequence["DDP"], parallel_state: ParallelState, *, gloo_group: dist.ProcessGroup
@@ -107,7 +101,6 @@ def _allreduce_grads_across_replicas(
                     util.all_reduce(bucket.grad_data, pg, op=dist.ReduceOp.SUM)
     except Exception:
         allreduce_success = False
-        _zero_grad_buffers(model)
         logger.exception("Gradient allreduce across replicas failed")
 
     return _intra_cell_consensus(success=allreduce_success, gloo_group=gloo_group)
