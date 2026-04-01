@@ -32,12 +32,12 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
         events_by_step.setdefault(event.step, []).append(event)
 
     for step in sorted(events_by_step.keys()):
-        all_mismatches += list(_check_one_step(step, events=events_by_step[step]))
+        all_mismatches += list(_check_one_step(events=events_by_step[step]))
 
     return all_mismatches
 
 
-def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
+def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
     flat_0 = _flatten_event(events[0])
     for i in range(1, len(events)):
         flat_i = _flatten_event(events[i])
