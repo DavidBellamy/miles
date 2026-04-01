@@ -1,13 +1,11 @@
 """Tests for process_group_utils: GroupInfo, GroupsInfo, GeneralPGUtil, MultiPGUtil."""
 
-import os
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.distributed.device_mesh import init_device_mesh
 
 from miles.utils.process_group_utils import (
@@ -19,16 +17,7 @@ from miles.utils.process_group_utils import (
     _NativePGUtil,
     _RawPGUtil,
 )
-
-
-def _init_gloo(rank: int, world_size: int) -> None:
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "29501"
-    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
-
-
-def _run(fn, world_size: int = 4) -> None:
-    mp.spawn(fn, args=(world_size,), nprocs=world_size, join=True)
+from tests.fast.dist_utils import init_gloo, run_multiprocess
 
 
 def _make_mesh():
@@ -108,9 +97,9 @@ class TestGroupsInfo:
 UTIL_CLASSES = [_NativePGUtil, _RawPGUtil]
 
 
-def _worker_pg_util_ops(rank: int, world_size: int) -> None:
+def _worker_pg_util_ops(rank: int, world_size: int, port: int) -> None:
     """Test all GeneralPGUtil operations with both native and torchft code paths."""
-    _init_gloo(rank, world_size)
+    init_gloo(rank, world_size, port=port)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
 
@@ -162,12 +151,12 @@ def _worker_pg_util_ops(rank: int, world_size: int) -> None:
 
 
 def test_pg_util_ops() -> None:
-    _run(_worker_pg_util_ops)
+    run_multiprocess(_worker_pg_util_ops, world_size=4)
 
 
-def _worker_gather_object_native_vs_raw(rank: int, world_size: int) -> None:
+def _worker_gather_object_native_vs_raw(rank: int, world_size: int, port: int) -> None:
     """Verify _NativePGUtil and _RawPGUtil gather_object produce identical results."""
-    _init_gloo(rank, world_size)
+    init_gloo(rank, world_size, port=port)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
 
@@ -197,14 +186,14 @@ def _worker_gather_object_native_vs_raw(rank: int, world_size: int) -> None:
 
 
 def test_gather_object_native_vs_raw() -> None:
-    _run(_worker_gather_object_native_vs_raw)
+    run_multiprocess(_worker_gather_object_native_vs_raw, world_size=4)
 
 
 # -- MultiPGUtil tests --
 
 
-def _worker_multi_pg_util_all_reduce(rank: int, world_size: int) -> None:
-    _init_gloo(rank, world_size)
+def _worker_multi_pg_util_all_reduce(rank: int, world_size: int, port: int) -> None:
+    init_gloo(rank, world_size, port=port)
     try:
         mesh = _make_mesh()
         inner_group = mesh.get_group("inner")
@@ -243,11 +232,11 @@ def _worker_multi_pg_util_all_reduce(rank: int, world_size: int) -> None:
 
 
 def test_multi_pg_util_all_reduce() -> None:
-    _run(_worker_multi_pg_util_all_reduce)
+    run_multiprocess(_worker_multi_pg_util_all_reduce, world_size=4)
 
 
-def _worker_multi_pg_util_gather_object(rank: int, world_size: int) -> None:
-    _init_gloo(rank, world_size)
+def _worker_multi_pg_util_gather_object(rank: int, world_size: int, port: int) -> None:
+    init_gloo(rank, world_size, port=port)
     try:
         mesh = _make_mesh()
         inner_group = mesh.get_group("inner")
@@ -280,7 +269,7 @@ def _worker_multi_pg_util_gather_object(rank: int, world_size: int) -> None:
 
 
 def test_multi_pg_util_gather_object() -> None:
-    _run(_worker_multi_pg_util_gather_object)
+    run_multiprocess(_worker_multi_pg_util_gather_object, world_size=4)
 
 
 # -- _check_wait tests --
