@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
-from megatron.core.optimizer.optimizer import MegatronOptimizer
+from megatron.core.optimizer.optimizer import MegatronOptimizer, ChainedOptimizer, DistributedOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
@@ -74,6 +74,23 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
                 continue
             hashes[f"pp{pp_idx}.{name}"] = _hash_tensor_sha256(tensor)
     return hashes
+
+
+class _OptimizerTensorExtractor:
+    @classmethod
+    def extract(cls, optimizer: MegatronOptimizer):
+        if isinstance(optimizer, ChainedOptimizer):
+            return cls._extract_chained_optimizer(optimizer)
+        if isinstance(optimizer, DistributedOptimizer):
+            return cls._extract_distributed_optimizer(optimizer)
+
+    @classmethod
+    def _extract_chained_optimizer(cls, optimizer: ChainedOptimizer):
+        return TODO
+
+    @classmethod
+    def _extract_distributed_optimizer(cls, optimizer: DistributedOptimizer):
+        return TODO
 
 
 def _collect_master_and_optimizer_hashes(
