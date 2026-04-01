@@ -190,7 +190,7 @@ class RayTrainGroup:
     async def _execute_first_alive(self, fn_name: str, *args, catch_exceptions: bool, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        return self._execute_raw(fn_name, [alive_cells[0]], *args, TODO_catch_exceptions, **kwargs)
+        return self._execute_raw(fn_name, [alive_cells[0]], TODO_catch_exceptions, **kwargs)
 
     async def _execute_raw(self, fn_name: str, chosen_cells, *args, catch_exceptions: bool, **kwargs):
         outputs = await asyncio.gather(
