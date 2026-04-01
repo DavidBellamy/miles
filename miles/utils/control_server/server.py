@@ -102,7 +102,9 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
                     await handle.resume()
             except Exception as err:
                 logger.error("Failed to patch cell %s", name, exc_info=True)
-                raise _K8sError(status_code=500, reason="InternalError", message=f"Failed to patch cell '{name}'") from err
+                raise _K8sError(
+                    status_code=500, reason="InternalError", message=f"Failed to patch cell '{name}'"
+                ) from err
 
         return await handle.get_cell()
 
