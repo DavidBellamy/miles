@@ -28,22 +28,6 @@ def _hash_tensor_sha256(tensor: torch.Tensor) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
-def _build_param_name_map(chained_optimizer: object) -> dict[int, str]:
-    """Build a mapping from parameter data_ptr to name using float16_groups."""
-    name_map: dict[int, str] = {}
-
-    if not hasattr(chained_optimizer, "float16_groups"):
-        return name_map
-
-    for group in chained_optimizer.float16_groups:
-        for param in group:
-            if hasattr(param, "main_param"):
-                name_map[id(param)] = getattr(param, "_param_name", str(id(param)))
-            else:
-                name_map[id(param)] = getattr(param, "_param_name", str(id(param)))
-
-    return name_map
-
 
 def compute_weight_checksums(
     model: Sequence[DDP],
@@ -151,7 +135,7 @@ def dump_weight_checksums(
     """Write a weight checksum entry to a JSON file."""
     file_path = output_dir / "weight_checksum" / f"step_{step:07d}" / f"rank_{rank:04d}.json"
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(entry.model_dump_json(indent=2))
+    file_path.write_text(entry.model_dump_json())
     logger.info("Weight checksum dumped to %s", file_path)
 
 
@@ -163,10 +147,10 @@ def compute_and_dump_weight_checksums(
 ) -> None:
     """Compute and dump weight checksums if enabled."""
 
-    if not getattr(args, "weight_checksum_enable", False):
+    if not args.weight_checksum_enable:
         return
 
-    interval = getattr(args, "weight_checksum_interval", 1)
+    interval = args.weight_checksum_interval
     if step % interval != 0:
         return
 

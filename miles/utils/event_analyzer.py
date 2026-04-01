@@ -1,6 +1,5 @@
 """Post-hoc checker for cross-replica weight checksum consistency."""
 
-import json
 import logging
 import sys
 from collections import defaultdict

@@ -1939,7 +1939,7 @@ def miles_validate_args(args):
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
         args.save_debug_event_data = f"{args.dump_details}/events"
 
-    if getattr(args, "weight_checksum_enable", False) and args.weight_checksum_dir is None:
+    if args.weight_checksum_enable and args.weight_checksum_dir is None:
         if args.dump_details is not None:
             args.weight_checksum_dir = args.dump_details
         else:
