@@ -1,4 +1,4 @@
-"""Tests for weight_checksum module."""
+"""Tests for local_weight_checksum module."""
 
 from argparse import Namespace
 from pathlib import Path
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import torch
 
-from miles.backends.megatron_utils.weight_checksum import (
+from miles.backends.megatron_utils.local_weight_checksum import (
     dump_local_weight_checksums,
     _compute_weight_checksums,
 )
@@ -101,7 +101,7 @@ class TestComputeWeightChecksums:
         assert "pp0.running_var" in entry.buffer_hashes
         assert len(entry.buffer_hashes["pp0.running_mean"]) == 64  # SHA-256 hex length
 
-    @patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params", create=True)
+    @patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params", create=True)
     def test_master_param_hashing_with_mock_optimizer(self) -> None:
         fp16_param = torch.nn.Parameter(torch.randn(4, 4))
         fp16_param.main_param = MagicMock()
@@ -119,13 +119,13 @@ class TestComputeWeightChecksums:
 
         model = [_make_mock_model_chunk(params={"layers.0.weight": torch.randn(4, 4)})]
 
-        with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
+        with patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
             entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert "pp0.layers.0.weight" in entry.master_param_hashes
 
-    @patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params", create=True)
+    @patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params", create=True)
     def test_optimizer_state_hashing_exp_avg_and_exp_avg_sq(self) -> None:
         fp16_param = torch.nn.Parameter(torch.randn(4, 4))
         fp16_param.main_param = MagicMock()
@@ -145,7 +145,7 @@ class TestComputeWeightChecksums:
 
         model = [_make_mock_model_chunk(params={"weight": torch.randn(4, 4)})]
 
-        with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
+        with patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
             entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
@@ -169,7 +169,7 @@ class TestComputeAndDumpWeightChecksums:
             model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
             optimizer = _make_mock_optimizer()
 
-            with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=7):
+            with patch("miles.backends.megatron_utils.local_weight_checksum.torch.distributed.get_rank", return_value=7):
                 dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
             event_logger.close()

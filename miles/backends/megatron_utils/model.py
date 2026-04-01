@@ -25,7 +25,7 @@ from megatron.training.global_vars import get_args
 from megatron.training.training import get_model
 
 from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_replicas
-from miles.backends.megatron_utils.weight_checksum import dump_local_weight_checksums
+from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
 

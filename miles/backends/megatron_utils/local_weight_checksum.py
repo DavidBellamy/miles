@@ -132,8 +132,10 @@ def _iter_fp32_params_and_states(
 
         for group in inner.param_groups:
             for fp32_param in group["params"]:
-                state = inner.state.get(fp32_param, {})
-                yield fp32_param, state
+                assert fp32_param in inner.state, (
+                    f"fp32 param id={id(fp32_param)} has no optimizer state"
+                )
+                yield fp32_param, inner.state[fp32_param]
 
 
 def _iter_sub_optimizers(optimizer: MegatronOptimizer) -> Iterator[MegatronOptimizer]:
