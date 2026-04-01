@@ -82,19 +82,18 @@ def _compare_flat_dicts(
             )
 
 
-def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, Any] | None = None) -> dict[str, Any]:
+def _flatten_nested(obj: Any, *, prefix: str = "") -> dict[str, Any]:
     """Flatten a nested dict/list into a flat dict with dot-separated keys. Keeps all primitive leaf values."""
-    if _result is None:
-        _result = {}
+    result: dict[str, Any] = {}
 
     if isinstance(obj, dict):
         for k, v in sorted(obj.items(), key=lambda x: str(x[0])):
             child_prefix = f"{prefix}.{k}" if prefix else str(k)
-            _flatten_nested(v, prefix=child_prefix, _result=_result)
+            result.update(_flatten_nested(v, prefix=child_prefix))
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
-            _flatten_nested(v, prefix=f"{prefix}[{i}]", _result=_result)
+            result.update(_flatten_nested(v, prefix=f"{prefix}[{i}]"))
     elif isinstance(obj, _PRIMITIVE_TYPES):
-        _result[prefix] = obj
+        result[prefix] = obj
 
-    return _result
+    return result
