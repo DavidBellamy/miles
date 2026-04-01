@@ -1377,6 +1377,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 help="Save per-rank local weight checksum per-step.",
             )
+            parser.add_argument(
+                "--enable-event-analyzer",
+                action="store_true",
+                help="Enable event analyzer to run sanity checks (e.g. cross-replica checksum consistency) before each training step.",
+            )
             # TODO: implement witness related
             parser.add_argument(
                 "--enable-witness",
@@ -1815,8 +1820,9 @@ def miles_validate_args(args):
         args.indep_dp = True
         args.delay_split_train_data_by_dp = True
         args.save_local_weight_checksum = True
+        args.enable_event_analyzer = True
         args.enable_witness = True
-        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True, save_local_weight_checksum=True, enable_witness=True")
+        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True, save_local_weight_checksum=True, enable_event_analyzer=True, enable_witness=True")
 
     if args.indep_dp:
         per_replica_size = compute_megatron_world_size_except_dp(args)

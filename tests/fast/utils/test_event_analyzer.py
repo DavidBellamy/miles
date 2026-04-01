@@ -133,8 +133,12 @@ class TestRunAnalysisWeightChecksum:
 
 
 class TestRunAnalysisFromArgs:
+    def test_skips_when_disabled(self) -> None:
+        args = Namespace(enable_event_analyzer=False, save_debug_event_data="/tmp/whatever")
+        run_analysis_from_args(args)
+
     def test_skips_when_no_event_dir(self) -> None:
-        args = Namespace()
+        args = Namespace(enable_event_analyzer=True)
         run_analysis_from_args(args)
 
     def test_raises_on_mismatch(self, tmp_path: Path) -> None:
@@ -143,8 +147,8 @@ class TestRunAnalysisFromArgs:
         _log(event_logger, _make_event(step=0, rank=1, param_hashes={"pp0.weight": "zzz"}))
         event_logger.close()
 
-        args = Namespace(save_debug_event_data=str(tmp_path))
-        with pytest.raises(ValueError, match="mismatches"):
+        args = Namespace(enable_event_analyzer=True, save_debug_event_data=str(tmp_path))
+        with pytest.raises(ValueError, match="issues"):
             run_analysis_from_args(args)
 
     def test_passes_when_all_match(self, tmp_path: Path) -> None:
@@ -153,7 +157,7 @@ class TestRunAnalysisFromArgs:
         _log(event_logger, _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}))
         event_logger.close()
 
-        args = Namespace(save_debug_event_data=str(tmp_path))
+        args = Namespace(enable_event_analyzer=True, save_debug_event_data=str(tmp_path))
         run_analysis_from_args(args)
 
 

@@ -37,16 +37,12 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        all_mismatches.extend(_compare_flat_dicts(
-            step=step,
-            category="param",
-            entries=[(rank, e.param_hashes) for rank, e in step_entries],
-        ))
-        all_mismatches.extend(_compare_flat_dicts(
-            step=step,
-            category="buffer",
-            entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
-        ))
+        for category, accessor in [("param", "param_hashes"), ("buffer", "buffer_hashes")]:
+            all_mismatches.extend(_compare_flat_dicts(
+                step=step,
+                category=category,
+                entries=[(rank, getattr(e, accessor)) for rank, e in step_entries],
+            ))
 
         for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
             flat_dicts = []

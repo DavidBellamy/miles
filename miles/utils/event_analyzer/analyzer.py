@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def run_analysis_from_args(args: Namespace) -> None:
-    """Run event analysis if event logging is enabled. Safe to call unconditionally."""
+    """Run event analysis if enabled. Safe to call unconditionally."""
+    if not getattr(args, "enable_event_analyzer", False):
+        return
+
     event_dir = getattr(args, "save_debug_event_data", None)
     if event_dir is None:
         return
