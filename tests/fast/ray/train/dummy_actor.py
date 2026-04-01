@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 
-from miles.ray.train.heartbeat import SimpleHeartbeat, HeartbeatStatus
+from miles.utils.heartbeat_utils import HeartbeatStatus, SimpleHeartbeat
 
 
 @ray.remote(num_gpus=0, num_cpus=0)
