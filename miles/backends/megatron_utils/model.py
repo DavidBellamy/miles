@@ -11,7 +11,6 @@ from functools import partial
 from pathlib import Path
 
 import torch
-import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
@@ -514,7 +513,6 @@ def train_one_step(
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
         return loss_reduced, grad_norm, outcome
     return {}, grad_norm, outcome
-
 
 
 def finalize_model_grads_with_empty_cache(*args, **kwargs):

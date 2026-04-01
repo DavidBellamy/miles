@@ -378,10 +378,12 @@ class TestRunnerGetCells:
         """Parse CellList JSON into _CellSnapshot with correct healthy bool."""
         runner = _create_runner()
 
-        cells_json = _build_cell_list_json([
-            _build_cell_json(name="actor-0", healthy_status="True"),
-            _build_cell_json(name="actor-1", healthy_status="False"),
-        ])
+        cells_json = _build_cell_list_json(
+            [
+                _build_cell_json(name="actor-0", healthy_status="True"),
+                _build_cell_json(name="actor-1", healthy_status="False"),
+            ]
+        )
 
         runner._client = AsyncMock()
         runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))

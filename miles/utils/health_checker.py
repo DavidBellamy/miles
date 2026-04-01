@@ -38,7 +38,7 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
             f"--{prefix}-staleness",
             type=float,
             default=90.0,
-            help=f"Maximum allowed staleness (seconds) before marking as errored.",
+            help="Maximum allowed staleness (seconds) before marking as errored.",
         )
         parser.add_argument(
             f"--{prefix}-first-wait",
@@ -118,7 +118,9 @@ class SimpleHealthChecker(BaseHealthChecker):
     async def start(self) -> None:
         if self._task is not None:
             return
-        logger.info(f"[{self._name}] Starting health checker (interval={self._interval}s, first_wait={self._first_wait}s)")
+        logger.info(
+            f"[{self._name}] Starting health checker (interval={self._interval}s, first_wait={self._first_wait}s)"
+        )
         self._task = asyncio.create_task(self._loop())
         await asyncio.sleep(0)
 

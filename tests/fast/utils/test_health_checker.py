@@ -1,6 +1,5 @@
 import asyncio
 
-import pytest
 
 from miles.utils.clock import FakeClock
 from miles.utils.health_checker import HealthStatus, NoopHealthChecker, SimpleHealthChecker

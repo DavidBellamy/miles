@@ -63,9 +63,7 @@ class RayTrainGroup:
             self._indep_dp_store, indep_dp_store_addr = None, None
 
         health_checker_config = (
-            SimpleHealthCheckerConfig.from_args(args, prefix="trainer_heartbeat_checker")
-            if num_cells > 1
-            else None
+            SimpleHealthCheckerConfig.from_args(args, prefix="trainer_heartbeat_checker") if num_cells > 1 else None
         )
 
         self._cells: list[RayTrainCell] = []
@@ -89,7 +87,8 @@ class RayTrainGroup:
 
             if health_checker_config is not None:
                 cell.health_checker = create_trainer_cell_health_checker(
-                    cell=cell, config=health_checker_config,
+                    cell=cell,
+                    config=health_checker_config,
                 )
 
             self._cells.append(cell)
@@ -148,10 +147,9 @@ class RayTrainGroup:
             f"Actor and critic must have the same number of cells: "
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
         )
-        await asyncio.gather(*[
-            cell.connect(critic_cell)
-            for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-        ])
+        await asyncio.gather(
+            *[cell.connect(critic_cell) for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)]
+        )
 
     async def set_rollout_manager(self):
         await asyncio.gather(*[cell.set_rollout_manager() for cell in self._cells])
@@ -231,9 +229,7 @@ class RayTrainGroup:
                             indep_dp_info=self._compute_indep_dp_info(
                                 c.cell_index, alive_cell_indices=will_alive_indices
                             ),
-                            recv_ckpt_src_rank=src_alive_rank
-                            if c.cell_index in snapshotted_pending_indices
-                            else None,
+                            recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
                         )
                     )
                     for c in self._cells

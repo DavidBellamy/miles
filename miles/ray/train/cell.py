@@ -149,10 +149,12 @@ class RayTrainCell:
     async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs) -> None:
         handles = self._get_actor_handles()
         try:
-            await asyncio.gather(*[
-                getattr(actor, fn_name).remote(*compute_args(i), **compute_kwargs(i))
-                for i, actor in enumerate(handles)
-            ])
+            await asyncio.gather(
+                *[
+                    getattr(actor, fn_name).remote(*compute_args(i), **compute_kwargs(i))
+                    for i, actor in enumerate(handles)
+                ]
+            )
         except Exception:
             logger.error(f"Cell {self.cell_index} failed in {fn_name}", exc_info=True)
             self._mark_as_errored()
@@ -160,8 +162,9 @@ class RayTrainCell:
 
     async def connect(self, critic_cell: "RayTrainCell"):
         critic_handles = critic_cell._get_actor_handles()
-        return await self._execute_raw("connect_actor_critic", compute_args=lambda i: critic_handles[i],
-                                       compute_kwargs=lambda _: {})
+        return await self._execute_raw(
+            "connect_actor_critic", compute_args=lambda i: critic_handles[i], compute_kwargs=lambda _: {}
+        )
 
     async def async_init(
         self,
@@ -216,16 +219,22 @@ class RayTrainCell:
                 return CellStatus(phase="Running", conditions=[CellCondition.allocated("True"), healthy])
 
             case _StateAllocatedUninitialized():
-                return CellStatus(phase="Running", conditions=[
-                    CellCondition.allocated("True"),
-                    CellCondition.healthy("True"),
-                ])
+                return CellStatus(
+                    phase="Running",
+                    conditions=[
+                        CellCondition.allocated("True"),
+                        CellCondition.healthy("True"),
+                    ],
+                )
 
             case _StateAllocatedErrored():
-                return CellStatus(phase="Running", conditions=[
-                    CellCondition.allocated("True"),
-                    CellCondition.healthy("False", reason="ExecutionErrored"),
-                ])
+                return CellStatus(
+                    phase="Running",
+                    conditions=[
+                        CellCondition.allocated("True"),
+                        CellCondition.healthy("False", reason="ExecutionErrored"),
+                    ],
+                )
 
             case _StatePending():
                 return CellStatus(phase="Pending", conditions=[CellCondition.allocated("False")])
