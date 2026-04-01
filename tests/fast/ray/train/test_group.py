@@ -605,7 +605,7 @@ class TestHeartbeatMonitor:
         group = await _make_alive_group(num_cells=2)
 
         for cell in group._cells:
-            await cell._health_checker._check_fn()
+            await cell.health_checker._check_fn()
 
         assert all(c.is_alive for c in group._cells)
 
@@ -619,8 +619,8 @@ class TestHeartbeatMonitor:
 
         # Step 2: Cell 1's checker raises, cell 0's passes
         with pytest.raises(RuntimeError, match="Heartbeat stale"):
-            await group._cells[1]._health_checker._check_fn()
-        await group._cells[0]._health_checker._check_fn()
+            await group._cells[1].health_checker._check_fn()
+        await group._cells[0].health_checker._check_fn()
 
     async def test_heartbeat_timeout_marks_errored(self):
         """When heartbeat call fails (actor unresponsive), cell is marked errored."""
@@ -630,16 +630,16 @@ class TestHeartbeatMonitor:
             ray.get(handle.set_heartbeat_fail.remote(True))
 
         with pytest.raises(RuntimeError, match="Injected heartbeat failure"):
-            await group._cells[0]._health_checker._check_fn()
+            await group._cells[0].health_checker._check_fn()
 
     async def test_pause_resume(self):
         """Pause/resume on cell propagates to its checker."""
         group = await _make_alive_group(num_cells=2)
 
         for cell in group._cells:
-            cell.pause_health_checker()
-        assert all(c._health_checker._paused for c in group._cells)
+            cell.pausehealth_checker()
+        assert all(c.health_checker._paused for c in group._cells)
 
         for cell in group._cells:
-            cell.resume_health_checker()
-        assert all(not c._health_checker._paused for c in group._cells)
+            cell.resumehealth_checker()
+        assert all(not c.health_checker._paused for c in group._cells)

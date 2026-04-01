@@ -39,7 +39,7 @@ class RayTrainCell:
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
-        self._health_checker: SimpleHealthChecker | None = None
+        self.health_checker: SimpleHealthChecker | None = None
         self.allocate_for_pending()
 
     # ------------------------ state transition ------------------------
@@ -101,25 +101,13 @@ class RayTrainCell:
         staleness: float,
         first_wait: float,
     ) -> None:
-        self._health_checker = _create_health_checker(
+        self.health_checker = _create_health_checker(
             cell=self,
             interval=interval,
             timeout=timeout,
             staleness=staleness,
             first_wait=first_wait,
         )
-
-    async def start_health_checker(self) -> None:
-        if self._health_checker is not None:
-            await self._health_checker.start()
-
-    def pause_health_checker(self) -> None:
-        if self._health_checker is not None:
-            self._health_checker.pause()
-
-    def resume_health_checker(self) -> None:
-        if self._health_checker is not None:
-            self._health_checker.resume()
 
     def _mark_as_errored(self) -> None:
         self._change_state(

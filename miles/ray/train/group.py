@@ -109,7 +109,8 @@ class RayTrainGroup:
         ]
         result = await asyncio.gather(*refs)
         for cell in self._cells:
-            await cell.start_health_checker()
+            if cell.health_checker is not None:
+                await cell.health_checker.start()
         return result
 
     async def train(self, rollout_id: int, rollout_data_ref):
@@ -129,11 +130,13 @@ class RayTrainGroup:
     async def onload(self):
         await self._broadcast_alive("wake_up")
         for cell in self._cells:
-            cell.resume_health_checker()
+            if cell.health_checker is not None:
+                cell.health_checker.resume()
 
     async def offload(self):
         for cell in self._cells:
-            cell.pause_health_checker()
+            if cell.health_checker is not None:
+                cell.health_checker.pause()
         await self._broadcast_alive("sleep")
 
     async def clear_memory(self):
