@@ -38,28 +38,26 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 
 
 def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
-    rank_entries = [(e.rank, e) for e in events]
-
     yield from _compare_flat_dicts(
         step=step,
         category="param",
-        entries=[(rank, e.param_hashes) for rank, e in rank_entries],
+        entries=[(e.rank, e.param_hashes) for e in events],
     )
 
     yield from _compare_flat_dicts(
         step=step,
         category="buffer",
-        entries=[(rank, e.buffer_hashes) for rank, e in rank_entries],
+        entries=[(e.rank, e.buffer_hashes) for e in events],
     )
 
     for opt_idx in range(len(events[0].optimizer_hashes)):
         flat_dicts = []
-        for rank, event in rank_entries:
-            assert opt_idx < len(event.optimizer_hashes), (
-                f"step {step} rank {rank}: expected optimizer_hashes[{opt_idx}] but only has {len(event.optimizer_hashes)}"
+        for e in events:
+            assert opt_idx < len(e.optimizer_hashes), (
+                f"step {step} rank {e.rank}: expected optimizer_hashes[{opt_idx}] but only has {len(e.optimizer_hashes)}"
             )
-            flat = _flatten_nested(event.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
-            flat_dicts.append((rank, flat))
+            flat = _flatten_nested(e.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
+            flat_dicts.append((e.rank, flat))
 
         yield from _compare_flat_dicts(
             step=step,
