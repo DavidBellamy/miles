@@ -76,10 +76,10 @@ class RayTrainGroup:
                 with_ref=with_ref,
                 cell_index=cell_index,
                 rollout_manager=rollout_manager,
-                actor_factory=lambda: allocate_gpus_for_actor(
+                actor_factory=lambda _pg=cell_pg: allocate_gpus_for_actor(
                     args=args,
                     gpus_per_cell=gpus_per_cell,
-                    pg=cell_pg,
+                    pg=_pg,
                     num_gpus_per_actor=num_gpus_per_actor,
                     indep_dp_store_addr=indep_dp_store_addr,
                 ),

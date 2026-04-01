@@ -715,7 +715,6 @@ class TestTrainRetry:
     async def test_retry_multiple_times_then_succeed(self):
         """DISCARDED 3 times, then NORMAL on 4th attempt."""
         group = await _make_alive_group(num_cells=2)
-        attempt_count = 0
 
         # Use a counter-based actor to track attempts
         await _set_all_train_return(group, TrainStepOutcome.DISCARDED_SHOULD_RETRY)
