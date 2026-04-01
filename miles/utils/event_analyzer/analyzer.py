@@ -40,8 +40,8 @@ def run_analysis(event_dir: Path) -> list[ChecksumMismatch]:
         logger.error(
             "Weight checksum mismatch at step %d: %s/%s diverged across ranks %s",
             m.step,
-            m.tensor_category,
-            m.tensor_name,
+            m.category,
+            m.key,
             m.cell_indices,
         )
 

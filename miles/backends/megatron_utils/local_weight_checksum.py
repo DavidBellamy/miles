@@ -10,7 +10,7 @@ import hashlib
 import logging
 from argparse import Namespace
 from collections.abc import Iterator, Sequence
-from typing import NamedTuple
+from typing import Any
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -18,7 +18,7 @@ from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import LocalWeightChecksumEvent
+from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo
 
 logger = logging.getLogger(__name__)
 
@@ -52,22 +52,15 @@ def _compute_weight_checksums(
     assert param_hashes, "No parameters found in model"
     buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
 
-    name_by_fp32_id = _build_name_by_fp32_id(model)
-    master_param_hashes, optimizer_state_hashes = _collect_master_and_optimizer_hashes(
-        optimizer=optimizer,
-        name_by_fp32_id=name_by_fp32_id,
-    )
-
-    assert master_param_hashes, "No master (fp32) params found — optimizer may not be initialized"
-    assert optimizer_state_hashes, "No optimizer states found — optimizer may not have stepped yet"
+    optimizer_hashes = _collect_optimizer_hashes(model=model, optimizer=optimizer)
+    assert optimizer_hashes, "No sub-optimizers found"
 
     return LocalWeightChecksumEvent(
         step=step,
         rank=rank,
         param_hashes=param_hashes,
         buffer_hashes=buffer_hashes,
-        master_param_hashes=master_param_hashes,
-        optimizer_state_hashes=optimizer_state_hashes,
+        optimizer_hashes=optimizer_hashes,
     )
 
 
@@ -81,65 +74,52 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
     return hashes
 
 
-class _MainParamId(NamedTuple):
-    tensor_id: int
+def _collect_optimizer_hashes(
+    model: Sequence[DDP],
+    optimizer: MegatronOptimizer,
+) -> list[OptimizerStateInfo]:
+    """Collect optimizer state snapshots with tensors replaced by hashes."""
+    param_names_by_index = _build_param_names_by_index(model)
+    result: list[OptimizerStateInfo] = []
 
-    @classmethod
-    def from_tensor(cls, tensor: torch.Tensor) -> "_MainParamId":
-        return cls(tensor_id=id(tensor))
+    for sub_opt in _iter_sub_optimizers(optimizer):
+        inner = sub_opt.optimizer
+        assert isinstance(inner, torch.optim.Optimizer), (
+            f"Expected torch.optim.Optimizer, got {type(inner)}"
+        )
+
+        sd = inner.state_dict()
+        hashed_sd = _transform_tensor_to_hash(sd)
+
+        result.append(OptimizerStateInfo(
+            param_names=param_names_by_index,
+            state_dict=hashed_sd,
+        ))
+
+    return result
 
 
-def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
-    """Build id(fp32_master_param) → name mapping from model parameters."""
-    name_map: dict[_MainParamId, str] = {}
+def _build_param_names_by_index(model: Sequence[DDP]) -> dict[int, str]:
+    """Build param index → name mapping matching torch optimizer's state_dict indexing."""
+    names: dict[int, str] = {}
+    idx = 0
     for pp_idx, model_chunk in enumerate(model):
         for name, param in model_chunk.named_parameters():
             assert param is not None, f"pp{pp_idx}.{name}: param is None"
-            main_param = getattr(param, "main_param", None)
-            assert main_param is not None, f"pp{pp_idx}.{name}: param has no main_param attribute"
-            name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
-    return name_map
+            names[idx] = f"pp{pp_idx}.{name}"
+            idx += 1
+    return names
 
 
-def _collect_master_and_optimizer_hashes(
-    optimizer: MegatronOptimizer,
-    name_by_fp32_id: dict[_MainParamId, str],
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Collect fp32 master weight hashes and optimizer state hashes via inner PyTorch optimizer."""
-    master_param_hashes: dict[str, str] = {}
-    optimizer_state_hashes: dict[str, str] = {}
-
-    for fp32_param, state in _iter_fp32_params_and_states(optimizer):
-        fp32_id = _MainParamId.from_tensor(fp32_param)
-        param_name = name_by_fp32_id.get(fp32_id)
-        assert param_name is not None, f"fp32 param id={fp32_id.tensor_id} not found in name mapping"
-
-        master_param_hashes[param_name] = _hash_tensor_sha256(fp32_param)
-
-        for state_key, state_val in sorted(state.items()):
-            if isinstance(state_val, torch.Tensor):
-                optimizer_state_hashes[f"{param_name}/{state_key}"] = _hash_tensor_sha256(state_val)
-
-    return master_param_hashes, optimizer_state_hashes
-
-
-def _iter_fp32_params_and_states(
-    optimizer: MegatronOptimizer,
-) -> Iterator[tuple[torch.Tensor, dict[str, torch.Tensor]]]:
-    """Yield (fp32_param, optimizer_state_dict) from all sub-optimizers.
-
-    Works uniformly for both Float16OptimizerWithFloat16Params and DistributedOptimizer,
-    because both place fp32 master params into inner optimizer's param_groups.
-    """
-    for sub_opt in _iter_sub_optimizers(optimizer):
-        inner = sub_opt.optimizer
-
-        for group in inner.param_groups:
-            for fp32_param in group["params"]:
-                assert fp32_param in inner.state, (
-                    f"fp32 param id={id(fp32_param)} has no optimizer state"
-                )
-                yield fp32_param, inner.state[fp32_param]
+def _transform_tensor_to_hash(obj: Any) -> Any:
+    """Recursively replace all tensors in a nested structure with their SHA-256 hashes."""
+    if isinstance(obj, torch.Tensor):
+        return _hash_tensor_sha256(obj)
+    if isinstance(obj, dict):
+        return {k: _transform_tensor_to_hash(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_transform_tensor_to_hash(v) for v in obj)
+    return obj
 
 
 def _iter_sub_optimizers(optimizer: MegatronOptimizer) -> Iterator[MegatronOptimizer]:

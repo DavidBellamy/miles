@@ -3,6 +3,7 @@
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Any
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import StrictBaseModel
@@ -12,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 class ChecksumMismatch(StrictBaseModel):
     step: int
-    tensor_category: str
-    tensor_name: str
+    category: str
+    key: str
     cell_indices: list[int]
-    hashes: list[str]
+    values: list[str]
 
 
 def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
@@ -37,59 +38,83 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        categories: list[tuple[str, Callable[[LocalWeightChecksumEvent], dict[str, str]]]] = [
-            ("param", lambda e: e.param_hashes),
-            ("buffer", lambda e: e.buffer_hashes),
-            ("master_param", lambda e: e.master_param_hashes),
-            ("optimizer_state", lambda e: e.optimizer_state_hashes),
-        ]
+        all_mismatches.extend(_compare_flat_dicts(
+            step=step,
+            category="param",
+            entries=[(rank, e.param_hashes) for rank, e in step_entries],
+        ))
+        all_mismatches.extend(_compare_flat_dicts(
+            step=step,
+            category="buffer",
+            entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
+        ))
 
-        for category_name, accessor in categories:
-            group = [(rank, accessor(entry)) for rank, entry in step_entries]
-            mismatches = _find_mismatches_in_group(
+        for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
+            flat_dicts = []
+            for rank, event in step_entries:
+                assert opt_idx < len(event.optimizer_hashes), (
+                    f"step {step} rank {rank}: expected optimizer_hashes[{opt_idx}] but only has {len(event.optimizer_hashes)}"
+                )
+                flat = _flatten_nested(event.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
+                flat_dicts.append((rank, flat))
+
+            all_mismatches.extend(_compare_flat_dicts(
                 step=step,
-                category=category_name,
-                entries=group,
-            )
-            all_mismatches.extend(mismatches)
+                category="optimizer",
+                entries=flat_dicts,
+            ))
 
     return all_mismatches
 
 
-def _find_mismatches_in_group(
+def _flatten_nested(obj: Any, *, prefix: str) -> dict[str, str]:
+    """Flatten a nested dict/list into a flat dict with dot-separated keys. Only keeps str leaf values (hashes)."""
+    result: dict[str, str] = {}
+
+    if isinstance(obj, dict):
+        for k, v in sorted(obj.items(), key=lambda x: str(x[0])):
+            result.update(_flatten_nested(v, prefix=f"{prefix}.{k}"))
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            result.update(_flatten_nested(v, prefix=f"{prefix}[{i}]"))
+    elif isinstance(obj, str):
+        result[prefix] = obj
+
+    return result
+
+
+def _compare_flat_dicts(
     step: int,
     category: str,
     entries: list[tuple[int, dict[str, str]]],
 ) -> list[ChecksumMismatch]:
-    """Compare hash dicts across replicas for a single (step, category) group."""
+    """Compare flat string dicts across replicas."""
     mismatches: list[ChecksumMismatch] = []
 
     all_keys: set[str] = set()
-    for _, hashes in entries:
-        all_keys.update(hashes.keys())
+    for _, d in entries:
+        all_keys.update(d.keys())
 
     for key in sorted(all_keys):
-        hash_by_rank: dict[str, list[int]] = defaultdict(list)
-        for rank, hashes in entries:
-            h = hashes.get(key, "<missing>")
-            hash_by_rank[h].append(rank)
+        value_by_rank: dict[str, list[int]] = defaultdict(list)
+        for rank, d in entries:
+            v = d.get(key, "<missing>")
+            value_by_rank[v].append(rank)
 
-        if len(hash_by_rank) > 1:
+        if len(value_by_rank) > 1:
             cell_indices: list[int] = []
-            hash_values: list[str] = []
-            for h, ranks in sorted(hash_by_rank.items(), key=lambda x: x[1][0]):
+            values: list[str] = []
+            for v, ranks in sorted(value_by_rank.items(), key=lambda x: x[1][0]):
                 for r in ranks:
                     cell_indices.append(r)
-                    hash_values.append(h)
+                    values.append(v)
 
-            mismatches.append(
-                ChecksumMismatch(
-                    step=step,
-                    tensor_category=category,
-                    tensor_name=key,
-                    cell_indices=cell_indices,
-                    hashes=hash_values,
-                )
-            )
+            mismatches.append(ChecksumMismatch(
+                step=step,
+                category=category,
+                key=key,
+                cell_indices=cell_indices,
+                values=values,
+            ))
 
     return mismatches

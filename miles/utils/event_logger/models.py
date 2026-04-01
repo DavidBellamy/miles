@@ -70,14 +70,19 @@ class CheckpointTransferCompletedEvent(EventBase):
     duration_seconds: float
 
 
+class OptimizerStateInfo(FrozenStrictBaseModel):
+    """Snapshot of one sub-optimizer's state with tensors replaced by hashes."""
+    param_names: dict[int, str]
+    state_dict: dict[str, Any]
+
+
 class LocalWeightChecksumEvent(EventBase):
     type: Literal["local_weight_checksum"] = "local_weight_checksum"
     step: int
     rank: int
     param_hashes: dict[str, str]
     buffer_hashes: dict[str, str]
-    master_param_hashes: dict[str, str]
-    optimizer_state_hashes: dict[str, str]
+    optimizer_hashes: list[OptimizerStateInfo]
 
 
 Event = Annotated[

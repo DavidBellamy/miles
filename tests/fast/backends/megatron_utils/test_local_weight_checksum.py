@@ -9,8 +9,9 @@ import torch
 from miles.backends.megatron_utils.local_weight_checksum import (
     dump_local_weight_checksums,
     _compute_weight_checksums,
+    _transform_tensor_to_hash,
 )
-from miles.utils.event_logger.logger import EventLogger, set_event_logger
+from miles.utils.event_logger.logger import EventLogger, read_events, set_event_logger
 from miles.utils.event_logger.models import LocalWeightChecksumEvent
 from miles.utils.process_identity import MainProcessIdentity
 
@@ -20,33 +21,41 @@ def _make_mock_model_chunk(
 ) -> MagicMock:
     """Create a mock DDP model chunk with given named parameters and buffers."""
     chunk = MagicMock()
-    chunk.named_parameters.return_value = sorted(params.items(), key=lambda x: x[0])
+
+    param_list = sorted(params.items(), key=lambda x: x[0])
+    for name, tensor in param_list:
+        tensor.main_param = tensor
+
+    chunk.named_parameters.return_value = param_list
     chunk.named_buffers.return_value = sorted((buffers or {}).items(), key=lambda x: x[0])
     return chunk
 
 
-def _make_mock_optimizer(
-    fp16_params: list[torch.nn.Parameter] | None = None,
-    fp32_params: list[torch.nn.Parameter] | None = None,
-    states: dict[torch.nn.Parameter, dict[str, torch.Tensor]] | None = None,
+def _make_mock_optimizer_with_state_dict(
+    params: list[torch.Tensor],
+    states: dict[int, dict[str, torch.Tensor]] | None = None,
 ) -> MagicMock:
-    """Create a mock optimizer with chained_optimizers supporting fp32 master weights."""
+    """Create a mock optimizer that has a torch.optim.Optimizer-like inner optimizer."""
+    inner = MagicMock(spec=torch.optim.Adam)
+    inner.param_groups = [{"params": params, "lr": 0.001}]
+
+    inner_state: dict[torch.Tensor, dict] = {}
+    sd_state: dict[int, dict] = {}
+    for i, p in enumerate(params):
+        s = (states or {}).get(i, {"step": torch.tensor(1)})
+        inner_state[p] = s
+        sd_state[i] = s
+    inner.state = inner_state
+    inner.state_dict.return_value = {
+        "state": sd_state,
+        "param_groups": [{"params": list(range(len(params))), "lr": 0.001}],
+    }
+
+    sub_opt = MagicMock()
+    sub_opt.optimizer = inner
+
     optimizer = MagicMock()
-
-    if fp16_params is None:
-        optimizer.chained_optimizers = []
-        return optimizer
-
-    chained = MagicMock()
-    chained.__class__ = type("Float16OptimizerWithFloat16Params", (), {})
-    chained.float16_groups = [fp16_params]
-    chained.fp32_from_float16_groups = [fp32_params or []]
-
-    inner_optimizer = MagicMock()
-    inner_optimizer.state = states or {}
-    chained.optimizer = inner_optimizer
-
-    optimizer.chained_optimizers = [chained]
+    optimizer.chained_optimizers = [sub_opt]
     return optimizer
 
 
@@ -57,9 +66,9 @@ class TestComputeWeightChecksums:
             "module.layers.1.weight": torch.randn(4, 4),
         }
         model = [_make_mock_model_chunk(params=params)]
-        optimizer = _make_mock_optimizer()
+        optimizer = _make_mock_optimizer_with_state_dict(params=list(params.values()))
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
 
         assert set(entry.param_hashes.keys()) == {
             "pp0.module.layers.0.weight",
@@ -70,10 +79,10 @@ class TestComputeWeightChecksums:
         tensor = torch.tensor([1.0, 2.0, 3.0])
         params = {"weight": tensor}
         model = [_make_mock_model_chunk(params=params)]
-        optimizer = _make_mock_optimizer()
+        optimizer = _make_mock_optimizer_with_state_dict(params=[tensor])
 
-        entry1 = _compute_weight_checksums(model=model, optimizer=optimizer)
-        entry2 = _compute_weight_checksums(model=model, optimizer=optimizer)
+        entry1 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+        entry2 = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
 
         assert entry1.param_hashes == entry2.param_hashes
 
@@ -82,10 +91,11 @@ class TestComputeWeightChecksums:
         tensor_b = torch.tensor([1.0, 2.0, 4.0])
         model_a = [_make_mock_model_chunk(params={"weight": tensor_a})]
         model_b = [_make_mock_model_chunk(params={"weight": tensor_b})]
-        optimizer = _make_mock_optimizer()
+        opt_a = _make_mock_optimizer_with_state_dict(params=[tensor_a])
+        opt_b = _make_mock_optimizer_with_state_dict(params=[tensor_b])
 
-        entry_a = _compute_weight_checksums(model=model_a, optimizer=optimizer)
-        entry_b = _compute_weight_checksums(model=model_b, optimizer=optimizer)
+        entry_a = _compute_weight_checksums(model=model_a, optimizer=opt_a, step=0, rank=0)
+        entry_b = _compute_weight_checksums(model=model_b, optimizer=opt_b, step=0, rank=0)
 
         assert entry_a.param_hashes["pp0.weight"] != entry_b.param_hashes["pp0.weight"]
 
@@ -93,71 +103,61 @@ class TestComputeWeightChecksums:
         params = {"weight": torch.randn(4, 4)}
         buffers = {"running_mean": torch.randn(4), "running_var": torch.randn(4)}
         model = [_make_mock_model_chunk(params=params, buffers=buffers)]
-        optimizer = _make_mock_optimizer()
+        optimizer = _make_mock_optimizer_with_state_dict(params=list(params.values()))
 
-        entry = _compute_weight_checksums(model=model, optimizer=optimizer)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
 
         assert "pp0.running_mean" in entry.buffer_hashes
         assert "pp0.running_var" in entry.buffer_hashes
-        assert len(entry.buffer_hashes["pp0.running_mean"]) == 64  # SHA-256 hex length
+        assert len(entry.buffer_hashes["pp0.running_mean"]) == 64
 
-    @patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params", create=True)
-    def test_master_param_hashing_with_mock_optimizer(self) -> None:
-        fp16_param = torch.nn.Parameter(torch.randn(4, 4))
-        fp16_param.main_param = MagicMock()
-        fp16_param.main_param._param_name = "pp0.layers.0.weight"
-
-        fp32_param = torch.nn.Parameter(torch.randn(4, 4))
-
-        chained = MagicMock()
-        chained.float16_groups = [[fp16_param]]
-        chained.fp32_from_float16_groups = [[fp32_param]]
-        chained.optimizer.state = {}
-
-        optimizer = MagicMock()
-        optimizer.chained_optimizers = [chained]
-
-        model = [_make_mock_model_chunk(params={"layers.0.weight": torch.randn(4, 4)})]
-
-        with patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
-            mock_cls.__instancecheck__ = lambda self, instance: instance is chained
-            entry = _compute_weight_checksums(model=model, optimizer=optimizer)
-
-        assert "pp0.layers.0.weight" in entry.master_param_hashes
-
-    @patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params", create=True)
-    def test_optimizer_state_hashing_exp_avg_and_exp_avg_sq(self) -> None:
-        fp16_param = torch.nn.Parameter(torch.randn(4, 4))
-        fp16_param.main_param = MagicMock()
-        fp16_param.main_param._param_name = "pp0.weight"
-
-        fp32_param = torch.nn.Parameter(torch.randn(4, 4))
+    def test_optimizer_state_dict_captured(self) -> None:
+        weight = torch.randn(4, 4)
         exp_avg = torch.randn(4, 4)
-        exp_avg_sq = torch.randn(4, 4)
 
-        chained = MagicMock()
-        chained.float16_groups = [[fp16_param]]
-        chained.fp32_from_float16_groups = [[fp32_param]]
-        chained.optimizer.state = {fp32_param: {"exp_avg": exp_avg, "exp_avg_sq": exp_avg_sq}}
+        model = [_make_mock_model_chunk(params={"weight": weight})]
+        optimizer = _make_mock_optimizer_with_state_dict(
+            params=[weight],
+            states={0: {"exp_avg": exp_avg, "step": torch.tensor(5)}},
+        )
 
-        optimizer = MagicMock()
-        optimizer.chained_optimizers = [chained]
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
 
-        model = [_make_mock_model_chunk(params={"weight": torch.randn(4, 4)})]
-
-        with patch("miles.backends.megatron_utils.local_weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
-            mock_cls.__instancecheck__ = lambda self, instance: instance is chained
-            entry = _compute_weight_checksums(model=model, optimizer=optimizer)
-
-        assert "pp0.weight/exp_avg" in entry.optimizer_state_hashes
-        assert "pp0.weight/exp_avg_sq" in entry.optimizer_state_hashes
+        assert len(entry.optimizer_hashes) == 1
+        info = entry.optimizer_hashes[0]
+        assert info.param_names[0] == "pp0.weight"
+        assert isinstance(info.state_dict["state"][0]["exp_avg"], str)
+        assert len(info.state_dict["state"][0]["exp_avg"]) == 64
 
 
-class TestComputeAndDumpWeightChecksums:
-    def test_does_nothing_when_disabled(self, tmp_path: Path) -> None:
+class TestTransformTensorToHash:
+    def test_replaces_tensor_with_hash(self) -> None:
+        t = torch.tensor([1.0, 2.0])
+        result = _transform_tensor_to_hash(t)
+        assert isinstance(result, str)
+        assert len(result) == 64
+
+    def test_preserves_non_tensor_values(self) -> None:
+        assert _transform_tensor_to_hash(42) == 42
+        assert _transform_tensor_to_hash("hello") == "hello"
+
+    def test_recurses_into_dict(self) -> None:
+        result = _transform_tensor_to_hash({"a": torch.tensor([1.0]), "b": 2})
+        assert isinstance(result["a"], str)
+        assert result["b"] == 2
+
+    def test_recurses_into_list(self) -> None:
+        result = _transform_tensor_to_hash([torch.tensor([1.0]), 3])
+        assert isinstance(result[0], str)
+        assert result[1] == 3
+
+
+class TestDumpLocalWeightChecksums:
+    def test_does_nothing_when_disabled(self) -> None:
         args = Namespace(save_local_weight_checksum=False)
         model = [_make_mock_model_chunk(params={})]
-        optimizer = _make_mock_optimizer()
+        optimizer = MagicMock()
+        optimizer.chained_optimizers = []
 
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
 
@@ -165,16 +165,15 @@ class TestComputeAndDumpWeightChecksums:
         event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
         set_event_logger(event_logger)
         try:
+            weight = torch.randn(2, 2)
             args = Namespace(save_local_weight_checksum=True)
-            model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
-            optimizer = _make_mock_optimizer()
+            model = [_make_mock_model_chunk(params={"w": weight})]
+            optimizer = _make_mock_optimizer_with_state_dict(params=[weight])
 
             with patch("miles.backends.megatron_utils.local_weight_checksum.torch.distributed.get_rank", return_value=7):
                 dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
             event_logger.close()
-
-            from miles.utils.event_logger.logger import read_events
 
             events = read_events(tmp_path)
             checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
