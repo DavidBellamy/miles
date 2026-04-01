@@ -39,7 +39,7 @@ class TrainRayActor(RayActor):
         indep_dp_store_addr: str,
         cell_index: int,
     ):
-        configure_logger(args, source=TrainProcessIdentity(cell_index=cell_index, rank_within_cell=rank))
+        configure_logger(args, source=TrainProcessIdentity(component=role, cell_index=cell_index, rank_within_cell=rank))
         self.args = args
 
         self._heartbeat = SimpleHeartbeat()
