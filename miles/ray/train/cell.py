@@ -172,6 +172,8 @@ class RayTrainCell:
                 self._mark_as_errored()
             raise
 
+    # ------------------------ TODO: move these methods up and down ------------------------
+
     async def connect(self, critic_cell: "RayTrainCell") -> list:
         critic_handles = critic_cell._get_actor_handles()
         return await self._execute_raw(
