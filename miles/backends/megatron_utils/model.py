@@ -323,7 +323,7 @@ def forward_only(
     return rollout_data
 
 
-class StepOutcome(StrEnum):
+class TrainStepOutcome(StrEnum):
     COMMITTED = auto()
     DISCARDED = auto()
 
@@ -338,7 +338,7 @@ def train_one_step(
     opt_param_scheduler: OptimizerParamScheduler,
     num_microbatches: int,
     parallel_state: ParallelState,
-) -> tuple[dict[str, float], float, StepOutcome]:
+) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
 
     Runs forward/backward over ``num_microbatches``, applies optimizer step and
@@ -466,26 +466,26 @@ def train_one_step(
         forward_only=False,
     )
 
-    outcome = StepOutcome.COMMITTED
+    outcome = TrainStepOutcome.COMMITTED
     grad_norm = None
     if parallel_state.indep_dp.size > 1:
         try:
             _allreduce_grads_across_replicas(args, model, parallel_state)
         except Exception:
             logger.exception("Gradient allreduce across replicas failed, discarding step")
-            outcome = StepOutcome.DISCARDED
+            outcome = TrainStepOutcome.DISCARDED
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
         found_inf_flag = optimizer.prepare_grads()
         if found_inf_flag:
-            outcome = StepOutcome.DISCARDED
+            outcome = TrainStepOutcome.DISCARDED
         else:
             grad_norm = optimizer.get_grad_norm()
             if isinstance(grad_norm, torch.Tensor):
                 if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                    outcome = StepOutcome.DISCARDED
+                    outcome = TrainStepOutcome.DISCARDED
             else:
                 if math.isnan(grad_norm) or math.isinf(grad_norm):
-                    outcome = StepOutcome.DISCARDED
+                    outcome = TrainStepOutcome.DISCARDED
 
     # CI check: verify only MTP parameters have non-zero gradients when truncation happens
     # This check must happen before optimizer.step() as gradients may be modified during step
@@ -495,7 +495,7 @@ def train_one_step(
 
         check_mtp_only_grad(model, step_id)
 
-    if outcome == StepOutcome.COMMITTED:
+    if outcome == TrainStepOutcome.COMMITTED:
         # Update parameters.
         update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
 
@@ -550,7 +550,7 @@ def train(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
-) -> StepOutcome:
+) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
 
     The model is switched to train mode, training hooks are configured, and
@@ -629,7 +629,7 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
-    rollout_outcome = StepOutcome.COMMITTED
+    train_step_outcome = TrainStepOutcome.COMMITTED
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
@@ -647,9 +647,9 @@ def train(
             parallel_state,
         )
 
-        if step_outcome == StepOutcome.DISCARDED:
+        if step_outcome == TrainStepOutcome.DISCARDED:
             logger.warning(f"Step {step_id} discarded, stopping remaining steps in rollout {rollout_id}")
-            rollout_outcome = StepOutcome.DISCARDED
+            train_step_outcome = TrainStepOutcome.DISCARDED
             break
 
         if step_id == 0:
@@ -726,7 +726,7 @@ def train(
     if pre_hook_enabled:
         disable_forward_pre_hook(model)
 
-    return rollout_outcome
+    return train_step_outcome
 
 
 def save(
