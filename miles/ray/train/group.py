@@ -121,9 +121,12 @@ class RayTrainGroup:
         await self._refresh_cells()
         results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
 
+        # NOTE: If some cells errors + all other cells claim normal, we do *not* retry
+        #       This may happen when some cells fails *after* exchanging gradients w/ others
         ok = all(
-            (not isinstance(cell_results, BaseException)) and all(r == TrainStepOutcome.NORMAL for r in cell_results)
+            all(r == TrainStepOutcome.NORMAL for r in cell_results)
             for cell_results in results
+            if not isinstance(cell_results, BaseException)
         )
         if not ok:
             logger.warning("Not all actors returned NORMAL, retrying train")
