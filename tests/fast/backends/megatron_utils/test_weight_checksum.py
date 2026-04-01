@@ -9,8 +9,8 @@ import torch
 from miles.backends.megatron_utils.weight_checksum import (
     WeightChecksumEntry,
     compute_and_dump_weight_checksums,
-    compute_weight_checksums,
-    dump_weight_checksums,
+    _compute_weight_checksums,
+    _dump_weight_checksums,
 )
 from miles.utils.event_logger.logger import EventLogger, set_event_logger
 from miles.utils.event_logger.models import WeightChecksumDumped
@@ -61,7 +61,7 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params)]
         optimizer = _make_mock_optimizer()
 
-        entry = compute_weight_checksums(model=model, optimizer=optimizer)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert set(entry.param_hashes.keys()) == {
             "pp0.module.layers.0.weight",
@@ -74,8 +74,8 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params)]
         optimizer = _make_mock_optimizer()
 
-        entry1 = compute_weight_checksums(model=model, optimizer=optimizer)
-        entry2 = compute_weight_checksums(model=model, optimizer=optimizer)
+        entry1 = _compute_weight_checksums(model=model, optimizer=optimizer)
+        entry2 = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert entry1.param_hashes == entry2.param_hashes
 
@@ -86,8 +86,8 @@ class TestComputeWeightChecksums:
         model_b = [_make_mock_model_chunk(params={"weight": tensor_b})]
         optimizer = _make_mock_optimizer()
 
-        entry_a = compute_weight_checksums(model=model_a, optimizer=optimizer)
-        entry_b = compute_weight_checksums(model=model_b, optimizer=optimizer)
+        entry_a = _compute_weight_checksums(model=model_a, optimizer=optimizer)
+        entry_b = _compute_weight_checksums(model=model_b, optimizer=optimizer)
 
         assert entry_a.param_hashes["pp0.weight"] != entry_b.param_hashes["pp0.weight"]
 
@@ -97,7 +97,7 @@ class TestComputeWeightChecksums:
         model = [_make_mock_model_chunk(params=params, buffers=buffers)]
         optimizer = _make_mock_optimizer()
 
-        entry = compute_weight_checksums(model=model, optimizer=optimizer)
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert "pp0.running_mean" in entry.buffer_hashes
         assert "pp0.running_var" in entry.buffer_hashes
@@ -123,7 +123,7 @@ class TestComputeWeightChecksums:
 
         with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
-            entry = compute_weight_checksums(model=model, optimizer=optimizer)
+            entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert "pp0.layers.0.weight" in entry.master_param_hashes
 
@@ -149,7 +149,7 @@ class TestComputeWeightChecksums:
 
         with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
-            entry = compute_weight_checksums(model=model, optimizer=optimizer)
+            entry = _compute_weight_checksums(model=model, optimizer=optimizer)
 
         assert "pp0.weight/exp_avg" in entry.optimizer_state_hashes
         assert "pp0.weight/exp_avg_sq" in entry.optimizer_state_hashes
@@ -167,7 +167,7 @@ class TestDumpWeightChecksums:
                 optimizer_state_hashes={},
             )
 
-            dump_weight_checksums(entry=entry, step=42, rank=3)
+            _dump_weight_checksums(entry=entry, step=42, rank=3)
             event_logger.close()
 
             from miles.utils.event_logger.logger import read_events
@@ -192,7 +192,7 @@ class TestDumpWeightChecksums:
                 optimizer_state_hashes={"pp0.weight/exp_avg": "eee"},
             )
 
-            dump_weight_checksums(entry=entry, step=10, rank=0)
+            _dump_weight_checksums(entry=entry, step=10, rank=0)
             event_logger.close()
 
             from miles.utils.event_logger.logger import read_events

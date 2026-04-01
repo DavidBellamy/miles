@@ -18,6 +18,44 @@ class ChecksumMismatch(StrictBaseModel):
     hashes: list[str]
 
 
+def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
+    """Verify cross-replica weight checksum consistency from events.
+
+    Returns:
+        List of mismatches found. Empty list means all replicas match.
+    """
+    checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+    if not checksum_events:
+        return []
+
+    entries_by_step: dict[int, list[tuple[int, WeightChecksumDumped]]] = defaultdict(list)
+    for event in checksum_events:
+        entries_by_step[event.step].append((event.rank, event))
+
+    all_mismatches: list[ChecksumMismatch] = []
+
+    for step in sorted(entries_by_step.keys()):
+        step_entries = entries_by_step[step]
+
+        categories: list[tuple[str, Callable[[WeightChecksumDumped], dict[str, str]]]] = [
+            ("param", lambda e: e.param_hashes),
+            ("buffer", lambda e: e.buffer_hashes),
+            ("master_param", lambda e: e.master_param_hashes),
+            ("optimizer_state", lambda e: e.optimizer_state_hashes),
+        ]
+
+        for category_name, accessor in categories:
+            group = [(rank, accessor(entry)) for rank, entry in step_entries]
+            mismatches = _find_mismatches_in_group(
+                step=step,
+                category=category_name,
+                entries=group,
+            )
+            all_mismatches.extend(mismatches)
+
+    return all_mismatches
+
+
 def _find_mismatches_in_group(
     step: int,
     category: str,
@@ -55,41 +93,3 @@ def _find_mismatches_in_group(
             )
 
     return mismatches
-
-
-def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
-    """Verify cross-replica weight checksum consistency from events.
-
-    Returns:
-        List of mismatches found. Empty list means all replicas match.
-    """
-    checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
-    if not checksum_events:
-        return []
-
-    entries_by_step: dict[int, list[tuple[int, WeightChecksumDumped]]] = defaultdict(list)
-    for event in checksum_events:
-        entries_by_step[event.step].append((event.rank, event))
-
-    all_mismatches: list[ChecksumMismatch] = []
-
-    for step in sorted(entries_by_step.keys()):
-        step_entries = entries_by_step[step]
-
-        categories: list[tuple[str, Callable[[WeightChecksumDumped], dict[str, str]]]] = [
-            ("param", lambda e: e.param_hashes),
-            ("buffer", lambda e: e.buffer_hashes),
-            ("master_param", lambda e: e.master_param_hashes),
-            ("optimizer_state", lambda e: e.optimizer_state_hashes),
-        ]
-
-        for category_name, accessor in categories:
-            group = [(rank, accessor(entry)) for rank, entry in step_entries]
-            mismatches = _find_mismatches_in_group(
-                step=step,
-                category=category_name,
-                entries=group,
-            )
-            all_mismatches.extend(mismatches)
-
-    return all_mismatches

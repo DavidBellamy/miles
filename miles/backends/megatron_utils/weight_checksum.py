@@ -35,18 +35,16 @@ def compute_and_dump_weight_checksums(
     if not args.save_local_weight_checksum:
         return
 
-    entry = compute_weight_checksums(model=model, optimizer=optimizer)
+    entry = _compute_weight_checksums(model=model, optimizer=optimizer)
     rank: int = torch.distributed.get_rank()
 
-    dump_weight_checksums(entry=entry, step=step, rank=rank)
+    _dump_weight_checksums(entry=entry, step=step, rank=rank)
 
 
-def compute_weight_checksums(
+def _compute_weight_checksums(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
 ) -> WeightChecksumEntry:
-    """Compute SHA-256 checksums of all model weights, buffers, master params, and optimizer states."""
-
     master_param_hashes: dict[str, str] = {}
     optimizer_state_hashes: dict[str, str] = {}
 
@@ -69,7 +67,7 @@ def compute_weight_checksums(
     )
 
 
-def dump_weight_checksums(
+def _dump_weight_checksums(
     entry: WeightChecksumEntry,
     step: int,
     rank: int,
