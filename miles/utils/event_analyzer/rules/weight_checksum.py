@@ -1,13 +1,10 @@
 """Rule: cross-replica weight checksum consistency."""
 
-import logging
 from collections import defaultdict
 from typing import Any
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
-
-logger = logging.getLogger(__name__)
 
 
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
@@ -37,12 +34,16 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        for category, accessor in [("param", "param_hashes"), ("buffer", "buffer_hashes")]:
-            all_mismatches.extend(_compare_flat_dicts(
-                step=step,
-                category=category,
-                entries=[(rank, getattr(e, accessor)) for rank, e in step_entries],
-            ))
+        all_mismatches.extend(_compare_flat_dicts(
+            step=step,
+            category="param",
+            entries=[(rank, e.param_hashes) for rank, e in step_entries],
+        ))
+        all_mismatches.extend(_compare_flat_dicts(
+            step=step,
+            category="buffer",
+            entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
+        ))
 
         for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
             flat_dicts = []
@@ -62,20 +63,21 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
     return all_mismatches
 
 
-def _flatten_nested(obj: Any, *, prefix: str) -> dict[str, str]:
+def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = None) -> dict[str, str]:
     """Flatten a nested dict/list into a flat dict with dot-separated keys. Only keeps str leaf values (hashes)."""
-    result: dict[str, str] = {}
+    if _result is None:
+        _result = {}
 
     if isinstance(obj, dict):
         for k, v in sorted(obj.items(), key=lambda x: str(x[0])):
-            result.update(_flatten_nested(v, prefix=f"{prefix}.{k}"))
+            _flatten_nested(v, prefix=f"{prefix}.{k}", _result=_result)
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
-            result.update(_flatten_nested(v, prefix=f"{prefix}[{i}]"))
+            _flatten_nested(v, prefix=f"{prefix}[{i}]", _result=_result)
     elif isinstance(obj, str):
-        result[prefix] = obj
+        _result[prefix] = obj
 
-    return result
+    return _result
 
 
 def _compare_flat_dicts(
