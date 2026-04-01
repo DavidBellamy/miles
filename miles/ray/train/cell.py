@@ -177,7 +177,7 @@ class RayTrainCell:
         self._state = fn()
         logger.info(f"{debug_name} end {self.cell_index=} new={self._state}")
 
-    # ------------------------ forward calls to actors ------------------------
+    # ------------------------ API :: directly forward calls to actors ------------------------
 
     async def execute(self, fn_name: str, *args, mark_errored_on_failure: bool = True, **kwargs) -> list:
         return await self._execute_raw(
