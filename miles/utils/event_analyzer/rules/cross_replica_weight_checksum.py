@@ -76,8 +76,8 @@ def _compare_flat_dicts(
                 key=key,
                 label_a=label_a,
                 label_b=label_b,
-                value_a=value_a,
-                value_b=value_b,
+                value_a=str(value_a),
+                value_b=str(value_b),
             )
 
 

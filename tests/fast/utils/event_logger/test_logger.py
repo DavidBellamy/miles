@@ -56,7 +56,7 @@ class TestEventLoggerAutoFillsMetadata:
 
         line = (tmp_path / "events.jsonl").read_text().strip()
         parsed = json.loads(line)
-        ts = datetime.fromisoformat(parsed["timestamp"])
+        ts = datetime.fromisoformat(parsed["timestamp"].replace("Z", "+00:00"))
         assert before <= ts <= after
 
     def test_source_auto_filled(self, tmp_path: Path) -> None:

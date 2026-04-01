@@ -80,7 +80,8 @@ class TestCheck:
         mismatches = check(events)
 
         assert len(mismatches) >= 1
-        assert all("step1" in m.value_a or "step1" in m.value_b for m in mismatches)
+        for m in mismatches:
+            assert "step_1/" in m.label_a or "step_1/" in m.label_b
 
     def test_empty_events_no_mismatches(self) -> None:
         assert check([]) == []
