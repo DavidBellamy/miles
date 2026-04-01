@@ -1,7 +1,7 @@
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Self, TextIO
+from typing import TextIO
 
 from miles.utils.event_logger.models import EventBase
 
@@ -39,9 +39,3 @@ class EventLogger:
 
     def close(self) -> None:
         self._file.close()
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        self.close()
