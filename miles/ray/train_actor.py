@@ -41,7 +41,9 @@ class TrainRayActor(RayActor):
         role: Literal["actor", "critic"],
         cell_index: int,
     ):
-        configure_logger(args, source=TrainProcessIdentity(component=role, cell_index=cell_index, rank_within_cell=rank))
+        configure_logger(
+            args, source=TrainProcessIdentity(component=role, cell_index=cell_index, rank_within_cell=rank)
+        )
         self.args = args
 
         self._heartbeat = SimpleHeartbeat()

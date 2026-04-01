@@ -1,10 +1,6 @@
 """Tests for process_identity module."""
 
-from miles.utils.process_identity import (
-    MainProcessIdentity,
-    RolloutManagerProcessIdentity,
-    TrainProcessIdentity,
-)
+from miles.utils.process_identity import MainProcessIdentity, RolloutManagerProcessIdentity, TrainProcessIdentity
 
 
 class TestProcessIdentityToName:

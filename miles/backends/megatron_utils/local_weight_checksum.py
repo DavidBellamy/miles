@@ -18,7 +18,7 @@ from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo, LocalWeightChecksumState
+from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState, OptimizerStateInfo
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,7 @@ def dump_local_weight_checksums(
     if not args.save_local_weight_checksum:
         return
 
-    assert is_event_logger_initialized(), (
-        "save_local_weight_checksum is enabled but EventLogger is not initialized"
-    )
+    assert is_event_logger_initialized(), "save_local_weight_checksum is enabled but EventLogger is not initialized"
 
     event_logger = get_event_logger()
     source = event_logger.source
@@ -104,18 +102,18 @@ def _collect_optimizer_hashes(
 
     for sub_opt in _iter_sub_optimizers(optimizer):
         inner = sub_opt.optimizer
-        assert isinstance(inner, torch.optim.Optimizer), (
-            f"Expected torch.optim.Optimizer, got {type(inner)}"
-        )
+        assert isinstance(inner, torch.optim.Optimizer), f"Expected torch.optim.Optimizer, got {type(inner)}"
 
         param_names = _build_param_names_for_optimizer(inner, name_by_tensor_id=name_by_tensor_id)
         sd = inner.state_dict()
         hashed_sd = _transform_tensor_to_hash(sd)
 
-        result.append(OptimizerStateInfo(
-            param_names=param_names,
-            state_dict=hashed_sd,
-        ))
+        result.append(
+            OptimizerStateInfo(
+                param_names=param_names,
+                state_dict=hashed_sd,
+            )
+        )
 
     return result
 

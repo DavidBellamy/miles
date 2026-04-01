@@ -1,15 +1,9 @@
-import json
 from datetime import datetime, timezone
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from miles.utils.event_logger.models import (
-    CellStateChangedEvent,
-    Event,
-    GenericEvent,
-    QuorumChangedEvent,
-)
+from miles.utils.event_logger.models import CellStateChangedEvent, Event, GenericEvent, QuorumChangedEvent
 
 _event_adapter = TypeAdapter(Event)
 

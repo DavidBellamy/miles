@@ -1,11 +1,6 @@
 """Tests for event_analyzer rules/weight_checksum."""
 
-from miles.utils.event_analyzer.rules.cross_replica_weight_checksum import (
-    ChecksumMismatchIssue,
-    _flatten_event,
-    _flatten_nested,
-    check,
-)
+from miles.utils.event_analyzer.rules.cross_replica_weight_checksum import _flatten_event, _flatten_nested, check
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState, OptimizerStateInfo
 
 
@@ -23,12 +18,16 @@ def _make_event(
         state=LocalWeightChecksumState(
             param_hashes=param_hashes or {},
             buffer_hashes=buffer_hashes or {},
-            optimizer_hashes=[
-                OptimizerStateInfo(
-                    param_names={0: "pp0.weight"},
-                    state_dict=optimizer_state_dict or {},
-                ),
-            ] if optimizer_state_dict is not None else [],
+            optimizer_hashes=(
+                [
+                    OptimizerStateInfo(
+                        param_names={0: "pp0.weight"},
+                        state_dict=optimizer_state_dict or {},
+                    ),
+                ]
+                if optimizer_state_dict is not None
+                else []
+            ),
         ),
     )
 

@@ -7,7 +7,6 @@ from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
-
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
     key: str
     label_a: str

@@ -72,6 +72,7 @@ class CheckpointTransferCompletedEvent(EventBase):
 
 class OptimizerStateInfo(FrozenStrictBaseModel):
     """Snapshot of one sub-optimizer's state with tensors replaced by hashes."""
+
     param_names: dict[int, str]
     state_dict: dict[str, Any]
 
@@ -107,11 +108,13 @@ Event = Annotated[
 
 def _to_snake_case(name: str) -> str:
     import re
+
     return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
 
 
 def _check_event_naming() -> None:
     import typing
+
     event_types = typing.get_args(typing.get_args(Event)[0])
     for cls in event_types:
         type_value = cls.model_fields["type"].default

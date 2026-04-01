@@ -14,7 +14,6 @@ from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.health_checker import SimpleHealthCheckerConfig
-from miles.utils.logging_utils import configure_logger
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.misc import load_function
 
@@ -1822,7 +1821,9 @@ def miles_validate_args(args):
         args.save_local_weight_checksum = True
         args.enable_event_analyzer = True
         args.enable_witness = True
-        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True, save_local_weight_checksum=True, enable_event_analyzer=True, enable_witness=True")
+        logger.info(
+            "train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True, save_local_weight_checksum=True, enable_event_analyzer=True, enable_witness=True"
+        )
 
     if args.indep_dp:
         per_replica_size = compute_megatron_world_size_except_dp(args)

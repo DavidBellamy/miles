@@ -9,9 +9,9 @@ from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.ray.train.actor_factory import allocate_gpus_for_actor
 from miles.ray.train.cell import RayTrainCell, create_trainer_cell_health_checker
 from miles.utils.async_utils import AsyncioGatherUtils
+from miles.utils.event_analyzer.analyzer import run_analysis_from_args
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
-from miles.utils.event_analyzer.analyzer import run_analysis_from_args
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
 

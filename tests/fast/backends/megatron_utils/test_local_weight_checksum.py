@@ -2,19 +2,19 @@
 
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import torch
 
 from miles.backends.megatron_utils.local_weight_checksum import (
-    dump_local_weight_checksums,
     _compute_weight_checksums,
     _transform_tensor_to_hash,
+    dump_local_weight_checksums,
 )
 from miles.utils.event_logger.logger import EventLogger, read_events, set_event_logger
 from miles.utils.event_logger.models import LocalWeightChecksumEvent
-from miles.utils.process_identity import MainProcessIdentity, TrainProcessIdentity
+from miles.utils.process_identity import TrainProcessIdentity
 
 
 def _make_mock_model_chunk(
@@ -152,7 +152,6 @@ class TestTransformTensorToHash:
         assert isinstance(result[0], str)
         assert result[1] == 3
 
-
     def test_multiple_pp_chunks_produce_distinct_prefixes(self) -> None:
         params_0 = {"embed.weight": torch.randn(4, 4)}
         params_1 = {"head.weight": torch.randn(4, 4)}
@@ -178,6 +177,7 @@ class TestTransformTensorToHash:
 class TestFailFastAssertions:
     def test_assert_event_logger_initialized_when_enabled(self) -> None:
         import miles.utils.event_logger.logger as mod
+
         original = mod._event_logger
         mod._event_logger = None
         try:

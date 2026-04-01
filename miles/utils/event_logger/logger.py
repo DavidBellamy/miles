@@ -67,7 +67,7 @@ def read_events(log_dir: Path) -> list[Event]:
         return events
 
     for jsonl_path in jsonl_files:
-        with open(jsonl_path, "r", encoding="utf-8") as f:
+        with open(jsonl_path, encoding="utf-8") as f:
             for line_num, raw_line in enumerate(f, start=1):
                 raw_line = raw_line.strip()
                 if not raw_line:
