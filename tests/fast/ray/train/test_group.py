@@ -641,31 +641,37 @@ _ERR = RuntimeError("boom")
 _ERR2 = ValueError("boom2")
 
 
-class TestDoesTrainOneAttemptSucceed:
+class TestCheckTrainOneAttempt:
+    """_check_train_one_attempt raises ValueError when any non-exception cell has DISCARDED."""
+
     @pytest.mark.parametrize(
-        "results, expected",
+        "results",
         [
-            # all normal
-            ([[NORMAL]], True),  # single cell, single actor
-            ([[NORMAL, NORMAL], [NORMAL]], True),  # multi cell, multi actor
-            # all discarded
-            ([[DISCARDED]], False),  # single cell
-            ([[DISCARDED], [DISCARDED, DISCARDED]], False),  # multi cell
-            # mixed outcomes
-            ([[NORMAL, DISCARDED]], False),  # mixed within same cell
-            ([[NORMAL], [DISCARDED]], False),  # mixed across cells
-            # exception cells are filtered out; remaining cells decide
-            ([_ERR], True),  # all errored → vacuously True
-            ([_ERR, [NORMAL, NORMAL]], True),  # errored + normal → True
-            ([_ERR, [DISCARDED]], False),  # errored + discarded → False
-            ([_ERR, _ERR2], True),  # multiple errored, no successful → vacuously True
-            # edge cases
-            ([], True),  # no cells at all → vacuously True
-            ([[]], True),  # cell with empty actor list → vacuously True
+            [[NORMAL]],  # single cell, single actor
+            [[NORMAL, NORMAL], [NORMAL]],  # multi cell, multi actor
+            [_ERR],  # all errored → vacuously ok
+            [_ERR, [NORMAL, NORMAL]],  # errored + normal → ok
+            [_ERR, _ERR2],  # multiple errored, no successful → vacuously ok
+            [],  # no cells at all → vacuously ok
+            [[]],  # cell with empty actor list → vacuously ok
         ],
     )
-    def test_outcomes(self, results, expected):
-        assert RayTrainGroup._check_train_one_attempt(results) is expected
+    def test_no_retry_when_no_discarded(self, results):
+        RayTrainGroup._check_train_one_attempt(results)  # should not raise
+
+    @pytest.mark.parametrize(
+        "results",
+        [
+            [[DISCARDED]],  # single cell
+            [[DISCARDED], [DISCARDED, DISCARDED]],  # multi cell
+            [[NORMAL, DISCARDED]],  # mixed within same cell
+            [[NORMAL], [DISCARDED]],  # mixed across cells
+            [_ERR, [DISCARDED]],  # errored + discarded → retry
+        ],
+    )
+    def test_retry_when_discarded_exists(self, results):
+        with pytest.raises(ValueError, match="DISCARDED_SHOULD_RETRY"):
+            RayTrainGroup._check_train_one_attempt(results)
 
 
 async def _set_all_train_return(group: RayTrainGroup, value: TrainStepOutcome) -> None:
