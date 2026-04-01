@@ -3,6 +3,7 @@ import logging
 import os
 import random
 from datetime import timedelta
+from typing import Literal
 
 import ray
 import torch
@@ -37,6 +38,7 @@ class TrainRayActor(RayActor):
         master_addr,
         master_port,
         indep_dp_store_addr: str,
+        role: Literal["actor", "critic"],
         cell_index: int,
     ):
         configure_logger(args, source=TrainProcessIdentity(component=role, cell_index=cell_index, rank_within_cell=rank))
