@@ -14,10 +14,10 @@ pytestmark = pytest.mark.asyncio
 def _make_mock_args(*, indep_dp: bool = True) -> MagicMock:
     args = MagicMock()
     args.indep_dp = indep_dp
-    args.trainer_heartbeat_interval = 30.0
-    args.trainer_heartbeat_timeout = 10.0
-    args.trainer_heartbeat_staleness = 90.0
-    args.trainer_heartbeat_first_wait = 300.0
+    args.trainer_heartbeat_checker_interval = 30.0
+    args.trainer_heartbeat_checker_timeout = 10.0
+    args.trainer_heartbeat_checker_staleness = 90.0
+    args.trainer_heartbeat_checker_first_wait = 300.0
     return args
 
 
@@ -604,58 +604,49 @@ class TestHeartbeatMonitor:
         """When heartbeat returns recent timestamp, cells stay alive."""
         group = await _make_alive_group(num_cells=2)
 
-        await group._heartbeat_monitor.check()
+        # Step 1: Invoke each per-cell checker
+        for checker in group._heartbeat_monitor._checkers:
+            await checker._check_fn()
 
+        # Step 2: All cells alive
         assert all(c.is_alive for c in group._cells)
 
     async def test_heartbeat_stale_timestamp_marks_errored(self):
         """When heartbeat returns old timestamp, cell is marked errored."""
         group = await _make_alive_group(num_cells=2)
-        group._heartbeat_monitor._staleness = 1.0
-        group._heartbeat_monitor._timeout = 5.0
 
         # Step 1: Make cell 1's timestamp very old
         for handle in group._cells[1]._get_actor_handles():
             ray.get(handle.set_last_active_timestamp.remote(0.0))
 
-        # Step 2: Check heartbeats
-        await group._heartbeat_monitor.check()
+        # Step 2: Check cell 1's checker — should raise (stale)
+        with pytest.raises(RuntimeError, match="Heartbeat stale"):
+            await group._heartbeat_monitor._checkers[1]._check_fn()
 
-        # Step 3: Cell 1 errored, cell 0 alive
-        assert group._cells[0].is_alive
-        assert group._cells[1].is_errored
+        # Step 3: Check cell 0's checker — should pass
+        await group._heartbeat_monitor._checkers[0]._check_fn()
 
     async def test_heartbeat_timeout_marks_errored(self):
         """When heartbeat call fails (actor unresponsive), cell is marked errored."""
         group = await _make_alive_group(num_cells=2)
-        group._heartbeat_monitor._staleness = 90.0
-        group._heartbeat_monitor._timeout = 5.0
 
         # Step 1: Make cell 0's heartbeat fail
         for handle in group._cells[0]._get_actor_handles():
             ray.get(handle.set_heartbeat_fail.remote(True))
 
-        # Step 2: Check heartbeats
-        await group._heartbeat_monitor.check()
+        # Step 2: Check cell 0's checker — should raise
+        with pytest.raises(RuntimeError, match="Injected heartbeat failure"):
+            await group._heartbeat_monitor._checkers[0]._check_fn()
 
-        # Step 3: Cell 0 errored, cell 1 alive
-        assert group._cells[0].is_errored
-        assert group._cells[1].is_alive
-
-    async def test_pause_resume_prevents_false_positive(self):
-        """Paused heartbeat monitor does not check, so stale timestamps don't trigger errors."""
+    async def test_pause_resume_all_checkers(self):
+        """Pause/resume propagates to all per-cell checkers."""
         group = await _make_alive_group(num_cells=2)
 
-        # Step 1: Make cell 1's timestamp very old
-        for handle in group._cells[1]._get_actor_handles():
-            ray.get(handle.set_last_active_timestamp.remote(0.0))
-
-        # Step 2: Pause heartbeat
         monitor = group._heartbeat_monitor
         assert monitor is not None
-        monitor.pause()
-        assert monitor._paused
 
-        # Step 3: Resume
+        monitor.pause()
+        assert all(c._paused for c in monitor._checkers)
+
         monitor.resume()
-        assert not monitor._paused
+        assert all(not c._paused for c in monitor._checkers)

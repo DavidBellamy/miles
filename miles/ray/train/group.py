@@ -86,10 +86,10 @@ class RayTrainGroup:
         if len(self._cells) > 1:
             self._heartbeat_monitor = TrainerHeartbeatMonitor(
                 cells=self._cells,
-                first_wait=args.trainer_heartbeat_first_wait,
-                interval=args.trainer_heartbeat_interval,
-                timeout=args.trainer_heartbeat_timeout,
-                staleness=args.trainer_heartbeat_staleness,
+                first_wait=args.trainer_heartbeat_checker_first_wait,
+                interval=args.trainer_heartbeat_checker_interval,
+                timeout=args.trainer_heartbeat_checker_timeout,
+                staleness=args.trainer_heartbeat_checker_staleness,
             )
 
     async def _start_heartbeat_monitor(self) -> None:

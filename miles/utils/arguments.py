@@ -554,25 +554,25 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Delay in seconds between suspending and resuming a cell during heal.",
             )
             parser.add_argument(
-                "--trainer-heartbeat-interval",
+                "--trainer-heartbeat-checker-interval",
                 type=float,
                 default=30.0,
                 help="Interval in seconds between trainer heartbeat checks.",
             )
             parser.add_argument(
-                "--trainer-heartbeat-timeout",
+                "--trainer-heartbeat-checker-timeout",
                 type=float,
                 default=10.0,
                 help="Timeout in seconds for a single heartbeat RPC.",
             )
             parser.add_argument(
-                "--trainer-heartbeat-staleness",
+                "--trainer-heartbeat-checker-staleness",
                 type=float,
                 default=90.0,
                 help="Maximum allowed staleness of the last-active timestamp before marking a cell as errored.",
             )
             parser.add_argument(
-                "--trainer-heartbeat-first-wait",
+                "--trainer-heartbeat-checker-first-wait",
                 type=float,
                 default=300.0,
                 help="Initial grace period in seconds before starting heartbeat checks (for compilation/init).",
