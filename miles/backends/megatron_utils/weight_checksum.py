@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 class _MainParamId(NamedTuple):
     tensor_id: int
 
+    @classmethod
+    def from_tensor(cls, tensor: torch.Tensor) -> "_MainParamId":
+        return cls(tensor_id=id(tensor))
+
 
 def compute_and_dump_weight_checksums(
     args: Namespace,
@@ -85,7 +89,7 @@ def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
                 continue
             main_param = getattr(param, "main_param", None)
             if main_param is not None:
-                name_map[_MainParamId(id(main_param))] = f"pp{pp_idx}.{name}"
+                name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
     return name_map
 
 
@@ -98,15 +102,15 @@ def _collect_master_and_optimizer_hashes(
     optimizer_state_hashes: dict[str, str] = {}
 
     for fp32_param, state in _iter_fp32_params_and_states(optimizer):
-        param_name = name_by_fp32_id.get(_MainParamId(id(fp32_param)))
+        param_name = name_by_fp32_id.get(_MainParamId.from_tensor(fp32_param))
         if param_name is None:
             continue
 
         master_param_hashes[param_name] = _hash_tensor_sha256(fp32_param)
 
-        for state_key in ("exp_avg", "exp_avg_sq"):
-            if state_key in state:
-                optimizer_state_hashes[f"{param_name}/{state_key}"] = _hash_tensor_sha256(state[state_key])
+        for state_key, state_val in sorted(state.items()):
+            if isinstance(state_val, torch.Tensor):
+                optimizer_state_hashes[f"{param_name}/{state_key}"] = _hash_tensor_sha256(state_val)
 
     return master_param_hashes, optimizer_state_hashes
 
