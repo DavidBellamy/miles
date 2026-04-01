@@ -16,6 +16,7 @@ async def retry(
     initial_delay: float = _DEFAULT_INITIAL_DELAY,
     max_delay: float = _DEFAULT_MAX_DELAY,
     backoff_factor: float = _DEFAULT_BACKOFF_FACTOR,
+    sleep_fn: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Retry until ``fn`` does not throw, with exponential backoff."""
     attempt = 0
@@ -27,5 +28,5 @@ async def retry(
         except Exception:
             attempt += 1
             logger.warning(f"retry: attempt {attempt} failed, retrying in {delay:.1f}s", exc_info=True)
-            await asyncio.sleep(delay)
+            await sleep_fn(delay)
             delay = min(delay * backoff_factor, max_delay)
