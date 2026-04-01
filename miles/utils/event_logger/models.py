@@ -70,6 +70,16 @@ class GenericEvent(EventBase):
     details: dict[str, Any]
 
 
+class WeightChecksumDumped(EventBase):
+    type: Literal["weight_checksum_dumped"] = "weight_checksum_dumped"
+    step: int
+    rank: int
+    param_hashes: dict[str, str]
+    buffer_hashes: dict[str, str]
+    master_param_hashes: dict[str, str]
+    optimizer_state_hashes: dict[str, str]
+
+
 Event = Annotated[
     CellStateChanged
     | QuorumChanged
@@ -79,6 +89,7 @@ Event = Annotated[
     | CellRefreshFailed
     | CheckpointTransferStarted
     | CheckpointTransferCompleted
-    | GenericEvent,
+    | GenericEvent
+    | WeightChecksumDumped,
     Discriminator("type"),
 ]
