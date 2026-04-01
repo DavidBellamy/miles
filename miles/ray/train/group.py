@@ -226,9 +226,14 @@ class RayTrainGroup:
         self._indep_dp_quorum_id += 1
 
         # Step 2: Allocate pending actors
-        for c in self._cells:
-            if c.cell_index in snapshotted_pending_indices:
-                c.allocate_for_pending()
+        try:
+            for c in self._cells:
+                if c.cell_index in snapshotted_pending_indices:
+                    c.allocate_for_pending()
+        except Exception:
+            logger.exception("refresh_cells failed at allocate_for_pending phase")
+            TODO
+            return
 
         # Step 3: Cooperatively prepare
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
@@ -258,10 +263,8 @@ class RayTrainGroup:
                 ]
             )
         except Exception:
-            # TODO: use return_exceptions=True to let all tasks complete,
-            # then handle per-cell failures individually. Currently alive cells
-            # that were sending ckpt may still be running in the background.
-            logger.exception("Failed to refresh cells, stopping pending cells")
+            logger.exception("refresh_cells failed at cooperative_prepare phase")
+            TODO
             for c in self._cells:
                 if c.cell_index in snapshotted_pending_indices:
                     c.stop()
