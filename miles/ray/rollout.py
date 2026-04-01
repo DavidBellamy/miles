@@ -328,7 +328,7 @@ class RolloutManager:
     """The class to run rollout and convert rollout data to training data."""
 
     def __init__(self, args, pg):
-        configure_logger(args, "rollout")
+        configure_logger(args, name="rollout")
 
         self.pg = pg
         self.args = args

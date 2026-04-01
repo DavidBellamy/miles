@@ -29,14 +29,17 @@ def configure_logger_raw(name: str) -> None:
     configure_strict_async_warnings()
 
 
-def configure_logger(args, name: str) -> None:
+def configure_logger(args: object, *, name: str) -> None:
     configure_logger_raw(name)
 
     event_dir = getattr(args, "save_debug_event_data", None)
     if event_dir is not None:
-        from miles.utils.event_logger.logger import EventLogger, set_event_logger
+        import miles.utils.event_logger.logger as _event_logger_mod
 
-        set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl"))
+        if _event_logger_mod._event_logger is None:
+            _event_logger_mod.set_event_logger(
+                _event_logger_mod.EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl")
+            )
 
 
 def configure_strict_async_warnings() -> None:

@@ -37,7 +37,7 @@ class TrainRayActor(RayActor):
         master_port,
         indep_dp_store_addr: str,
     ):
-        configure_logger(args, f"train_rank{rank}")
+        configure_logger(args, name=f"train_rank{rank}")
         self.args = args
 
         self._heartbeat = SimpleHeartbeat()
