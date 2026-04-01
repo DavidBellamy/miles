@@ -1,102 +1,63 @@
-# Session Server Abort/Resume Pipeline
+# Session Server Abort/Resume (Legacy Path)
 
-## Problem
+This document describes the **legacy session-server gate path**. It is no
+longer the only fully-async behavior.
 
-In fully-async rollout with agentic workloads, a single sample's generation
-can take a long time (multi-turn tool calls, long reasoning chains). When it's
-time to update weights, the current pipeline aborts all in-flight SGLang
-requests and discards partial work. The next rollout starts from scratch.
-This wastes compute.
+## 1. When This Path Is Active
 
-## Solution
+Session-server abort/resume is active only when all conditions hold:
 
-The session server transparently handles abort/resume during weight updates.
-From the agent framework's perspective, its HTTP request simply takes longer —
-it never knows a weight update happened in the middle.
+- `--fully-async-rollout`
+- `--use-session-server`
+- `--fully-async-interrupt-policy=legacy_abort_resume`
 
-## Pipeline Overview
+If `--fully-async-interrupt-policy=no_interrupt`, actor-side session
+`pause_sessions()/resume_sessions()` is skipped.
 
-```
-Training Loop (train_async.py)
-│
-├─ rollout_manager.generate()        ← generation runs continuously
-│    └─ generate_rollout_async(continuous=True)
-│         └─ agent framework → SessionServer → SGLang
-│
-├─ actor_model.async_train()         ← training on collected samples
-│
-└─ actor_model.update_weights()      ← triggers abort/resume
-     │
-     ├─ 1. rollout_manager.pause_sessions()
-     │      └─ POST /abort_sessions → SessionServer
-     │           ├─ clear resume_event (gate closes)
-     │           └─ POST /abort_request → SGLang (stop generation)
-     │
-     ├─ 2. weight_updater.update_weights()
-     │      └─ sync new weights to SGLang engines
-     │
-     └─ 3. rollout_manager.resume_sessions()
-            └─ POST /resume_sessions → SessionServer
-                 └─ set resume_event (gate opens)
-                      └─ all blocked handlers re-send requests to SGLang
+## 2. Policy Matrix (Current)
+
+| Policy | Rollout end | During weight update | Session server gate |
+|---|---|---|---|
+| `legacy_abort_resume` | Abort remaining in-flight requests | `pause_generation(mode="abort")` then update then continue | Used |
+| `no_interrupt` | Skip rollout-end abort in continuous mode | `pause_generation(mode=<retract|in_place>)` then update then continue | Bypassed |
+
+## 3. Legacy Pipeline Overview
+
+```text
+actor.update_weights()
+  -> rollout_manager.pause_sessions()
+     -> POST /abort_sessions (session server)
+        -> clear resume_event
+        -> POST /abort_request (backend)
+  -> weight updater syncs weights
+  -> rollout_manager.resume_sessions()
+     -> POST /resume_sessions
+        -> wait backend /health
+        -> set resume_event
 ```
 
-## Session Server Gate Mechanism
+## 4. Gate Mechanism in `chat_completions`
 
-The core is a `while` loop wrapping `do_proxy` in the `chat_completions`
-handler:
+The session route wraps proxying with a pause gate:
 
 ```python
 while True:
-    await backend.resume_event.wait()   # blocked when paused
+    await backend.resume_event.wait()
     result = await backend.do_proxy(...)
     if not backend.is_paused():
-        break                           # normal response, continue
-    # aborted — discard partial response, loop back to gate
+        break
+    # paused while request was in-flight:
+    # discard partial response and retry after resume
 ```
 
-Three scenarios:
+Behavior:
+- Request arrives while paused: blocks until resume.
+- Request aborted mid-flight: partial result is discarded and retried.
+- Agent receives one final response (not an explicit abort failure).
 
-1. **Request arrives while running**: goes straight through the gate,
-   `do_proxy` talks to SGLang normally.
+## 5. Scope and Non-Goals
 
-2. **Request arrives while paused**: blocks at `resume_event.wait()` until
-   resume, then sends to SGLang with new weights.
-
-3. **Request is in-flight when abort arrives**: SGLang returns a partial 200
-   response. Handler checks `is_paused()`, discards the partial result,
-   loops back to the gate, blocks until resume, then re-sends the same
-   request.
-
-In all cases the agent receives a single complete response. The current
-turn's partial generation is discarded and regenerated with new weights.
-
-## Key Design Decisions
-
-- **Discard the current turn's partial generation**: only the in-progress
-  assistant message is thrown away. Previous turns remain in the session's
-  token history. After resume, the same request is re-sent and SGLang
-  re-prefills the existing prefix (leveraging KV cache / radix tree),
-  then regenerates the current turn with new weights.
-
-- **Gate lives in session server, not rollout layer**: the session server
-  already holds the HTTP connection to the agent. It's the natural place to
-  absorb the pause without the agent knowing.
-
-- **pause/resume inside `actor.update_weights()`**: keeps `train_async.py`
-  unchanged. The weight update method already has access to
-  `self.rollout_manager` and is the right place to bracket the actual weight
-  sync.
-
-- **Cross-policy samples are acceptable**: a sample may have earlier turns
-  generated by the old policy and the retried turn generated by the new
-  policy. This is fine — strict on-policy is not required.
-
-## Components Modified
-
-| File | Change |
-|---|---|
-| `session_server.py` | `resume_event`, `is_paused()`, `pause_sessions()`, `resume_sessions()` |
-| `sessions.py` | `POST /abort_sessions`, `POST /resume_sessions`, gate loop in `chat_completions` |
-| `rollout.py` | `pause_sessions()`, `resume_sessions()` methods on `RolloutManager` |
-| `actor.py` | `update_weights()` calls pause before and resume after weight sync |
+- This mechanism is about transport-level continuity during update windows.
+- It does **not** define the new no-interrupt policy behavior.
+- For current fully-async behavior across both policies, see:
+  `docs/en/advanced/generate_hub_rollout_design.md`.

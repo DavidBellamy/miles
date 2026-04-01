@@ -1,201 +1,128 @@
-# Generate Hub Rollout Design
+# Generate Hub + Rollout Design (Current Implementation)
 
-This document explains how `generate_hub` fits into the rollout stack, what
-responsibilities belong to each layer, and how the fully-async rollout mode
-works end-to-end.
+This document describes the current rollout stack and the fully-async behavior
+as implemented in code.
 
-## 1. Scope and Terminology
+## 1. Layer Boundaries
 
-There are two distinct abstractions:
+There are two different abstractions:
 
-1. **`GenerateFn`** — per-sample generation semantics.
-   - Input: one `Sample`, generation state, sampling params.
-   - Output: one `Sample` (or a list when multi-sample).
-   - Lives in `generate_hub/`.
+1. `GenerateFn` (in `generate_hub/`)
+- Per-sample generation semantics.
+- Input: one `Sample`, generation state, sampling params.
+- Output: one `Sample` (or list for multi-sample variants).
 
-2. **`RolloutFn`** — rollout-step scheduling.
-   - Input: rollout id, data source, rollout config.
-   - Output: grouped samples for one training step.
-   - Lives in `inference_rollout/`.
+2. `RolloutFn` (in `inference_rollout/`)
+- Per-rollout scheduling semantics.
+- Input: rollout id + data source + rollout config.
+- Output: grouped samples for one train step.
 
-The key rule: `generate_hub` owns "how to turn one prompt into model calls".
-Rollout code owns "how to schedule many prompts, filter, abort, and deliver
-enough data for training".
+Rule of thumb:
+- "How one sample talks to model" -> `generate_hub`.
+- "How many samples are scheduled/filtered/aborted" -> rollout layer.
 
-## 2. Layering
+## 2. Runtime Path
 
 ```text
 RolloutManager
-  → InferenceRolloutFn._call_train
-    → generate_rollout_async(continuous=True/False)
-      → submit_generate_tasks
-        → generate_and_rm_group
-          → generate_and_rm
-            → generate_hub.<variant>.generate
+  -> InferenceRolloutFn._call_train
+    -> generate_rollout_async(..., continuous=fully_async_rollout)
+      -> submit_generate_tasks
+        -> generate_and_rm_group
+          -> generate_and_rm
+            -> generate_hub.<variant>.generate
 ```
 
-| Layer | Responsibility |
-|---|---|
-| `RolloutManager` | Lifecycle, servers, data source, rollout/eval entry |
-| `InferenceRolloutFn` | Build `GenerateState`, route train vs eval |
-| `generate_rollout_async` | Submit groups, collect, filter, abort |
-| `generate_and_rm_group` | Fan out per-sample generation within a prompt group |
-| `generate_hub.*.generate` | Backend-specific generation logic |
+## 3. Fully-Async and Interrupt Policies
 
-## 3. Standard vs Fully-Async Rollout
+Fully-async is enabled by:
+- `--fully-async-rollout`
 
-Both modes use the same function: `generate_rollout_async`. The only
-difference is the **submission policy**, controlled by `continuous: bool`.
+Interrupt behavior is controlled by:
+- `--fully-async-interrupt-policy`
+  - `legacy_abort_resume` (default)
+  - `no_interrupt`
+- `--fully-async-pause-mode` (only used when policy=`no_interrupt`)
+  - `retract` (default)
+  - `in_place`
 
-### 3.1 Standard mode (`continuous=False`)
+### 3.1 Submission policy (`continuous=True`)
 
-```python
-while len(data) + len(pendings) < target_data_size:
-    samples = data_source(batch_size)
-    pendings.update(submit_generate_tasks(state, samples))
-```
+In fully-async mode, rollout submission keeps in-flight tasks near
+`over_sampling_batch_size` instead of only targeting `rollout_batch_size`.
 
-Submits just enough tasks so that `collected + in_flight >= target`.
-Conservative — once quota is reached, stops submitting and just waits.
+### 3.2 End-of-rollout behavior (important)
 
-### 3.2 Fully-async mode (`continuous=True`)
+After enough valid groups are collected:
 
-```python
-while len(pendings) < args.over_sampling_batch_size:
-    samples = data_source(batch_size)
-    pendings.update(submit_generate_tasks(state, samples))
-```
+- `legacy_abort_resume`:
+  - Calls rollout `abort()`.
+  - Sends `/abort_request` to workers.
+  - Optionally collects partial groups for buffer reuse (`partial_rollout`).
 
-Keeps exactly `over_sampling_batch_size` tasks in-flight at all times,
-regardless of how many samples are already collected. As one completes, a new
-one is submitted immediately.
+- `no_interrupt` (only when `continuous=True`):
+  - Skips rollout `abort()` at rollout end.
+  - Leaves in-flight requests running.
+  - Reports metric `rollout/no_interrupt/pending_at_end`.
 
-### 3.3 Everything else is shared
+Current Phase-1 behavior: pending tasks left by `no_interrupt` are not fed back
+into this rollout output as reusable buffered groups.
 
-Both modes share the same:
+## 4. Weight Update Behavior
 
-- **Collection loop**: `asyncio.wait(FIRST_COMPLETED)` → process done tasks → dynamic filter
-- **Abort**: once `target_data_size` valid samples are collected, remaining pendings go through `abort()`
-- **Post-processing**: sort, `rollout_sample_filter`, `rollout_all_samples_process`, `state.reset()`
+Weight update behavior is split across actor/session server/engine:
 
-This is intentional. The fully-async feature is a one-line policy change, not
-a separate code path.
+- Actor (`actor.update_weights`):
+  - If `use_session_server` and policy is NOT `no_interrupt`, call
+    `rollout_manager.pause_sessions()` before update and
+    `rollout_manager.resume_sessions()` after update.
+  - If policy is `no_interrupt`, skip session pause/resume.
 
-## 4. End-to-End Code Path (fully-async)
+- Weight updater (`update_weight_from_tensor.py` and
+  `update_weight_from_distributed.py`):
+  - Selects pause mode via policy:
+    - `legacy_abort_resume` -> `pause_generation(mode="abort")`
+    - `no_interrupt` -> `pause_generation(mode=fully_async_pause_mode)`
+  - Sequence remains:
+    `pause_generation -> flush_cache -> sync weights -> continue_generation`
 
-### Step 1: CLI flag
+- SGLang engine client:
+  - `pause_generation(mode: str = "abort")` forwards mode to
+    `/pause_generation`.
 
-```
---fully-async-rollout    (arguments.py)
-```
+## 5. Session Server Scope
 
-### Step 2: InferenceRolloutFn routes to generate_rollout_async
+Session-server abort/resume is now a policy-dependent mechanism:
 
-```python
-# inference_rollout_common.py
-async def _call_train(self, input):
-    output, aborted = await generate_rollout_async(
-        self.state,
-        input.rollout_id,
-        self.data_source.get_samples,
-        continuous=getattr(self.state.args, "fully_async_rollout", False),
-    )
-    self.data_source.add_samples(aborted)
-    return output
-```
+- Active path: `legacy_abort_resume`.
+- Bypassed path: `no_interrupt`.
 
-No separate method, no persistent worker object. Just one keyword argument.
+In `legacy_abort_resume`, session server gate logic can absorb abort/retry so
+agent-side requests do not fail due to mid-update interruption.
 
-### Step 3: The main loop
+## 6. Staleness and Partial Rollout
 
-```
-┌─────────────────────────────────────────────────────┐
-│ while len(data) < target_data_size:                 │
-│                                                     │
-│   1. SUBMIT: keep pendings at over_sampling_batch_  │
-│      size by pulling from data_source               │
-│                                                     │
-│   2. WAIT: asyncio.wait(FIRST_COMPLETED)            │
-│                                                     │
-│   3. PROCESS: for each done task:                   │
-│      - run dynamic_filter                           │
-│      - if passes → append to data[]                 │
-│      - else → record metric, discard                │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
+`max_buffer_staleness` is implemented in the data source/buffer layer for
+partial-rollout buffered groups.
 
-### Step 4: Abort and cleanup
+Notes:
+- Legacy abort path is the main source of reusable partial groups.
+- In current no-interrupt Phase-1 behavior, rollout-end pending tasks are not
+  converted into buffered partial groups by default.
 
-Once `len(data) == rollout_batch_size`:
+## 7. Tests to Trust
 
-1. `abort(state, pendings, rollout_id)` — sends abort to all SGLang workers,
-   awaits pending tasks, optionally collects partial samples
-2. Sort data by sample index
-3. Run `rollout_sample_filter` and `rollout_all_samples_process` hooks
-4. `state.reset()` to clear abort flag for next rollout
+- Rollout integration:
+  - `tests/fast/rollout/inference_rollout/integration/test_fully_async.py`
+- Pause mode / policy mapping:
+  - `tests/fast/backends/megatron_utils/test_pause_mode.py`
+- Mock wait-agent resilience under pause/continue perturbation:
+  - `tests/e2e/sglang/test_no_interrupt_mock_wait_weather_loop.py`
+- Deterministic logprob equivalence verification utility:
+  - `tests/e2e/sglang/test_tito_logprob_equivalence.py`
+  - `tests/e2e/sglang/utils/logprob_verify_generate.py`
 
-### Step 5: Caller gets result
+## 8. Historical Prototype
 
-`_call_train` receives `(RolloutFnTrainOutput, aborted_samples)`, feeds
-aborted samples back to `data_source.add_samples()` for reuse.
-
-## 5. Why Fully-Async Helps
-
-Standard mode's submission policy is `collected + pending >= target`. When
-generation latency has high variance (e.g. agentic tool calls where some
-prompts take 10x longer), this means:
-
-- Early tasks finish, but no new tasks are submitted because the quota was met
-- The pipeline stalls waiting for the slow tail
-- GPU utilization drops
-
-Fully-async mode decouples submission from collection. The in-flight count
-stays constant, so fast-finishing slots immediately get refilled. The
-tradeoff is that more work gets aborted at the end, but for long-tail
-workloads the throughput improvement far outweighs the wasted compute.
-
-## 6. Staleness and On-Policy Correctness
-
-Staleness control is **not** a rollout-layer concern. The rollout function
-generates samples within a single training step using the current policy
-weights, then aborts everything before weight update. Samples never cross a
-weight-update boundary.
-
-If finer-grained staleness control is needed (e.g. rejecting samples that
-were generated too many steps ago in a partial-rollout setting), that belongs
-in the **data source** layer, which tracks sample provenance and decides what
-to serve.
-
-## 7. The Old Prototype (`examples/fully_async/`)
-
-`examples/fully_async/fully_async_rollout.py` is an earlier proof-of-concept
-with a different architecture:
-
-- Global singleton worker in a separate thread with its own event loop
-- No pause-before-weight-update boundary
-- Queue contents can survive across rollout calls (policy leak)
-- No dynamic filter integration
-- No eval support
-
-It remains as an example only. The production path is the `continuous=True`
-parameter on the standard `generate_rollout_async`.
-
-## 8. `generate_hub` Variants
-
-All three existing generate variants work identically under both standard and
-fully-async mode, because the scheduling change is above them in the stack.
-
-| Variant | Description | Supports partial rollout |
-|---|---|---|
-| `single_turn` | One `/generate` call per sample | Yes |
-| `multi_turn` | Multiple model turns with tool observations | No |
-| `agentic_tool_call` | Wraps user-supplied async agent, traces session records | Yes (via session records) |
-
-## 9. Design Rule
-
-If a feature answers "how should one sample talk to the model?" →
-`generate_hub`.
-
-If it answers "how should many samples be scheduled and aligned with
-training-step boundaries?" → `inference_rollout`.
+`examples/fully_async/fully_async_rollout.py` is a prototype and not the
+production rollout path.

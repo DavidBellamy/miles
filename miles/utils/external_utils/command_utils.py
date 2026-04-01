@@ -118,6 +118,7 @@ def execute_train(
 
     exec_command(
         "pkill -9 sglang; "
+        "pkill -9 miles-router; "
         "sleep 3; "
         f"{'' if external_ray else 'ray stop --force; '}"
         f"{'' if external_ray else 'pkill -9 ray; '}"
@@ -125,6 +126,7 @@ def execute_train(
         # TODO: do we really need this kill? (or can we instead kill miles)
         # "pkill -9 python; "
         "pkill -9 miles; "
+        "pkill -9 miles-router; "
         "sleep 3; "
         f"{'' if external_ray else 'pkill -9 ray; '}"
         # "pkill -9 python; "

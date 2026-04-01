@@ -54,14 +54,16 @@
 
 - 当 `continuous=True` 且策略为 `no_interrupt`：
   - 不在每个 rollout 结束时调用 `abort()`。
-  - 维持持久 in-flight / ready 队列，按目标 batch 消费返回。
+  - **Phase 1 现状**：pending 请求继续在后台完成，但不会作为“持久 ready 队列”在下一次 rollout 调用中消费。
+  - **Phase 2 目标**：再引入跨 rollout 的持久 in-flight/ready 队列，复用已完成结果。
 - 当策略为 `legacy_abort_resume`：
   - 完全保持当前逻辑（含 rollout 末尾 abort）。
 
 边界：
 
 - 继续复用现有 `max_buffer_staleness` 做有界 off-policy。
-- `start_rollout_id` 元数据在提交阶段补齐，保证 staleness 判定可用。
+- **Phase 1 现状**：`start_rollout_id` 主要在 `abort()` 回收 partial 样本时写入。
+- **Phase 2 目标**：改为提交阶段写入，便于对跨 rollout 持久队列做 staleness 判定。
 
 ### D. Weight Update 侧（仅改 endpoint 调用模式）
 
@@ -135,7 +137,8 @@
 
 `mock_wait_weather_agent.py` 的 agent 逻辑固定为“持续查天气”：
 
-- 每轮都发 `/v1/chat/completions`（通过 session server）。
+- 每轮都发 `/v1/chat/completions`。
+- 当前实现的 mock e2e 是**直连 MockSGLangServer**；如需验证 session server gate，可另加真实链路 e2e。
 - 强制要求 assistant 返回 `tool_calls`（天气工具）。
 - agent 执行 mock weather tool 后写回 `tool` message。
 - 每轮插入 `await asyncio.sleep(wait_s)` 模拟 wait agent（例如 `wait_s=0.2`）。
@@ -168,7 +171,7 @@
 - agent 完成 `max_turns`。
 - `total_tool_calls >= max_turns`。
 - 全程无 HTTP 非 200。
-- session 记录中无 `finish_reason=abort` 暴露到 agent 侧。
+- agent 侧响应中无 `finish_reason=abort` 暴露。
 
 2. `test_mock_wait_weather_loop_no_interrupt_in_place`
 - 同上，仅 pause mode 改为 `in_place`。
@@ -176,7 +179,7 @@
 
 3. `test_mock_wait_weather_loop_legacy_abort_resume_control`
 - 策略：`legacy_abort_resume`。
-- 扰动：通过 session server 的 `/abort_sessions` + `/resume_sessions` 注入。
+- 扰动：通过 `pause_generation(mode="abort") + continue_generation` 注入（与现有 mock 用例实现一致）。
 - 断言：
 - agent 能最终跑完（允许慢一些）。
 - 与 no_interrupt 组对比，重试/rollback 指标显著更高（作为对照组，不要求绝对阈值）。
