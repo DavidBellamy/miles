@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from miles.utils.mini_ft_controller import _CellSnapshot, _MiniFTController, _MiniFTControllerRunner
+from miles.utils.mini_ft_controller import CellHealthStatus, _CellSnapshot, _MiniFTController, _MiniFTControllerRunner
 
 
 # ------------------------ helpers ------------------------
@@ -18,9 +18,14 @@ from miles.utils.mini_ft_controller import _CellSnapshot, _MiniFTController, _Mi
 def _make_cell(
     *,
     name: str = "cell-0",
-    healthy: bool = True,
+    status: CellHealthStatus = CellHealthStatus.HEALTHY,
 ) -> _CellSnapshot:
-    return _CellSnapshot(name=name, healthy=healthy)
+    return _CellSnapshot(name=name, status=status)
+
+
+HEALTHY = CellHealthStatus.HEALTHY
+UNHEALTHY = CellHealthStatus.UNHEALTHY
+NOT_APPLICABLE = CellHealthStatus.NOT_APPLICABLE
 
 
 class _FakeClock:
@@ -129,7 +134,7 @@ class TestControllerHealing:
     @pytest.mark.asyncio
     async def test_heal_on_unhealthy_cell(self) -> None:
         """Unhealthy cell triggers suspend → resume."""
-        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
         get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
@@ -149,7 +154,7 @@ class TestControllerHealing:
     @pytest.mark.asyncio
     async def test_skip_healthy_cell(self) -> None:
         """Healthy cell does not trigger heal."""
-        healthy_cell = _make_cell(name="cell-0", healthy=True)
+        healthy_cell = _make_cell(name="cell-0", status=HEALTHY)
         get_cells = AsyncMock()
         suspend_cell = AsyncMock()
         resume_cell = AsyncMock()
@@ -170,8 +175,8 @@ class TestControllerHealing:
     async def test_heal_multiple_unhealthy_cells(self) -> None:
         """Multiple unhealthy cells are each healed."""
         cells = [
-            _make_cell(name="cell-0", healthy=False),
-            _make_cell(name="cell-1", healthy=False),
+            _make_cell(name="cell-0", status=UNHEALTHY),
+            _make_cell(name="cell-1", status=UNHEALTHY),
         ]
         get_cells = AsyncMock()
         suspend_cell = AsyncMock()
@@ -197,8 +202,8 @@ class TestControllerHealing:
     async def test_no_action_when_all_healthy(self) -> None:
         """All healthy → no suspend/resume calls."""
         cells = [
-            _make_cell(name="cell-0", healthy=True),
-            _make_cell(name="cell-1", healthy=True),
+            _make_cell(name="cell-0", status=HEALTHY),
+            _make_cell(name="cell-1", status=HEALTHY),
         ]
         get_cells = AsyncMock()
         suspend_cell = AsyncMock()
@@ -221,7 +226,7 @@ class TestControllerBackoff:
     @pytest.mark.asyncio
     async def test_backoff_on_heal_failure(self) -> None:
         """Suspend raises → consecutive_failures increments, next_attempt_at increases."""
-        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
         clock = _FakeClock(start=100.0)
         get_cells = AsyncMock()
         suspend_cell = AsyncMock(side_effect=RuntimeError("connection failed"))
@@ -242,7 +247,7 @@ class TestControllerBackoff:
     @pytest.mark.asyncio
     async def test_exponential_backoff_timing(self) -> None:
         """Verify backoff delays: 5*2^1=10, 5*2^2=20, ..., capped at 300."""
-        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
         clock = _FakeClock(start=0.0)
         suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
 
@@ -269,7 +274,7 @@ class TestControllerBackoff:
     @pytest.mark.asyncio
     async def test_skips_heal_when_within_backoff_window(self) -> None:
         """Cell is not healed again until clock passes next_attempt_at."""
-        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
         clock = _FakeClock(start=0.0)
         suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
 
@@ -300,7 +305,7 @@ class TestControllerBackoff:
     @pytest.mark.asyncio
     async def test_successful_heal_resets_backoff(self) -> None:
         """Successful heal resets consecutive_failures to 0."""
-        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
         clock = _FakeClock(start=0.0)
 
         call_count = 0
@@ -333,6 +338,104 @@ class TestControllerBackoff:
 
         assert backoff.consecutive_failures == 0
         assert backoff.next_attempt_at == 0.0
+
+
+class TestControllerNotApplicable:
+    @pytest.mark.asyncio
+    async def test_not_applicable_cell_skipped(self) -> None:
+        """NOT_APPLICABLE cell does not trigger heal."""
+        na_cell = _make_cell(name="cell-0", status=NOT_APPLICABLE)
+        get_cells = AsyncMock()
+        suspend_cell = AsyncMock()
+        resume_cell = AsyncMock()
+
+        controller = _make_controller(
+            get_cells=get_cells,
+            suspend_cell=suspend_cell,
+            resume_cell=resume_cell,
+        )
+        _run_controller_for_n_polls(controller, get_cells, [[na_cell]])
+
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+
+        suspend_cell.assert_not_called()
+        resume_cell.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mixed_statuses_only_heals_unhealthy(self) -> None:
+        """HEALTHY and NOT_APPLICABLE skipped, only UNHEALTHY healed."""
+        cells = [
+            _make_cell(name="cell-0", status=HEALTHY),
+            _make_cell(name="cell-1", status=UNHEALTHY),
+            _make_cell(name="cell-2", status=NOT_APPLICABLE),
+        ]
+        get_cells = AsyncMock()
+        suspend_cell = AsyncMock()
+        resume_cell = AsyncMock()
+
+        controller = _make_controller(
+            get_cells=get_cells,
+            suspend_cell=suspend_cell,
+            resume_cell=resume_cell,
+        )
+        _run_controller_for_n_polls(controller, get_cells, [cells])
+
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+
+        suspend_cell.assert_called_once_with("cell-1")
+        resume_cell.assert_called_once_with("cell-1")
+
+    @pytest.mark.asyncio
+    async def test_backoff_cleared_when_cell_leaves_unhealthy(self) -> None:
+        """Cell goes UNHEALTHY (heal fails) → NOT_APPLICABLE → backoff is cleaned up."""
+        clock = _FakeClock(start=0.0)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
+        na_cell = _make_cell(name="cell-0", status=NOT_APPLICABLE)
+
+        get_cells = AsyncMock()
+        suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
+
+        controller = _make_controller(
+            get_cells=get_cells,
+            suspend_cell=suspend_cell,
+            clock=clock,
+        )
+
+        # Step 1: Unhealthy → heal fails → backoff entry created
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert "cell-0" in controller._cell_backoffs
+
+        # Step 2: Cell becomes NOT_APPLICABLE → backoff entry cleaned
+        _run_controller_for_n_polls(controller, get_cells, [[na_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert "cell-0" not in controller._cell_backoffs
+
+    @pytest.mark.asyncio
+    async def test_backoff_cleared_when_cell_becomes_healthy(self) -> None:
+        """Cell goes UNHEALTHY (heal fails) → HEALTHY → backoff is cleaned up."""
+        clock = _FakeClock(start=0.0)
+        unhealthy_cell = _make_cell(name="cell-0", status=UNHEALTHY)
+        healthy_cell = _make_cell(name="cell-0", status=HEALTHY)
+
+        get_cells = AsyncMock()
+        suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
+
+        controller = _make_controller(
+            get_cells=get_cells,
+            suspend_cell=suspend_cell,
+            clock=clock,
+        )
+
+        # Step 1: Unhealthy → heal fails → backoff entry created
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert "cell-0" in controller._cell_backoffs
+
+        # Step 2: Cell becomes HEALTHY → backoff entry cleaned
+        _run_controller_for_n_polls(controller, get_cells, [[healthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert "cell-0" not in controller._cell_backoffs
 
 
 class TestControllerLifecycle:
@@ -391,12 +494,12 @@ class TestRunnerGetCells:
         result = await runner._get_cells()
 
         assert len(result) == 2
-        assert result[0] == _CellSnapshot(name="actor-0", healthy=True)
-        assert result[1] == _CellSnapshot(name="actor-1", healthy=False)
+        assert result[0] == _CellSnapshot(name="actor-0", status=HEALTHY)
+        assert result[1] == _CellSnapshot(name="actor-1", status=UNHEALTHY)
 
     @pytest.mark.asyncio
-    async def test_missing_healthy_condition_treated_as_unhealthy(self) -> None:
-        """Cell with no Healthy condition → healthy=False."""
+    async def test_missing_healthy_condition_treated_as_not_applicable(self) -> None:
+        """Cell with no Healthy condition → status=NOT_APPLICABLE (not healed)."""
         runner = _create_runner()
 
         cell_json = _build_cell_json(name="actor-0")
@@ -410,7 +513,7 @@ class TestRunnerGetCells:
         result = await runner._get_cells()
 
         assert len(result) == 1
-        assert result[0] == _CellSnapshot(name="actor-0", healthy=False)
+        assert result[0] == _CellSnapshot(name="actor-0", status=NOT_APPLICABLE)
 
     @pytest.mark.asyncio
     async def test_http_error_raises(self) -> None:

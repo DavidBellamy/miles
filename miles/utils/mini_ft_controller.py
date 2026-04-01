@@ -6,6 +6,7 @@ import threading
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -87,16 +88,28 @@ class _MiniFTControllerRunner:
 
 
 def _compute_cell_snapshot(cell: Cell) -> _CellSnapshot:
-    healthy = any(condition.type == "Healthy" and condition.status == "True" for condition in cell.status.conditions)
-    return _CellSnapshot(name=cell.metadata.name, healthy=healthy)
+    healthy_conditions = [c for c in cell.status.conditions if c.type == "Healthy"]
+    if not healthy_conditions:
+        status = CellHealthStatus.NOT_APPLICABLE
+    elif any(c.status == "True" for c in healthy_conditions):
+        status = CellHealthStatus.HEALTHY
+    else:
+        status = CellHealthStatus.UNHEALTHY
+    return _CellSnapshot(name=cell.metadata.name, status=status)
 
 
 # ------------------------ data models ------------------------
 
 
+class CellHealthStatus(str, Enum):
+    HEALTHY = "Healthy"
+    UNHEALTHY = "Unhealthy"
+    NOT_APPLICABLE = "NotApplicable"
+
+
 class _CellSnapshot(StrictBaseModel):
     name: str
-    healthy: bool
+    status: CellHealthStatus
 
 
 @dataclass
@@ -148,10 +161,12 @@ class _MiniFTController:
         try:
             cells = await self._get_cells()
 
+            unhealthy_names: set[str] = set()
             for cell in cells:
-                if cell.healthy:
+                if cell.status != CellHealthStatus.UNHEALTHY:
                     continue
 
+                unhealthy_names.add(cell.name)
                 backoff = self._cell_backoffs.setdefault(cell.name, _CellBackoff())
 
                 now = self._clock()
@@ -160,7 +175,7 @@ class _MiniFTController:
 
                 await self._heal(cell_name=cell.name, backoff=backoff)
 
-            stale_keys = set(self._cell_backoffs) - set(c.name for c in cells)
+            stale_keys = set(self._cell_backoffs) - unhealthy_names
             for key in stale_keys:
                 del self._cell_backoffs[key]
         except Exception:
