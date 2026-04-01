@@ -4,7 +4,7 @@ import hashlib
 import logging
 from argparse import Namespace
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -15,6 +15,10 @@ from miles.utils.event_logger.logger import get_event_logger, is_event_logger_in
 from miles.utils.event_logger.models import LocalWeightChecksumEvent
 
 logger = logging.getLogger(__name__)
+
+
+class _MainParamId(NamedTuple):
+    tensor_id: int
 
 
 def compute_and_dump_weight_checksums(
@@ -72,29 +76,29 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
     return hashes
 
 
-def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[int, str]:
+def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
     """Build id(fp32_master_param) → name mapping from model parameters."""
-    name_map: dict[int, str] = {}
+    name_map: dict[_MainParamId, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, param in model_chunk.named_parameters():
             if param is None:
                 continue
             main_param = getattr(param, "main_param", None)
             if main_param is not None:
-                name_map[id(main_param)] = f"pp{pp_idx}.{name}"
+                name_map[_MainParamId(id(main_param))] = f"pp{pp_idx}.{name}"
     return name_map
 
 
 def _collect_master_and_optimizer_hashes(
     optimizer: MegatronOptimizer,
-    name_by_fp32_id: dict[int, str],
+    name_by_fp32_id: dict[_MainParamId, str],
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Collect fp32 master weight hashes and optimizer state hashes via inner PyTorch optimizer."""
     master_param_hashes: dict[str, str] = {}
     optimizer_state_hashes: dict[str, str] = {}
 
     for fp32_param, state in _iter_fp32_params_and_states(optimizer):
-        param_name = name_by_fp32_id.get(id(fp32_param))
+        param_name = name_by_fp32_id.get(_MainParamId(id(fp32_param)))
         if param_name is None:
             continue
 
