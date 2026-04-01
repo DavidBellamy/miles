@@ -44,8 +44,16 @@ class WitnessIdAllocator:
         self._counter += num_sequences
         return ids
 
-    def clear_stale(self, *, optimizer: torch.optim.Optimizer) -> None:
-        stale_ids = self._compute_stale_ids()
+    def clear_stale(self, *, optimizer: torch.optim.Optimizer, keep_count: int) -> None:
+        """Zero out witness rows (and their optimizer state) that are NOT among
+        the ``keep_count`` most recently allocated IDs.
+
+        Args:
+            optimizer: The optimizer whose state should also be cleared.
+            keep_count: Number of most recent allocations to keep.
+                Typically equals the number of sequences in the current step.
+        """
+        stale_ids = self._compute_stale_ids(keep_count=keep_count)
         if not stale_ids:
             return
 
@@ -70,28 +78,16 @@ class WitnessIdAllocator:
                 if key in state:
                     state[key][idx] = 0.0
 
-    def _compute_stale_ids(self) -> list[int]:
-        if self._counter <= self._ring_buffer_size:
+    def _compute_stale_ids(self, *, keep_count: int) -> list[int]:
+        if self._counter == 0:
             return []
 
-        # Active IDs are those allocated in the most recent ring_buffer_size allocations.
-        # head points to the next slot to be allocated.
+        actual_keep = min(keep_count, self._counter, self._ring_buffer_size)
         head = self._counter % self._ring_buffer_size
-        # The active IDs occupy a contiguous range (mod ring_buffer_size) ending
-        # just before head. Everything else is stale.
-        # With ring_buffer_size=N, all N slots are active when exactly N allocations
-        # have been made, so there are no stale IDs. When counter > N, the number of
-        # stale slots equals (counter - ring_buffer_size) capped at ring_buffer_size,
-        # but since we already returned [] for counter <= N, all remaining slots
-        # outside the active window [head - ring_buffer_size .. head) are stale.
-        # In practice, every slot is always active because allocate_for_sequences
-        # fills them round-robin, so stale IDs only exist transiently between
-        # allocation and gradient clearing. The truly stale set is always empty
-        # unless the caller allocated fewer than ring_buffer_size IDs recently.
-        active_count = min(self._counter, self._ring_buffer_size)
+
         active_ids: set[int] = {
             (head - 1 - i) % self._ring_buffer_size
-            for i in range(active_count)
+            for i in range(actual_keep)
         }
 
         return [i for i in range(self._ring_buffer_size) if i not in active_ids]
