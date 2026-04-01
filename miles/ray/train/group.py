@@ -113,19 +113,14 @@ class RayTrainGroup:
         ])
 
     async def train(self, rollout_id: int, rollout_data_ref):
-        """Do one rollout training, retrying indefinitely on DISCARDED_SHOULD_RETRY."""
-        while True:
-            await self._refresh_cells()
-            results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
+        """Do one rollout training"""
+        while not await self._train_one_attempt(rollout_id, rollout_data_ref):
+            pass
 
-            if any(isinstance(r, BaseException) for r in results):
-                return
-
-            outcomes = [o for cell_results in results for o in cell_results]
-            if all(o == TrainStepOutcome.DISCARDED_SHOULD_RETRY for o in outcomes):
-                logger.warning("All actors returned DISCARDED_SHOULD_RETRY, retrying train")
-                continue
-            return
+    async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
+        await self._refresh_cells()
+        results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
+        return all(r == TrainStepOutcome.NORMAL for r in results)
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
