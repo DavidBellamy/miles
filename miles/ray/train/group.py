@@ -191,11 +191,7 @@ class RayTrainGroup:
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
             return_exceptions=True,
         )
-
-        for i, output in enumerate(outputs):
-            if isinstance(output, BaseException):
-                logger.warning("RayTrainGroup._execute_all_alive cell %d error in %s", i, fn_name, exc_info=output)
-
+        _log_asyncio_gather_errors(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
         return outputs
 
     async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
@@ -296,3 +292,9 @@ def _create_tcp_store() -> tuple["torch.distributed.TCPStore", str]:
     host = ray.util.get_node_ip_address()
     port = store.port
     return store, f"{host}:{port}"
+
+
+def _log_asyncio_gather_errors(outputs, debug_name: str):
+    for i, output in enumerate(outputs):
+        if isinstance(output, BaseException):
+            logger.warning(f"{debug_name} error index={i}", exc_info=output)
