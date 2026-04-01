@@ -10,11 +10,9 @@ from miles.utils.event_logger.models import (
     Event,
     GenericEvent,
     HeartbeatTimeout,
-    MainProcessIdentity,
     QuorumChanged,
-    RolloutManagerProcessIdentity,
-    TrainProcessIdentity,
 )
+from miles.utils.process_identity import MainProcessIdentity, RolloutManagerProcessIdentity, TrainProcessIdentity
 
 _event_adapter = TypeAdapter(Event)
 

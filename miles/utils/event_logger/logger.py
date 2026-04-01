@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
-from miles.utils.event_logger.models import EventBase, ProcessIdentity
+from miles.utils.event_logger.models import EventBase
+from miles.utils.process_identity import ProcessIdentity
 
 _event_logger: "EventLogger | None" = None
 
@@ -32,9 +33,8 @@ class EventLogger:
         self._source = source
 
     def log(self, event: EventBase) -> None:
-        event.timestamp = datetime.now(timezone.utc)
-        event.source = self._source
-        line = event.model_dump_json() + "\n"
+        enriched = event.model_copy(update={"timestamp": datetime.now(timezone.utc), "source": self._source})
+        line = enriched.model_dump_json() + "\n"
         with self._lock:
             self._file.write(line)
             self._file.flush()

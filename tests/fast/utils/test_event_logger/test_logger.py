@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from miles.utils.event_logger.logger import EventLogger, get_event_logger, set_event_logger
-from miles.utils.event_logger.models import CellStateChanged, GenericEvent, MainProcessIdentity, TrainProcessIdentity
+from miles.utils.event_logger.models import CellStateChanged, GenericEvent
+from miles.utils.process_identity import MainProcessIdentity, TrainProcessIdentity
 
 _TEST_SOURCE = MainProcessIdentity()
 

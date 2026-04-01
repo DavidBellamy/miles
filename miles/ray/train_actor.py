@@ -13,7 +13,7 @@ from miles.ray.ray_actor import RayActor
 from miles.utils.distributed_utils import init_gloo_group
 from miles.utils.env_report import collect_and_print_node_env_report
 from miles.utils.heartbeat_utils import HeartbeatStatus, SimpleHeartbeat
-from miles.utils.event_logger.models import TrainProcessIdentity
+from miles.utils.process_identity import TrainProcessIdentity
 from miles.utils.logging_utils import configure_logger
 from miles.utils.memory_utils import clear_memory, print_memory
 
