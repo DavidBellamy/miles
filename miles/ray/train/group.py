@@ -277,6 +277,7 @@ class RayTrainGroup:
             alive_cell_indices=alive_cell_indices,
         )
 
+
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
 
 
