@@ -1,7 +1,12 @@
 import asyncio
+import logging
 import threading
 from collections.abc import Coroutine
 from typing import TypeVar
+
+
+logger = logging.getLogger(__name__)
+
 
 __all__ = ["get_async_loop", "run", "eager_create_task"]
 
