@@ -1813,7 +1813,9 @@ def miles_validate_args(args):
     if "train" in args.ft_components:
         args.indep_dp = True
         args.delay_split_train_data_by_dp = True
-        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
+        args.save_local_weight_checksum = True
+        args.enable_witness = True
+        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True, save_local_weight_checksum=True, enable_witness=True")
 
     if args.indep_dp:
         per_replica_size = compute_megatron_world_size_except_dp(args)
