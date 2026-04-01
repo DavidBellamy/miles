@@ -118,15 +118,10 @@ class RayTrainGroup:
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
 
-        async def _fn() -> bool:
+        async def _fn():
             await self._refresh_cells()
             results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
-
-            ok = self._does_train_one_attempt_succeed(results)
-            if not ok:
-                logger.warning("Not all actors returned NORMAL, retrying train")
-
-            return ok
+            return self._does_train_one_attempt_succeed(results)
 
         await retry(
             fn=_fn,
