@@ -1939,14 +1939,17 @@ def miles_validate_args(args):
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
         args.save_debug_event_data = f"{args.dump_details}/events"
 
-    if args.weight_checksum_enable and args.weight_checksum_dir is None:
-        if args.dump_details is not None:
-            args.weight_checksum_dir = args.dump_details
-        else:
-            raise ValueError(
-                "--weight-checksum-dir must be set when --weight-checksum-enable is used "
-                "and --dump-details is not set."
-            )
+    if args.weight_checksum_enable:
+        if args.weight_checksum_interval < 1:
+            raise ValueError("--weight-checksum-interval must be >= 1")
+        if args.weight_checksum_dir is None:
+            if args.dump_details is not None:
+                args.weight_checksum_dir = args.dump_details
+            else:
+                raise ValueError(
+                    "--weight-checksum-dir must be set when --weight-checksum-enable is used "
+                    "and --dump-details is not set."
+                )
 
     if args.load_debug_rollout_data is not None:
         logger.info(
