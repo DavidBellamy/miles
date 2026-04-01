@@ -10,7 +10,10 @@ from miles.utils.event_logger.models import (
     Event,
     GenericEvent,
     HeartbeatTimeout,
+    MainProcessIdentity,
     QuorumChanged,
+    RolloutManagerProcessIdentity,
+    TrainProcessIdentity,
 )
 
 _event_adapter = TypeAdapter(Event)
@@ -129,3 +132,22 @@ class TestGenericEvent:
         )
         parsed = _event_adapter.validate_json(event.model_dump_json())
         assert isinstance(parsed, GenericEvent)
+
+
+class TestProcessIdentity:
+    def test_main_to_name(self) -> None:
+        assert MainProcessIdentity().to_name() == "main"
+
+    def test_rollout_manager_to_name(self) -> None:
+        assert RolloutManagerProcessIdentity().to_name() == "rollout_manager"
+
+    def test_train_to_name(self) -> None:
+        source = TrainProcessIdentity(cell_index=1, rank_within_cell=3)
+        assert source.to_name() == "train_cell1_rank3"
+
+    def test_train_roundtrip(self) -> None:
+        source = TrainProcessIdentity(cell_index=2, rank_within_cell=0)
+        raw = source.model_dump_json()
+        parsed = TrainProcessIdentity.model_validate_json(raw)
+        assert parsed.cell_index == 2
+        assert parsed.rank_within_cell == 0

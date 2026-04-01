@@ -4,6 +4,7 @@ import re
 import sys
 import warnings
 from miles.utils.event_logger.logger import EventLogger, is_event_logger_initialized, set_event_logger
+from miles.utils.event_logger.models import _ProcessIdentityBase
 
 _LOGGER_CONFIGURED = False
 
@@ -12,12 +13,13 @@ logger = logging.getLogger(__name__)
 _FATAL_ASYNC_PATTERN = "coroutine .* was never awaited"
 
 
-def configure_logger(args, *, name: str) -> None:
+def configure_logger(args, *, source: _ProcessIdentityBase) -> None:
+    name = source.to_name()
     configure_logger_raw(name)
 
     if (event_dir := args.save_debug_event_data) is not None:
         if not is_event_logger_initialized():
-            set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl"))
+            set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl", source=source))
 
 
 # ref: SGLang

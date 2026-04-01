@@ -6,6 +6,7 @@ from miles.ray.placement_group import create_placement_groups, create_rollout_ma
 from miles.utils.arguments import parse_args
 from miles.utils.async_utils import eager_create_task
 from miles.utils.control_server.server import start_control_server
+from miles.utils.event_logger.models import MainProcessIdentity
 from miles.utils.logging_utils import configure_logger
 from miles.utils.mini_ft_controller import maybe_start_mini_ft_controller
 from miles.utils.misc import should_run_periodic_action
@@ -13,7 +14,7 @@ from miles.utils.tracking_utils import init_tracking
 
 
 async def train(args):
-    configure_logger(args, name="main")
+    configure_logger(args, source=MainProcessIdentity())
     # allocate the GPUs
     pgs = create_placement_groups(args)
     init_tracking(args)

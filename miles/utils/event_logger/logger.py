@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
 
-from miles.utils.event_logger.models import EventBase
+from miles.utils.event_logger.models import EventBase, ProcessIdentity
 
 _event_logger: "EventLogger | None" = None
 
@@ -24,14 +24,16 @@ def is_event_logger_initialized() -> bool:
 
 
 class EventLogger:
-    def __init__(self, *, log_dir: Path | str, file_name: str = "events.jsonl") -> None:
+    def __init__(self, *, log_dir: Path | str, file_name: str = "events.jsonl", source: ProcessIdentity) -> None:
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
+        self._source = source
 
     def log(self, event: EventBase) -> None:
         event.timestamp = datetime.now(timezone.utc)
+        event.source = self._source
         line = event.model_dump_json() + "\n"
         with self._lock:
             self._file.write(line)

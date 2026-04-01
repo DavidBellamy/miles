@@ -13,6 +13,7 @@ def allocate_gpus_for_actor(
     pg: tuple[PlacementGroup, list[int], list[int]],
     num_gpus_per_actor: float,
     indep_dp_store_addr: str,
+    cell_index: int,
 ):
     world_size = gpus_per_cell
 
@@ -80,6 +81,7 @@ def allocate_gpus_for_actor(
             master_addr,
             master_port,
             indep_dp_store_addr=indep_dp_store_addr,
+            cell_index=cell_index,
         )
         if rank == 0:
             master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
