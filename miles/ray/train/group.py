@@ -12,6 +12,7 @@ from miles.utils.async_utils import AsyncioGatherUtils
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
+from miles.utils.event_analyzer.analyzer import run_analysis
 from miles.utils.retry_utils import retry
 
 if TYPE_CHECKING:
@@ -85,6 +86,7 @@ class RayTrainGroup:
                     pg=_pg,
                     num_gpus_per_actor=num_gpus_per_actor,
                     indep_dp_store_addr=indep_dp_store_addr,
+                    role=role,
                     cell_index=_ci,
                 ),
                 health_checker=NoopHealthChecker(),
@@ -122,6 +124,7 @@ class RayTrainGroup:
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
+        self._run_event_analysis()
 
         async def _fn():
             await self._refresh_cells()
@@ -189,6 +192,22 @@ class RayTrainGroup:
     def start_cell(self, cell_index: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in train()."""
         self._cells[cell_index].mark_as_pending()
+
+    # ------------------------ event analysis ------------------------
+
+    def _run_event_analysis(self) -> None:
+        event_dir = getattr(self.args, "save_debug_event_data", None)
+        if event_dir is None:
+            return
+
+        try:
+            from pathlib import Path
+
+            mismatches = run_analysis(event_dir=Path(event_dir))
+            if mismatches:
+                logger.error("Event analysis found %d mismatch(es), see above for details", len(mismatches))
+        except Exception:
+            logger.warning("Event analysis failed", exc_info=True)
 
     # ------------------------ utils to forward calls to cells ------------------------
 

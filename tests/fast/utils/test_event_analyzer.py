@@ -1,8 +1,8 @@
-"""Tests for event_analyzer post-hoc weight checksum checker."""
+"""Tests for event_analyzer rules and analyzer."""
 
 from pathlib import Path
 
-from miles.utils.event_analyzer import check_weight_checksums
+from miles.utils.event_analyzer.analyzer import run_analysis
 from miles.utils.event_logger.logger import EventLogger
 from miles.utils.event_logger.models import WeightChecksumDumped
 from miles.utils.process_identity import MainProcessIdentity
@@ -27,7 +27,7 @@ def _log_checksum(
     ))
 
 
-class TestCheckWeightChecksums:
+class TestRunAnalysisWeightChecksum:
     def test_matching_checksums_across_replicas_passes(self, tmp_path: Path) -> None:
         event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
         _log_checksum(event_logger, step=0, rank=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"})
@@ -35,7 +35,7 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=0, rank=2, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
         assert mismatches == []
 
     def test_param_hash_mismatch_reports_correct_details(self, tmp_path: Path) -> None:
@@ -45,7 +45,7 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=5, rank=2, param_hashes={"pp0.weight": "aaa"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
 
         assert len(mismatches) == 1
         m = mismatches[0]
@@ -61,7 +61,7 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=0, rank=1, param_hashes={"pp0.weight": "aaa"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
 
         assert len(mismatches) == 1
         m = mismatches[0]
@@ -84,13 +84,13 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=2, rank=1, param_hashes={"pp0.weight": "aaa"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
 
         assert len(mismatches) == 1
         assert mismatches[0].step == 1
 
     def test_empty_directory_returns_no_mismatches(self, tmp_path: Path) -> None:
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
         assert mismatches == []
 
     def test_buffer_mismatch_detected(self, tmp_path: Path) -> None:
@@ -99,7 +99,7 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=0, rank=1, buffer_hashes={"pp0.running_mean": "bbb"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
 
         assert len(mismatches) == 1
         assert mismatches[0].tensor_category == "buffer"
@@ -110,7 +110,7 @@ class TestCheckWeightChecksums:
         _log_checksum(event_logger, step=3, rank=1, optimizer_state_hashes={"pp0.weight/exp_avg": "bbb"})
         event_logger.close()
 
-        mismatches = check_weight_checksums(event_dir=tmp_path)
+        mismatches = run_analysis(event_dir=tmp_path)
 
         assert len(mismatches) == 1
         assert mismatches[0].tensor_category == "optimizer_state"

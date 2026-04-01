@@ -1,13 +1,10 @@
-"""Post-hoc checker for cross-replica weight checksum consistency."""
+"""Rule: cross-replica weight checksum consistency."""
 
 import logging
-import sys
 from collections import defaultdict
 from collections.abc import Callable
-from pathlib import Path
 
-from miles.utils.event_logger.logger import read_events
-from miles.utils.event_logger.models import WeightChecksumDumped
+from miles.utils.event_logger.models import Event, WeightChecksumDumped
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -60,20 +57,14 @@ def _find_mismatches_in_group(
     return mismatches
 
 
-def check_weight_checksums(event_dir: Path) -> list[ChecksumMismatch]:
-    """Read all event JSONL files and verify cross-replica weight checksum consistency.
-
-    Args:
-        event_dir: Path to the event log directory containing *.jsonl files.
+def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
+    """Verify cross-replica weight checksum consistency from events.
 
     Returns:
         List of mismatches found. Empty list means all replicas match.
     """
-    events = read_events(event_dir)
     checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
-
     if not checksum_events:
-        logger.warning("No weight checksum events found in %s", event_dir)
         return []
 
     entries_by_step: dict[int, list[tuple[int, WeightChecksumDumped]]] = defaultdict(list)
@@ -102,28 +93,3 @@ def check_weight_checksums(event_dir: Path) -> list[ChecksumMismatch]:
             all_mismatches.extend(mismatches)
 
     return all_mismatches
-
-
-def main(event_dir: Path) -> int:
-    """Run the checker and print results. Returns 0 if all match, 1 if mismatches found."""
-    mismatches = check_weight_checksums(event_dir)
-
-    if not mismatches:
-        print("All replicas match across all steps.")
-        return 0
-
-    print(f"Found {len(mismatches)} mismatch(es):\n")
-    for m in mismatches:
-        print(f"  Step {m.step} | {m.tensor_category} | {m.tensor_name}")
-        for idx, h in zip(m.cell_indices, m.hashes, strict=True):
-            print(f"    rank {idx}: {h}")
-        print()
-
-    return 1
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <event_dir>", file=sys.stderr)
-        sys.exit(2)
-    sys.exit(main(event_dir=Path(sys.argv[1])))
