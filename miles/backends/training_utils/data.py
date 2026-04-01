@@ -99,8 +99,6 @@ def _cp_slice_and_pack_1d(
     *,
     pad_value: int,
     pad: int,
-    cp_size: int,
-    cp_rank: int,
     parallel_state: ParallelState,
     qkv_format: str,
     allgather_cp: bool,
@@ -117,6 +115,8 @@ def _cp_slice_and_pack_1d(
         return torch.stack(result)
 
     assert qkv_format == "thd"
+    cp_size = parallel_state.cp.size
+    cp_rank = parallel_state.cp.rank
     if allgather_cp:
         result = torch.cat(tensors, dim=0)
         if pad != 0:
@@ -240,8 +240,6 @@ def get_batch(
             witness_ids,
             pad_value=0,
             pad=pad,
-            cp_size=cp_size,
-            cp_rank=cp_rank,
             parallel_state=parallel_state,
             qkv_format=qkv_format,
             allgather_cp=allgather_cp,
@@ -258,8 +256,6 @@ def get_batch(
             position_ids_list,
             pad_value=0,
             pad=pad,
-            cp_size=cp_size,
-            cp_rank=cp_rank,
             parallel_state=parallel_state,
             qkv_format=qkv_format,
             allgather_cp=allgather_cp,
