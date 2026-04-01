@@ -34,4 +34,3 @@ class StateStopped(StateBase):
 
 
 _CellState = StatePending | StateAllocatedUninitialized | StateAllocatedAlive | StateAllocatedErrored | StateStopped
-

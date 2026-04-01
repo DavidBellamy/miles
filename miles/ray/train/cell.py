@@ -1,14 +1,21 @@
 import asyncio
 import logging
-import time
 from collections.abc import Callable
 
 import ray
 
-from miles.ray.train.cell_state import StateStopped, StatePending, StateAllocatedBase, StateAllocatedUninitialized, \
-    StateAllocatedAlive, StateAllocatedErrored, _CellState
-from miles.utils.control_server.models import CellCondition, CellStatus, TriState
-from miles.utils.health_checker import BaseHealthChecker, SimpleHealthChecker, SimpleHealthCheckerConfig
+from miles.ray.train.cell_state import (
+    StateAllocatedAlive,
+    StateAllocatedBase,
+    StateAllocatedErrored,
+    StateAllocatedUninitialized,
+    StatePending,
+    StateStopped,
+    _CellState,
+)
+from miles.ray.train.cell_status import compute_cell_status
+from miles.utils.control_server.models import CellStatus
+from miles.utils.health_checker import BaseHealthChecker
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -224,7 +231,7 @@ class RayTrainCell:
         return isinstance(self._state, StateStopped)
 
     def cell_status(self) -> CellStatus:
-        return _compute_cell_status(self._state, self.health_checker.status)
+        return compute_cell_status(self._state, self.health_checker.status)
 
     @property
     def indep_dp_info(self) -> IndepDPInfo:
@@ -236,75 +243,3 @@ class RayTrainCell:
             self._state, StateAllocatedBase
         ), f"Cell {self.cell_index} is not allocated (state={type(self._state).__name__})"
         return self._state.actor_handles
-
-
-# ------------------------ states ------------------------
-
-
-
-# ------------------------ misc ------------------------
-
-
-def create_trainer_cell_health_checker(
-    *,
-    cell: RayTrainCell,
-    config: SimpleHealthCheckerConfig,
-    max_heartbeat_age: float,
-) -> SimpleHealthChecker:
-    async def _check() -> None:
-        if not cell.is_alive:
-            return
-
-        now = time.time()
-        results = await cell.execute("get_heartbeat_status", mark_errored_on_failure=False)
-
-        for status in results:
-            delta = now - status.last_active_timestamp
-            if delta > max_heartbeat_age:
-                raise RuntimeError(
-                    f"Heartbeat stale: last_active={status.last_active_timestamp:.1f}, "
-                    f"now={now:.1f}, delta={delta:.1f}s, bump_count={status.bump_count}"
-                )
-
-    return SimpleHealthChecker(
-        name=f"trainer-cell-{cell.cell_index}",
-        check_fn=_check,
-        config=config,
-    )
-
-
-def _compute_cell_status(state: _CellState, health_checker_status: TriState) -> CellStatus:
-    match state:
-        case StateAllocatedAlive():
-            if health_checker_status == TriState.FALSE:
-                healthy = CellCondition.healthy(TriState.FALSE, reason="HealthCheckFailed")
-            else:
-                healthy = CellCondition.healthy(TriState.TRUE)
-            return CellStatus(phase="Running", conditions=[CellCondition.allocated(TriState.TRUE), healthy])
-
-        case StateAllocatedUninitialized():
-            return CellStatus(
-                phase="Running",
-                conditions=[
-                    CellCondition.allocated(TriState.TRUE),
-                    CellCondition.healthy(TriState.TRUE),
-                ],
-            )
-
-        case StateAllocatedErrored():
-            return CellStatus(
-                phase="Running",
-                conditions=[
-                    CellCondition.allocated(TriState.TRUE),
-                    CellCondition.healthy(TriState.FALSE, reason="ExecutionErrored"),
-                ],
-            )
-
-        case StatePending():
-            return CellStatus(phase="Pending", conditions=[CellCondition.allocated(TriState.FALSE)])
-
-        case StateStopped():
-            return CellStatus(phase="Suspended", conditions=[CellCondition.allocated(TriState.FALSE)])
-
-        case _:
-            raise NotImplementedError(f"Unknown state: {state}")
