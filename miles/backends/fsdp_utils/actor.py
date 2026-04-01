@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import time
 from argparse import Namespace
 
 import ray
@@ -416,6 +417,8 @@ class FSDPTrainRayActor(TrainRayActor):
                 `rollout_log_probs`, etc.). It will be fetched and partitioned
                 by `process_rollout_data` based on data-parallel rank/size.
         """
+        self._last_active_timestamp = time.time()
+
         if self.args.offload_train:
             self.wake_up()
 
@@ -431,6 +434,8 @@ class FSDPTrainRayActor(TrainRayActor):
             is_primary_rank=dist.get_rank() == 0,
             compute_total_fwd_flops=None,
         )
+
+        self._last_active_timestamp = time.time()
 
     def _train_core(self, rollout_id: int, rollout_data) -> None:
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)

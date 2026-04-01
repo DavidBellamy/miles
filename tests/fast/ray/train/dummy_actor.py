@@ -3,6 +3,7 @@
 Records all method calls so tests can verify what was dispatched.
 """
 
+import time
 from typing import Any
 
 import ray
@@ -14,6 +15,8 @@ class DummyTrainActor:
     def __init__(self):
         self._calls: list[tuple[str, tuple, dict]] = []
         self._fail_methods: set[str] = set()
+        self._last_active_timestamp: float = time.time()
+        self._heartbeat_fail: bool = False
 
     def set_fail_methods(self, methods: list[str]) -> None:
         self._fail_methods = set(methods)
@@ -55,3 +58,14 @@ class DummyTrainActor:
 
     def update_weights(self) -> None:
         self._record("update_weights", (), {})
+
+    def set_heartbeat_fail(self, fail: bool) -> None:
+        self._heartbeat_fail = fail
+
+    def set_last_active_timestamp(self, ts: float) -> None:
+        self._last_active_timestamp = ts
+
+    def heartbeat(self) -> float:
+        if self._heartbeat_fail:
+            raise RuntimeError("Injected heartbeat failure")
+        return self._last_active_timestamp

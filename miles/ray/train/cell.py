@@ -335,7 +335,11 @@ def allocate_gpus_for_actor(
 
         actor_impl = FSDPTrainRayActor
 
-    TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
+    TrainRayActor = ray.remote(
+        num_gpus=1,
+        runtime_env={"env_vars": env_vars},
+        concurrency_groups={"heartbeat": 1, "default": 1000},
+    )(actor_impl)
 
     # Create worker actors
     actor_handles = []
