@@ -23,6 +23,13 @@ from miles.utils.replay_base import routing_replay_manager
 logger = logging.getLogger(__name__)
 
 
+def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
+    if getattr(args, "enable_witness", False):
+        from miles.utils.witness import DataWitness, install_witness_hook
+
+        install_witness_hook(model, DataWitness(num_ids=args.witness_ring_buffer_size))
+
+
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82
 class LinearForLastLayer(torch.nn.Linear):
     def __init__(
@@ -82,10 +89,7 @@ def get_model_provider_func(
                 model.output_layer = LinearForLastLayer(
                     input_size=model.config.hidden_size, output_size=1, config=model.config
                 )
-            if getattr(args, "enable_witness", False):
-                from miles.utils.witness import DataWitness, install_witness_hook
-
-                install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
+            _maybe_install_witness(args, model)
             return model
 
         return wrapped_model_provider
@@ -125,10 +129,7 @@ def get_model_provider_func(
         ) -> GPTModel:
             assert config is None, "miles builds the config from args, so it expects config to be None"
             model = provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
-            if getattr(args, "enable_witness", False):
-                from miles.utils.witness import DataWitness, install_witness_hook
-
-                install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
+            _maybe_install_witness(args, model)
             return model
 
         return wrapped_bridge_provider
@@ -254,10 +255,7 @@ def get_model_provider_func(
         if post_process and role == "critic":
             model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
 
-        if getattr(args, "enable_witness", False):
-            from miles.utils.witness import DataWitness, install_witness_hook
-
-            install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
+        _maybe_install_witness(args, model)
 
         return model
 

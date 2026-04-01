@@ -337,16 +337,16 @@ def _dump_witness_grad(
     model: Sequence[DDP],
     rollout_id: int,
     step_id: int,
-    parallel_state: "ParallelState",
+    parallel_state: ParallelState,
 ) -> None:
-    from miles.utils.witness import WitnessGradRecorder
+    from miles.utils.witness import DataWitness, record_and_log_witness_grad
 
-    recorder = WitnessGradRecorder()
     for model_chunk in model:
-        head_witness = getattr(model_chunk.module, "head_witness", None)
+        head_witness: DataWitness | None = getattr(model_chunk.module, "head_witness", None)
         if head_witness is not None:
-            recorder.record_and_log(
+            record_and_log_witness_grad(
                 step=rollout_id * args.num_steps_per_rollout + step_id,
+                # GroupInfo does not carry quorum_id; fall back to 0
                 quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
                 rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
                 witness=head_witness,
