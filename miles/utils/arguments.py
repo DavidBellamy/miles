@@ -1614,12 +1614,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Enable per-step weight checksum dumping for replica consistency verification.",
             )
             group.add_argument(
-                "--weight-checksum-dir",
-                type=str,
-                default=None,
-                help="Output directory for weight checksum files. Defaults to {dump_details}/weight_checksum if dump_details is set.",
-            )
-            group.add_argument(
                 "--weight-checksum-interval",
                 type=int,
                 default=1,
@@ -1942,14 +1936,6 @@ def miles_validate_args(args):
     if args.weight_checksum_enable:
         if args.weight_checksum_interval < 1:
             raise ValueError("--weight-checksum-interval must be >= 1")
-        if args.weight_checksum_dir is None:
-            if args.dump_details is not None:
-                args.weight_checksum_dir = args.dump_details
-            else:
-                raise ValueError(
-                    "--weight-checksum-dir must be set when --weight-checksum-enable is used "
-                    "and --dump-details is not set."
-                )
 
     if args.load_debug_rollout_data is not None:
         logger.info(

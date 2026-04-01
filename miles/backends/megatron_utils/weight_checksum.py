@@ -4,7 +4,6 @@ import hashlib
 import logging
 from argparse import Namespace
 from collections.abc import Sequence
-from pathlib import Path
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -124,6 +123,7 @@ def _get_param_name(param: torch.nn.Parameter) -> str:
             return main._param_name
     if hasattr(param, "_param_name"):
         return param._param_name
+    logger.warning("Parameter has no _param_name attribute, using id() as fallback (non-deterministic across ranks)")
     return str(id(param))
 
 

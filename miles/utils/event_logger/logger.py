@@ -16,9 +16,9 @@ _event_adapter: TypeAdapter[Event] = TypeAdapter(Event)
 _event_logger: "EventLogger | None" = None
 
 
-def set_event_logger(logger: "EventLogger") -> None:
+def set_event_logger(event_logger: "EventLogger | None") -> None:
     global _event_logger
-    _event_logger = logger
+    _event_logger = event_logger
 
 
 def get_event_logger() -> "EventLogger":
@@ -60,19 +60,20 @@ def read_events(log_dir: Path) -> list[Event]:
         return events
 
     for jsonl_path in jsonl_files:
-        for line_num, line in enumerate(jsonl_path.read_text().splitlines(), start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                event = _event_adapter.validate_json(line)
-                events.append(event)
-            except Exception:
-                logger.warning(
-                    "Failed to parse event at %s:%d",
-                    jsonl_path,
-                    line_num,
-                    exc_info=True,
-                )
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line_num, raw_line in enumerate(f, start=1):
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    event = _event_adapter.validate_json(raw_line)
+                    events.append(event)
+                except Exception:
+                    logger.warning(
+                        "Failed to parse event at %s:%d",
+                        jsonl_path,
+                        line_num,
+                        exc_info=True,
+                    )
 
     return events

@@ -101,7 +101,7 @@ class TestSetGetEventLogger:
         set_event_logger(logger)
         assert get_event_logger() is logger
         logger.close()
-        set_event_logger(None)  # type: ignore[arg-type]
+        set_event_logger(None)
 
     def test_replace_logger(self, tmp_path: Path) -> None:
         logger1 = _make_logger(tmp_path, file_name="a.jsonl")
@@ -111,7 +111,7 @@ class TestSetGetEventLogger:
         assert get_event_logger() is logger2
         logger1.close()
         logger2.close()
-        set_event_logger(None)  # type: ignore[arg-type]
+        set_event_logger(None)
 
 
 class TestGetEventLoggerRaisesWhenNotSet:

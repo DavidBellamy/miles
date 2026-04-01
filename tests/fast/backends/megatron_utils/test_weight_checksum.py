@@ -179,7 +179,7 @@ class TestDumpWeightChecksums:
             assert checksum_events[0].rank == 3
             assert checksum_events[0].param_hashes["pp0.weight"] == "abc123"
         finally:
-            set_event_logger(None)  # type: ignore[arg-type]
+            set_event_logger(None)
 
     def test_round_trip_preserves_all_fields(self, tmp_path: Path) -> None:
         event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
@@ -206,7 +206,7 @@ class TestDumpWeightChecksums:
             assert e.master_param_hashes == entry.master_param_hashes
             assert e.optimizer_state_hashes == entry.optimizer_state_hashes
         finally:
-            set_event_logger(None)  # type: ignore[arg-type]
+            set_event_logger(None)
 
 
 class TestComputeAndDumpWeightChecksums:
@@ -220,7 +220,6 @@ class TestComputeAndDumpWeightChecksums:
     def test_does_nothing_when_step_not_on_interval(self, tmp_path: Path) -> None:
         args = Namespace(
             weight_checksum_enable=True,
-            weight_checksum_dir=str(tmp_path),
             weight_checksum_interval=5,
         )
         model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
@@ -235,7 +234,6 @@ class TestComputeAndDumpWeightChecksums:
         try:
             args = Namespace(
                 weight_checksum_enable=True,
-                weight_checksum_dir=str(tmp_path),
                 weight_checksum_interval=2,
             )
             model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
@@ -254,4 +252,4 @@ class TestComputeAndDumpWeightChecksums:
             assert checksum_events[0].step == 4
             assert checksum_events[0].rank == 7
         finally:
-            set_event_logger(None)  # type: ignore[arg-type]
+            set_event_logger(None)

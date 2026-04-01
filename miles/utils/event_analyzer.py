@@ -3,6 +3,7 @@
 import logging
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
 from miles.utils.event_logger.logger import read_events
@@ -84,15 +85,15 @@ def check_weight_checksums(event_dir: Path) -> list[ChecksumMismatch]:
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        categories: list[tuple[str, str]] = [
-            ("param", "param_hashes"),
-            ("buffer", "buffer_hashes"),
-            ("master_param", "master_param_hashes"),
-            ("optimizer_state", "optimizer_state_hashes"),
+        categories: list[tuple[str, Callable[[WeightChecksumDumped], dict[str, str]]]] = [
+            ("param", lambda e: e.param_hashes),
+            ("buffer", lambda e: e.buffer_hashes),
+            ("master_param", lambda e: e.master_param_hashes),
+            ("optimizer_state", lambda e: e.optimizer_state_hashes),
         ]
 
-        for category_name, attr_name in categories:
-            group = [(rank, getattr(entry, attr_name)) for rank, entry in step_entries]
+        for category_name, accessor in categories:
+            group = [(rank, accessor(entry)) for rank, entry in step_entries]
             mismatches = _find_mismatches_in_group(
                 step=step,
                 category=category_name,
