@@ -7,11 +7,6 @@ from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
-class _RankHashes(NamedTuple):
-    rank: int
-    hashes: dict[str, str]
-
-
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
     step: int
     category: str
@@ -40,6 +35,11 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
         all_mismatches += list(_check_one_step(step, events=events_by_step[step]))
 
     return all_mismatches
+
+
+class _RankHashes(NamedTuple):
+    rank: int
+    hashes: dict[str, str]
 
 
 def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
