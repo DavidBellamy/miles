@@ -5,7 +5,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from miles.backends.megatron_utils.weight_checksum import WeightChecksumEntry
+from miles.utils.event_logger.logger import read_events
+from miles.utils.event_logger.models import WeightChecksumDumped
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -17,13 +18,6 @@ class ChecksumMismatch(StrictBaseModel):
     tensor_name: str
     cell_indices: list[int]
     hashes: list[str]
-
-
-def _parse_step_and_rank(file_path: Path) -> tuple[int, int]:
-    """Extract step and rank from a checksum file path like step_0000042/rank_0003.json."""
-    step = int(file_path.parent.name.removeprefix("step_"))
-    rank = int(file_path.stem.removeprefix("rank_"))
-    return step, rank
 
 
 def _find_mismatches_in_group(
@@ -65,43 +59,40 @@ def _find_mismatches_in_group(
     return mismatches
 
 
-def check_weight_checksums(checksum_dir: Path) -> list[ChecksumMismatch]:
-    """Read all checksum dump files and verify cross-replica consistency.
+def check_weight_checksums(event_dir: Path) -> list[ChecksumMismatch]:
+    """Read all event JSONL files and verify cross-replica weight checksum consistency.
 
     Args:
-        checksum_dir: Path to the weight_checksum output directory
-            (the directory containing step_*/rank_*.json files).
+        event_dir: Path to the event log directory containing *.jsonl files.
 
     Returns:
         List of mismatches found. Empty list means all replicas match.
     """
-    files = sorted(checksum_dir.glob("step_*/rank_*.json"))
-    if not files:
-        logger.warning("No checksum files found in %s", checksum_dir)
+    events = read_events(event_dir)
+    checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+
+    if not checksum_events:
+        logger.warning("No weight checksum events found in %s", event_dir)
         return []
 
-    # Group entries by step
-    entries_by_step: dict[int, list[tuple[int, WeightChecksumEntry]]] = defaultdict(list)
-    for file_path in files:
-        step, rank = _parse_step_and_rank(file_path)
-        raw = file_path.read_text()
-        entry = WeightChecksumEntry.model_validate_json(raw)
-        entries_by_step[step].append((rank, entry))
+    entries_by_step: dict[int, list[tuple[int, WeightChecksumDumped]]] = defaultdict(list)
+    for event in checksum_events:
+        entries_by_step[event.step].append((event.rank, event))
 
     all_mismatches: list[ChecksumMismatch] = []
 
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        categories = [
-            ("param", lambda e: e.param_hashes),
-            ("buffer", lambda e: e.buffer_hashes),
-            ("master_param", lambda e: e.master_param_hashes),
-            ("optimizer_state", lambda e: e.optimizer_state_hashes),
+        categories: list[tuple[str, str]] = [
+            ("param", "param_hashes"),
+            ("buffer", "buffer_hashes"),
+            ("master_param", "master_param_hashes"),
+            ("optimizer_state", "optimizer_state_hashes"),
         ]
 
-        for category_name, accessor in categories:
-            group = [(rank, accessor(entry)) for rank, entry in step_entries]
+        for category_name, attr_name in categories:
+            group = [(rank, getattr(entry, attr_name)) for rank, entry in step_entries]
             mismatches = _find_mismatches_in_group(
                 step=step,
                 category=category_name,
@@ -112,9 +103,9 @@ def check_weight_checksums(checksum_dir: Path) -> list[ChecksumMismatch]:
     return all_mismatches
 
 
-def main(checksum_dir: Path) -> int:
+def main(event_dir: Path) -> int:
     """Run the checker and print results. Returns 0 if all match, 1 if mismatches found."""
-    mismatches = check_weight_checksums(checksum_dir)
+    mismatches = check_weight_checksums(event_dir)
 
     if not mismatches:
         print("All replicas match across all steps.")
@@ -132,6 +123,6 @@ def main(checksum_dir: Path) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <checksum_dir>", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} <event_dir>", file=sys.stderr)
         sys.exit(2)
-    sys.exit(main(checksum_dir=Path(sys.argv[1])))
+    sys.exit(main(event_dir=Path(sys.argv[1])))
