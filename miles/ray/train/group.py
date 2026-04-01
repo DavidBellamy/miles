@@ -202,14 +202,13 @@ class RayTrainGroup:
         chosen_cells = get_chosen_cells()
         outputs = await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in chosen_cells],
-            return_exceptions=catch_exceptions,
+            return_exceptions=True,
         )
 
-        TODO_is_this_good
-        if catch_exceptions:
-            for i, output in enumerate(outputs):
-                if isinstance(output, BaseException):
-                    logger.warning("RayTrainGroup._execute_all_alive cell %d error in %s", i, fn_name, exc_info=output)
+        exceptions = [x for x in outputs if isinstance(x, BaseException)]
+        for e in exceptions:
+            logger.warning("RayTrainGroup._execute_all_alive error fn_name=%s", fn_name, exc_info=e)
+            TODO_handle_more
 
         return outputs
 
