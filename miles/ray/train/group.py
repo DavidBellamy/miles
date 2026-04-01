@@ -69,9 +69,9 @@ class RayTrainGroup:
             SimpleHealthCheckerConfig.from_args(args, prefix="trainer_heartbeat_checker") if num_cells > 1 else None
         )
 
-        self._cells: list[RayTrainCell] = []
-        for cell_index in range(num_cells):
+        def _create_cell(cell_index: int):
             cell_pg = _slice_pg(pg, start=cell_index * gpus_per_cell, end=(cell_index + 1) * gpus_per_cell)
+
             cell = RayTrainCell(
                 args=args,
                 role=role,
@@ -95,7 +95,9 @@ class RayTrainGroup:
                     max_heartbeat_age=args.trainer_heartbeat_checker_max_heartbeat_age,
                 )
 
-            self._cells.append(cell)
+            return cell
+
+        self._cells: list[RayTrainCell] = [_create_cell(cell_index) for cell_index in range(num_cells)]
 
     # ------------------------ APIs ------------------------
 
