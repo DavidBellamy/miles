@@ -95,15 +95,13 @@ class SimpleHealthChecker(BaseHealthChecker):
         name: str,
         check_fn: Callable[[], Coroutine[Any, Any, None]],
         on_result: Callable[[bool], None] | None = None,
-        interval: float,
-        first_wait: float = 0.0,
+        config: SimpleHealthCheckerConfig,
         clock: Clock | None = None,
     ) -> None:
         self._name = name
         self._check_fn = check_fn
         self._on_result = on_result
-        self._interval = interval
-        self._first_wait = first_wait
+        self._config = config
         self._clock = clock or RealClock()
 
         self._status = HealthStatus.UNKNOWN
@@ -118,9 +116,7 @@ class SimpleHealthChecker(BaseHealthChecker):
     async def start(self) -> None:
         if self._task is not None:
             return
-        logger.info(
-            f"[{self._name}] Starting health checker (interval={self._interval}s, first_wait={self._first_wait}s)"
-        )
+        logger.info(f"[{self._name}] Starting health checker (config={self._config})")
         self._task = asyncio.create_task(self._loop())
         await asyncio.sleep(0)
 
@@ -137,7 +133,7 @@ class SimpleHealthChecker(BaseHealthChecker):
         self._status = HealthStatus.UNKNOWN
 
     def resume(self) -> None:
-        logger.info(f"[{self._name}] Resuming health checker (first_wait={self._first_wait}s)")
+        logger.info(f"[{self._name}] Resuming health checker")
         self._paused = False
         self._need_first_wait = True
         self._status = HealthStatus.UNKNOWN
@@ -146,8 +142,8 @@ class SimpleHealthChecker(BaseHealthChecker):
         while True:
             if self._need_first_wait:
                 self._need_first_wait = False
-                logger.info(f"[{self._name}] Waiting {self._first_wait}s before first check")
-                await self._clock.sleep(self._first_wait)
+                logger.info(f"[{self._name}] Waiting {self._config.first_wait}s before first check")
+                await self._clock.sleep(self._config.first_wait)
 
             if not self._paused:
                 success = False
@@ -165,7 +161,7 @@ class SimpleHealthChecker(BaseHealthChecker):
                 if self._on_result is not None:
                     self._on_result(success)
 
-            await self._clock.sleep(self._interval)
+            await self._clock.sleep(self._config.interval)
 
 
 class NoopHealthChecker(BaseHealthChecker):
@@ -210,5 +206,5 @@ def create_rollout_cell_health_checker(
         name=f"rollout-cell-{cell_id}",
         check_fn=_check,
         on_result=on_result,
-        interval=config.interval,
+        config=config,
     )
