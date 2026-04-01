@@ -145,6 +145,7 @@ class RayTrainGroup:
         await self._execute_first_alive("update_weights")
 
     async def onload(self):
+        # Catch *without* retry: cells w/ exceptions are auto marked errored and will not be used
         await self._execute_all_alive_and_catch("wake_up")
         for cell in self._cells:
             cell.health_checker.resume()
@@ -152,9 +153,11 @@ class RayTrainGroup:
     async def offload(self):
         for cell in self._cells:
             cell.health_checker.pause()
+        # Catch *without* retry: cells w/ exceptions are auto marked errored and will not be used
         await self._execute_all_alive_and_catch("sleep")
 
     async def clear_memory(self):
+        # Catch *without* retry: cells w/ exceptions are auto marked errored and will not be used
         await self._execute_all_alive_and_catch("clear_memory")
 
     async def connect(self, critic_group: "RayTrainGroup"):
