@@ -3,40 +3,38 @@ import asyncio
 import pytest
 
 from miles.utils.clock import FakeClock
-from miles.utils.health_checker import HealthStatus, SimpleHealthChecker
+from miles.utils.health_checker import HealthStatus, NoopHealthChecker, SimpleHealthChecker
 
 
 def _make_checker(
     *,
     check_fn=None,
     on_result=None,
-    interval: float = 1.0,
+    interval: float = 10.0,
     first_wait: float = 0.0,
     name: str = "test",
     clock: FakeClock | None = None,
-) -> SimpleHealthChecker:
+) -> tuple[SimpleHealthChecker, FakeClock]:
     if check_fn is None:
 
         async def check_fn() -> None:
             pass
 
-    return SimpleHealthChecker(
+    c = clock or FakeClock()
+    checker = SimpleHealthChecker(
         name=name,
         check_fn=check_fn,
         on_result=on_result,
         interval=interval,
         first_wait=first_wait,
-        clock=clock or FakeClock(),
+        clock=c,
     )
-
-
-async def _tick() -> None:
-    await asyncio.sleep(0)
+    return checker, c
 
 
 class TestStartStop:
     async def test_start_creates_task(self):
-        checker = _make_checker()
+        checker, _ = _make_checker()
         assert checker._task is None
 
         await checker.start()
@@ -46,7 +44,7 @@ class TestStartStop:
         assert checker._task is None
 
     async def test_start_is_idempotent(self):
-        checker = _make_checker()
+        checker, _ = _make_checker()
         await checker.start()
         task = checker._task
 
@@ -56,42 +54,56 @@ class TestStartStop:
         checker.stop()
 
     async def test_stop_without_start_is_noop(self):
-        checker = _make_checker()
+        checker, _ = _make_checker()
         checker.stop()
 
 
 class TestCheckFnCalled:
-    async def test_check_fn_called_on_each_tick(self):
+    async def test_check_fn_called_after_first_interval(self):
         call_count = 0
 
         async def check_fn() -> None:
             nonlocal call_count
             call_count += 1
 
-        checker = _make_checker(check_fn=check_fn)
+        checker, clock = _make_checker(check_fn=check_fn, interval=10.0)
         await checker.start()
 
-        await _tick()
+        # Step 1: first_wait=0, so first check runs immediately after task starts
+        await asyncio.sleep(0)
         assert call_count == 1
 
-        await _tick()
+        # Step 2: Elapse less than interval — no second check
+        await clock.elapse(5.0)
+        assert call_count == 1
+
+        # Step 3: Elapse to interval — second check
+        await clock.elapse(5.0)
         assert call_count == 2
 
         checker.stop()
 
-    async def test_first_wait_still_allows_sleep_to_complete(self):
+    async def test_first_wait_delays_first_check(self):
         call_count = 0
 
         async def check_fn() -> None:
             nonlocal call_count
             call_count += 1
 
-        checker = _make_checker(check_fn=check_fn, first_wait=300.0)
+        checker, clock = _make_checker(check_fn=check_fn, first_wait=300.0, interval=10.0)
         await checker.start()
 
-        # FakeClock.sleep returns immediately, so check runs after a tick
-        await _tick()
+        # Step 1: Elapse 100s — still in first_wait
+        await clock.elapse(100.0)
+        assert call_count == 0
+
+        # Step 2: Elapse to 300s — first_wait completes, first check runs
+        await clock.elapse(200.0)
         assert call_count == 1
+
+        # Step 3: Elapse interval — second check
+        await clock.elapse(10.0)
+        assert call_count == 2
 
         checker.stop()
 
@@ -100,9 +112,9 @@ class TestOnResult:
     async def test_on_result_true_on_success(self):
         results: list[bool] = []
 
-        checker = _make_checker(on_result=lambda s: results.append(s))
+        checker, clock = _make_checker(on_result=lambda s: results.append(s))
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
         checker.stop()
 
         assert results == [True]
@@ -113,9 +125,9 @@ class TestOnResult:
         async def check_fn() -> None:
             raise RuntimeError("boom")
 
-        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
+        checker, clock = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
         checker.stop()
 
         assert results == [False]
@@ -126,15 +138,14 @@ class TestOnResult:
         async def check_fn() -> None:
             raise RuntimeError("boom")
 
-        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
+        checker, clock = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s), interval=5.0)
         await checker.start()
 
-        await _tick()
-        await _tick()
+        await asyncio.sleep(0)
+        await clock.elapse(5.0)
         checker.stop()
 
-        assert len(results) >= 2
-        assert all(r is False for r in results)
+        assert results == [False, False]
 
     async def test_intermittent_failure(self):
         call_count = 0
@@ -146,16 +157,16 @@ class TestOnResult:
             if call_count % 2 == 0:
                 raise RuntimeError("intermittent")
 
-        checker = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s))
+        checker, clock = _make_checker(check_fn=check_fn, on_result=lambda s: results.append(s), interval=5.0)
         await checker.start()
+        # first_wait=0 so first check runs immediately on start
+        assert results == [True]
 
-        for _ in range(5):
-            await _tick()
+        for _ in range(3):
+            await clock.elapse(5.0)
         checker.stop()
 
-        assert len(results) >= 4
-        assert True in results
-        assert False in results
+        assert results == [True, False, True, False]
 
 
 class TestPauseResume:
@@ -166,12 +177,11 @@ class TestPauseResume:
             nonlocal call_count
             call_count += 1
 
-        checker = _make_checker(check_fn=check_fn)
+        checker, clock = _make_checker(check_fn=check_fn, interval=5.0)
         checker.pause()
 
         await checker.start()
-        await _tick()
-        await _tick()
+        await clock.elapse(20.0)
         checker.stop()
 
         assert call_count == 0
@@ -183,21 +193,21 @@ class TestPauseResume:
             nonlocal call_count
             call_count += 1
 
-        checker = _make_checker(check_fn=check_fn)
+        checker, clock = _make_checker(check_fn=check_fn, interval=5.0)
         checker.pause()
 
         await checker.start()
-        await _tick()
+        await clock.elapse(20.0)
         assert call_count == 0
 
         checker.resume()
-        await _tick()
+        await clock.elapse(5.0)
         checker.stop()
 
         assert call_count >= 1
 
     async def test_pause_resume_flags(self):
-        checker = _make_checker()
+        checker, _ = _make_checker()
         assert not checker._paused
 
         checker.pause()
@@ -208,87 +218,48 @@ class TestPauseResume:
 
 
 class TestNeedFirstWait:
-    async def test_initial_start_triggers_first_wait(self):
-        """On start, first_wait sleep happens before the first check."""
+    async def test_resume_triggers_first_wait_again(self):
+        """After resume, the loop waits first_wait before the next check."""
         call_count = 0
 
         async def check_fn() -> None:
             nonlocal call_count
             call_count += 1
 
-        checker = _make_checker(check_fn=check_fn, first_wait=300.0)
-        assert checker._need_first_wait is True
-
+        checker, clock = _make_checker(check_fn=check_fn, first_wait=100.0, interval=5.0)
         await checker.start()
-        # FakeClock.sleep is instant, so first_wait completes immediately
-        await _tick()
+
+        # Step 1: Initial first_wait (100s)
+        await clock.elapse(50.0)
+        assert call_count == 0
+        await clock.elapse(50.0)
         assert call_count == 1
-        assert checker._need_first_wait is False
 
-        checker.stop()
-
-    async def test_resume_resets_need_first_wait(self):
-        """After resume(), _need_first_wait is set back to True."""
-        checker = _make_checker(first_wait=300.0)
-        await checker.start()
-        await _tick()
-        assert checker._need_first_wait is False
-
-        checker.pause()
-        checker.resume()
-        assert checker._need_first_wait is True
-
-        checker.stop()
-
-    async def test_resume_triggers_first_wait_before_next_check(self):
-        """After resume, the loop waits first_wait again before checking."""
-        call_count = 0
-        sleep_durations: list[float] = []
-
-        async def check_fn() -> None:
-            nonlocal call_count
-            call_count += 1
-
-        clock = FakeClock()
-        original_sleep = clock.sleep
-
-        async def tracking_sleep(seconds: float) -> None:
-            sleep_durations.append(seconds)
-            await original_sleep(seconds)
-
-        clock.sleep = tracking_sleep
-
-        checker = _make_checker(check_fn=check_fn, first_wait=100.0, interval=5.0, clock=clock)
-        await checker.start()
-
-        # Step 1: Initial first_wait + first check
-        await _tick()
-        assert call_count == 1
-        assert 100.0 in sleep_durations
-
-        sleep_durations.clear()
-
-        # Step 2: Normal tick (interval only)
-        await _tick()
+        # Step 2: Normal interval (5s)
+        await clock.elapse(5.0)
         assert call_count == 2
-        assert 100.0 not in sleep_durations
-        assert 5.0 in sleep_durations
 
         # Step 3: Pause + resume resets first_wait
         checker.pause()
         checker.resume()
-        sleep_durations.clear()
 
-        await _tick()
-        assert 100.0 in sleep_durations
+        # Step 4: Need to elapse past the pending interval sleep first,
+        # then the new first_wait (100s) before next check
+        await clock.elapse(5.0)
+        assert call_count == 2
+
+        await clock.elapse(50.0)
+        assert call_count == 2
+
+        await clock.elapse(50.0)
+        assert call_count == 3
 
         checker.stop()
 
-    async def test_pause_during_normal_operation_no_first_wait_without_resume(self):
-        """Pausing without resuming doesn't trigger first_wait on its own."""
-        checker = _make_checker(first_wait=300.0)
+    async def test_pause_without_resume_no_first_wait(self):
+        checker, clock = _make_checker(first_wait=300.0)
         await checker.start()
-        await _tick()
+        await clock.elapse(300.0)
         assert checker._need_first_wait is False
 
         checker.pause()
@@ -297,15 +268,15 @@ class TestNeedFirstWait:
         checker.stop()
 
 
-class TestHealthyProperty:
-    async def test_initial_healthy_is_unknown(self):
-        checker = _make_checker()
+class TestHealthStatus:
+    async def test_initial_status_is_unknown(self):
+        checker, _ = _make_checker()
         assert checker.status == HealthStatus.UNKNOWN
 
     async def test_healthy_after_successful_check(self):
-        checker = _make_checker()
+        checker, clock = _make_checker()
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
 
         assert checker.status == HealthStatus.HEALTHY
         checker.stop()
@@ -314,43 +285,41 @@ class TestHealthyProperty:
         async def check_fn() -> None:
             raise RuntimeError("boom")
 
-        checker = _make_checker(check_fn=check_fn)
+        checker, clock = _make_checker(check_fn=check_fn)
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
 
         assert checker.status == HealthStatus.UNHEALTHY
         checker.stop()
 
     async def test_stop_resets_to_unknown(self):
-        checker = _make_checker()
+        checker, clock = _make_checker()
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
         assert checker.status == HealthStatus.HEALTHY
 
         checker.stop()
         assert checker.status == HealthStatus.UNKNOWN
 
     async def test_pause_resets_to_unknown(self):
-        checker = _make_checker()
+        checker, clock = _make_checker()
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
         assert checker.status == HealthStatus.HEALTHY
 
         checker.pause()
         assert checker.status == HealthStatus.UNKNOWN
-
         checker.stop()
 
     async def test_resume_resets_to_unknown(self):
-        checker = _make_checker()
+        checker, clock = _make_checker()
         await checker.start()
-        await _tick()
+        await asyncio.sleep(0)
         assert checker.status == HealthStatus.HEALTHY
 
         checker.pause()
         checker.resume()
         assert checker.status == HealthStatus.UNKNOWN
-
         checker.stop()
 
     async def test_recovers_from_unhealthy_to_healthy(self):
@@ -362,21 +331,19 @@ class TestHealthyProperty:
             if call_count == 1:
                 raise RuntimeError("transient")
 
-        checker = _make_checker(check_fn=check_fn)
+        checker, clock = _make_checker(check_fn=check_fn, interval=5.0)
         await checker.start()
 
-        await _tick()
+        await asyncio.sleep(0)
         assert checker.status == HealthStatus.UNHEALTHY
 
-        await _tick()
+        await clock.elapse(5.0)
         assert checker.status == HealthStatus.HEALTHY
 
         checker.stop()
 
 
 class TestNoopHealthChecker:
-    def test_noop_healthy_is_always_unknown(self):
-        from miles.utils.health_checker import NoopHealthChecker
-
+    def test_noop_status_is_always_unknown(self):
         checker = NoopHealthChecker()
         assert checker.status == HealthStatus.UNKNOWN

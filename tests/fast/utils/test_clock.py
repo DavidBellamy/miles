@@ -68,7 +68,6 @@ class TestFakeClockSleep:
 
         asyncio.create_task(task())
         await asyncio.sleep(0)
-        await asyncio.sleep(0)
         assert completed
 
     async def test_sleep_blocks_until_elapse(self):
@@ -176,7 +175,6 @@ class TestFakeClockSleep:
 
         asyncio.create_task(task())
         await asyncio.sleep(0)
-        await asyncio.sleep(0)
         assert completed
 
 
@@ -251,4 +249,8 @@ class TestFakeClockChainedSleeps:
         await clock.elapse(5.0)
         assert ticks == [10.0, 15.0, 20.0]
 
-        await task
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

@@ -5,7 +5,7 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
-from enum import StrEnum, auto
+from enum import Enum
 from typing import Any
 
 from miles.utils.clock import Clock, RealClock
@@ -58,10 +58,10 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
         )
 
 
-class HealthStatus(StrEnum):
-    HEALTHY = auto()
-    UNHEALTHY = auto()
-    UNKNOWN = auto()
+class HealthStatus(str, Enum):
+    HEALTHY = "healthy"
+    UNHEALTHY = "unhealthy"
+    UNKNOWN = "unknown"
 
 
 class BaseHealthChecker(abc.ABC):
@@ -119,6 +119,7 @@ class SimpleHealthChecker(BaseHealthChecker):
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._loop())
+        await asyncio.sleep(0)
 
     def stop(self) -> None:
         if self._task is not None:

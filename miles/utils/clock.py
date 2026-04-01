@@ -22,6 +22,9 @@ class RealClock(Clock):
         await asyncio.sleep(seconds)
 
 
+_DRAIN_ITERATIONS = 20
+
+
 class FakeClock(Clock):
     """Deterministic clock for testing async time-dependent code.
 
@@ -40,7 +43,6 @@ class FakeClock(Clock):
 
     async def sleep(self, seconds: float) -> None:
         if seconds <= 0:
-            await asyncio.sleep(0)
             return
 
         target = self._now + seconds
@@ -53,7 +55,11 @@ class FakeClock(Clock):
         assert seconds >= 0, f"Cannot elapse negative time: {seconds}"
         self._now += seconds
         self._resolve_ready()
-        await asyncio.sleep(0)
+        # Drain: yield enough times for resolved coroutines to run through
+        # sync code and register their next sleep.
+        for _ in range(_DRAIN_ITERATIONS):
+            await asyncio.sleep(0)
+            self._resolve_ready()
 
     def _resolve_ready(self) -> None:
         while self._waiters and self._waiters[0][0] <= self._now:
