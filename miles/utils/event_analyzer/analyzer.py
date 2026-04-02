@@ -31,11 +31,7 @@ def run_analysis(event_dir: Path) -> list[Any]:
     if not events:
         return []
 
-    issues = cross_replica_weight_checksum.check(events)
-
-    witness_mismatches = witness_rule.check(events)
-    for m in witness_mismatches:
-        logger.error("Witness mismatch at step %d quorum %d: %s", m.step, m.quorum_id, m.description)
-    issues.extend(witness_mismatches)
-
-    return issues
+    return [
+        *cross_replica_weight_checksum.check(events),
+        *witness_rule.check(events),
+    ]
