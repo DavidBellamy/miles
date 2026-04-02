@@ -1398,7 +1398,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 help="Name of the fault tolerance test scenario to execute inside the training job. "
                 "When set, the training loop invokes the corresponding scenario from "
-                "miles.utils.ft_test_scenarios at step boundaries for coordinated fault injection.",
+                "miles.utils.test_utils.ft_test_scenarios at step boundaries for coordinated fault injection.",
             )
             parser.add_argument(
                 "--ci-ft-random-seed",
