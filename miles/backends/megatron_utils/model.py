@@ -519,7 +519,7 @@ def train_one_step(
     if outcome == TrainStepOutcome.NORMAL:
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
         if args.enable_witness:
-            witness_dump_and_clear_stale(model=model)
+            witness_dump_and_clear_stale(model=model, witness_info=witness_info)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
