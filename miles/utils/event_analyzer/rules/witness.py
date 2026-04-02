@@ -19,7 +19,7 @@ class WitnessDataMismatchIssue(FrozenStrictBaseModel):
     rollout_id: int
     cell_index: int
     description: str
-    expected_witness_ids_of_step: list[int]
+    expected_witness_ids: list[int]
     actual_witness_ids: list[int]
 
 
@@ -130,6 +130,6 @@ def _compare_snapshot(
             f"missing={sorted(filtered_expected - filtered_actual)}, "
             f"extra={sorted(filtered_actual - filtered_expected)}"
         ),
-        expected_witness_ids_of_step=sorted(filtered_expected),
+        expected_witness_ids=sorted(filtered_expected),
         actual_witness_ids=sorted(filtered_actual),
     )
