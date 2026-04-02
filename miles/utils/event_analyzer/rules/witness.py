@@ -42,11 +42,11 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
     parsed = _parse_events(events)
-    cumulative_expected = _build_cumulative_expected(parsed.allocations_by_rollout)
+    expected_witness_ids = _build_expected_witness_ids(parsed.allocations_by_rollout)
     return _find_mismatches(
         step_end_events=parsed.step_end_events,
         snapshot_events=parsed.snapshot_events,
-        cumulative_expected=cumulative_expected,
+        expected_witness_ids=expected_witness_ids,
     )
 
 
@@ -76,27 +76,26 @@ def _parse_events(events: list[Event]) -> _ParsedEvents:
     return parsed
 
 
-def _build_cumulative_expected(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
+def _build_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
     """Precompute cumulative expected witness IDs per rollout_id."""
-    cumulative: dict[int, set[int]] = {}
+    ans: dict[int, set[int]] = {}
     running: set[int] = set()
     for rid in sorted(allocations_by_rollout.keys()):
         running = running | set(allocations_by_rollout[rid].keys())
-        cumulative[rid] = set(running)
-    return cumulative
+        ans[rid] = set(running)
+    return ans
 
 
 def _find_mismatches(
     *,
     step_end_events: list[TrainGroupStepEndEvent],
     snapshot_events: list[WitnessSnapshotParamEvent],
-    cumulative_expected: dict[int, set[int]],
+    expected_witness_ids: dict[int, set[int]],
 ) -> list[WitnessDataMismatchIssue]:
     issues: list[WitnessDataMismatchIssue] = []
 
     for step_end in step_end_events:
         rollout_id = step_end.rollout_id
-        expected_witness_ids = cumulative_expected.get(rollout_id, set())
 
         matching_snapshots = [
             snap for snap in snapshot_events
@@ -114,7 +113,7 @@ def _find_mismatches(
 
             for snap in cell_snapshots:
                 issue = _compare_snapshot(
-                    snap=snap, expected=expected_witness_ids,
+                    snap=snap, expected=expected_witness_ids.get(rollout_id, set()),
                     rollout_id=rollout_id, cell_index=cell_index,
                 )
                 if issue is not None:
