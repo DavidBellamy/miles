@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/_run-ci.yml
     with:
       gpu_count: 0
-      execute_command: "pytest tests/fast/ -x -v"
+      execute_command: "python tests/ci/run_suite.py --hw cpu --suite stage-a-fast"
     secrets: inherit
 
   # Stage A: Unit test (single FSDP test, 8 GPU)
@@ -56,7 +56,7 @@ jobs:
     uses: ./.github/workflows/_run-ci.yml
     with:
       gpu_count: 1
-      execute_command: "pytest tests/e2e/sglang_patch/test_chat_input_ids_equivalence.py -x -v"
+      execute_command: "pytest tests/e2e/sglang/test_chat_input_ids_equivalence.py -x -v"
     secrets: inherit
 
   # Stage B: Short 8-GPU tests

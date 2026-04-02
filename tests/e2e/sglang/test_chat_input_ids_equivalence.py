@@ -106,3 +106,7 @@ def _post_chat(base_url: str, messages: list[dict]) -> dict:
     data = resp.json()
     print(f"chat response text: {data['choices'][0]['message']['content']!r}", flush=True)
     return data
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

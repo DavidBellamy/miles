@@ -38,6 +38,7 @@ jobs:
         -v /mnt/nvme0n1/miles_ci:/data/miles_ci
         -v /mnt/nvme0n1/miles_ci/models:/root/models
         -v /mnt/nvme0n1/miles_ci/datasets:/root/datasets
+        -v /mnt/nvme0n1/miles_ci/hf_cache:/root/.cache/huggingface
         --privileged
         --ulimit nofile=65535:65535
         -v /tmp:/tmp

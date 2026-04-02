@@ -1,5 +1,6 @@
 import argparse
 import glob
+import subprocess
 import sys
 
 from tests.ci.ci_register import CIRegistry, HWBackend, collect_tests
@@ -12,6 +13,9 @@ HW_MAPPING = {
 
 # Per-commit test suites (run on every PR with matching label)
 PER_COMMIT_SUITES = {
+    HWBackend.CPU: [
+        "stage-a-fast",
+    ],
     HWBackend.CUDA: [
         "stage-b-sglang-1-gpu",
         "stage-b-short-8-gpu",
@@ -21,6 +25,7 @@ PER_COMMIT_SUITES = {
         "stage-c-ckpt-8-gpu",
         "stage-c-long-8-gpu",
         "stage-c-lora-8-gpu",
+        "stage-c-glm5-8-gpu",
     ],
 }
 
@@ -114,16 +119,24 @@ def run_a_suite(args):
     auto_partition_id = args.auto_partition_id
     auto_partition_size = args.auto_partition_size
 
-    # Discover all test files under tests/e2e/
-    files = [
+    # Discover test files: e2e/ for CUDA, fast/ for CPU
+    e2e_files = [
         f
         for f in glob.glob("tests/e2e/**/*.py", recursive=True)
         if not f.endswith("/conftest.py") and not f.endswith("/__init__.py") and not f.endswith(".gitkeep")
         # Exclude helper modules that aren't test files
-        and "/sglang_patch/sglang_server.py" not in f
+        and "/sglang_patch/sglang_server.py" not in f and "/sglang/utils/" not in f and "short/test_dumper.py" not in f
     ]
+    fast_files = [
+        f
+        for f in glob.glob("tests/fast/**/*.py", recursive=True)
+        if "/test_" in f
+        and not f.endswith("/conftest.py")
+        and not f.endswith("/__init__.py")
+        and not f.endswith("/utils.py")
+    ] + glob.glob("tests/utils/test_*.py")
+    files = e2e_files + fast_files
 
-    # Strict: all scanned files with registrations are validated
     all_tests = collect_tests(files, sanity_check=False)
     ci_tests, skipped_tests = filter_tests(all_tests, hw, suite, nightly)
 
@@ -138,6 +151,12 @@ def run_a_suite(args):
 
     if args.list_only:
         return 0
+
+    # CPU tests (fast/) use pytest; CUDA tests use python3 per-file
+    if hw == HWBackend.CPU:
+        cmd = ["pytest"] + [t.filename for t in ci_tests] + ["-x", "-v"]
+        print(f"Running: {' '.join(cmd)}", flush=True)
+        return subprocess.call(cmd)
 
     # Add extra timeout when retry is enabled
     timeout = args.timeout_per_file

@@ -43,6 +43,10 @@ TestFactory
 
 from __future__ import annotations
 
+from tests.ci.ci_register import register_cpu_ci
+
+register_cpu_ci(est_time=60, suite="stage-a-fast")
+
 import pytest
 from transformers import AutoTokenizer
 
@@ -53,6 +57,7 @@ from miles.utils.chat_template_utils.tito_tokenizer import (
     TITOTokenizerType,
     get_tito_tokenizer,
 )
+from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_trajectories import (
     IntermediateSystemTrajectory,
     LongChainTrajectory,
@@ -73,7 +78,7 @@ _TOK_CACHE: dict[str, AutoTokenizer] = {}
 
 def _get_tokenizer(model_id: str) -> AutoTokenizer:
     if model_id not in _TOK_CACHE:
-        _TOK_CACHE[model_id] = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        _TOK_CACHE[model_id] = load_tokenizer(model_id, trust_remote_code=True)
     return _TOK_CACHE[model_id]
 
 

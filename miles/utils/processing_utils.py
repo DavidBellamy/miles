@@ -13,8 +13,31 @@ logger = logging.getLogger(__name__)
 DEFAULT_PATCH_SIZE = 14
 
 
+def _find_cached_snapshot(repo_id: str) -> str | None:
+    """Return the local snapshot dir if the tokenizer is fully cached, else None."""
+    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+    repo_folder = "models--" + repo_id.replace("/", "--")
+    snapshots_dir = os.path.join(hf_home, "hub", repo_folder, "snapshots")
+    if not os.path.isdir(snapshots_dir):
+        return None
+    for snapshot in sorted(os.listdir(snapshots_dir), reverse=True):
+        snapshot_path = os.path.join(snapshots_dir, snapshot)
+        has_config = os.path.isfile(os.path.join(snapshot_path, "config.json"))
+        has_tokenizer = os.path.isfile(os.path.join(snapshot_path, "tokenizer.json")) or os.path.isfile(
+            os.path.join(snapshot_path, "tokenizer.model")
+        )
+        if has_config and has_tokenizer:
+            return snapshot_path
+    return None
+
+
 def load_tokenizer(name_or_path: str, chat_template_path: str = None, **kwargs):
-    tokenizer = AutoTokenizer.from_pretrained(name_or_path, **kwargs)
+    resolved = name_or_path
+    if not os.path.exists(name_or_path):
+        cached = _find_cached_snapshot(name_or_path)
+        if cached:
+            resolved = cached
+    tokenizer = AutoTokenizer.from_pretrained(resolved, **kwargs)
     if chat_template_path:
         assert os.path.isfile(chat_template_path), (
             f"chat_template_path not found: {chat_template_path}. "

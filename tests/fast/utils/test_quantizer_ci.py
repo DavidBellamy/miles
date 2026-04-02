@@ -4,6 +4,11 @@ The change adds `name.startswith(r)` to the ignore matching logic, so rules like
 "model.layers.0.self_attn" now ignore all weights under that prefix.
 """
 
+from tests.ci.ci_register import register_cpu_ci
+
+register_cpu_ci(est_time=60, suite="stage-a-fast")
+
+
 import pytest
 import torch
 
