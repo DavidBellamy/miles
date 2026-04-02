@@ -135,22 +135,11 @@ class RayTrainGroup:
 
         async def _fn(attempt: int):
             # NOTE: Need to allocate *new* witness ids for each retry
-            sample_indices = rollout_data_pack["sample_indices"]
-
-            witness_info: WitnessInfo | None = None
-            if self._witness_allocator is not None:
-                witness_info = self._witness_allocator.allocate(num_ids=len(sample_indices))
-                if is_event_logger_initialized():
-                    get_event_logger().log(
-                        WitnessAllocateIdEvent,
-                        dict(
-                            rollout_id=rollout_id,
-                            attempt=attempt,
-                            witness_id_to_sample_index=dict(
-                                zip(witness_info.witness_ids, sample_indices, strict=True)
-                            ),
-                        ),
-                    )
+            witness_info = await self._allocate_witness_info(
+                rollout_id=rollout_id,
+                attempt=attempt,
+                sample_indices=rollout_data_pack["sample_indices"],
+            )
 
             await self._refresh_cells()
             results = await self._execute_all_alive_and_catch(
@@ -177,6 +166,26 @@ class RayTrainGroup:
                 )
 
         await retry(_fn)
+
+    async def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
+        if self._witness_allocator is None:
+            return None
+
+        witness_info = self._witness_allocator.allocate(num_ids=len(sample_indices))
+
+        if is_event_logger_initialized():
+            get_event_logger().log(
+                WitnessAllocateIdEvent,
+                dict(
+                    rollout_id=rollout_id,
+                    attempt=attempt,
+                    witness_id_to_sample_index=dict(
+                        zip(witness_info.witness_ids, sample_indices, strict=True)
+                    ),
+                ),
+            )
+
+        return witness_info
 
     @staticmethod
     def _check_train_one_attempt(results):
