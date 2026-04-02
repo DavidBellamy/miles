@@ -1,3 +1,9 @@
+from pathlib import Path
+
+from miles.utils.event_logger.logger import read_events
+from miles.utils.event_logger.models import MetricEvent
+
+
 def read_metric_events(dump_dir: Path) -> list[MetricEvent]:
     """Read MetricEvents from the event logger output directory."""
     events_dir: Path = dump_dir / "events"
@@ -60,4 +66,3 @@ def assert_events_dir_exists(dump_dir: str) -> None:
     assert events_dir.exists(), f"Events directory not found: {events_dir}"
     jsonl_files = list(events_dir.glob("**/*.jsonl"))
     assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
-

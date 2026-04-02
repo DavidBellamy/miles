@@ -1,3 +1,7 @@
+from dataclasses import dataclass
+
+import typer
+
 MODEL_NAME: str = "Qwen3-30B-A3B-5layer"
 MODEL_HF_REPO: str = f"fzyzcjy/{MODEL_NAME}"
 MODEL_TYPE: str = "qwen3-30B-A3B"

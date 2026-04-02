@@ -1,3 +1,8 @@
+import miles.utils.external_utils.command_utils as U
+
+from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, MODEL_HF_REPO, FTTestMode
+
+
 def prepare(mode: FTTestMode) -> None:
     """Download trimmed model, convert checkpoint, download debug rollout data."""
     U.exec_command("mkdir -p /root/models /root/datasets")
@@ -8,4 +13,3 @@ def prepare(mode: FTTestMode) -> None:
         num_gpus_per_node=mode.num_gpus_total,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
-

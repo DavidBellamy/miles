@@ -1,3 +1,8 @@
+import miles.utils.external_utils.command_utils as U
+
+from tests.e2e.ft.conftest_ft.modes import FTTestMode
+
+
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
     """Base args shared by all FT tests.
 
