@@ -45,12 +45,9 @@ def install_witness(model: nn.Module, *, num_ids: int) -> None:
     model.tail_witness = DataWitness(num_ids=num_ids)
 
 
-def dump_witness_params(
-    *,
-    model_chunks: Sequence[nn.Module],
-) -> None:
+def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
     """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
-    for chunk in model_chunks:
+    for chunk in model:
         for attr in _WITNESS_ATTRS:
             witness: Optional[DataWitness] = getattr(chunk.module, attr, None)
             if witness is not None:
