@@ -90,7 +90,7 @@ class WitnessIdAllocator:
         self._clear_stale(keep_count=int(self._buffer_size * 0.7))
 
     def _clear_stale(self, *, keep_count: int) -> None:
-        stale_ids = self._compute_stale_ids(keep_count=keep_count)
+        stale_ids = self._compute_stale_ids(keep_count=keep_count, counter=self._counter, buffer_size=self._buffer_size)
         if not stale_ids:
             return
 
@@ -98,14 +98,14 @@ class WitnessIdAllocator:
             idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
             _zero_witness_rows(witness=witness, idx=idx, optimizer=self._optimizer)
 
-    def _compute_stale_ids(self, *, keep_count: int) -> list[int]:
-        n = self._buffer_size
-        num_stale = n - min(keep_count, self._counter, n)
+    @classmethod
+    def _compute_stale_ids(cls, *, keep_count: int, counter: int, buffer_size: int) -> list[int]:
+        num_stale = buffer_size - min(keep_count, counter, buffer_size)
         if num_stale == 0:
             return []
 
-        head = self._counter % n
-        return [(head + i) % n for i in range(num_stale)]
+        head = counter % buffer_size
+        return [(head + i) % buffer_size for i in range(num_stale)]
 
 
 # ---------------------------------------------------------------------------
