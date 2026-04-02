@@ -1,29 +1,27 @@
-TODO_split_to_test_allocator_and_test_module
-
-"""Tests for miles.utils.witness: DataWitness, WitnessIdAllocator."""
+"""Tests for miles.utils.witness.module: _DataWitness, install_witness, _record_and_log_witness_param, clear_witness_stale_rows."""
 
 from unittest.mock import MagicMock, patch
 
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import WitnessIdAllocator, _DataWitness, _record_and_log_witness_param, install_witness
+from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, clear_witness_stale_rows, install_witness
 
 
 class TestDataWitnessForward:
     def test_forward_is_bitwise_zero(self) -> None:
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         ids = torch.tensor([0, 1, 2, 3])
-        out = witness(ids)
+        out = witness(ids, ids)
         assert torch.all(out == 0.0)
         assert out.shape == (4, 1)
 
     def test_forward_zero_after_optimizer_step(self) -> None:
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         ids = torch.tensor([0, 1, 2])
-        out = witness(ids)
+        out = witness(ids, ids)
         loss = out.sum()
         loss.backward()
         optimizer.step()
@@ -31,15 +29,15 @@ class TestDataWitnessForward:
 
         # After optimizer update, weights are nonzero, but output is still zero
         assert not torch.all(witness.witness.weight == 0.0)
-        out2 = witness(ids)
+        out2 = witness(ids, ids)
         assert torch.all(out2 == 0.0)
 
     def test_backward_records_gradient(self) -> None:
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         ids = torch.tensor([2, 5])
 
         # Need a downstream loss to propagate grads
-        out = witness(ids)
+        out = witness(ids, ids)
         loss = out.sum()
         loss.backward()
 
@@ -68,9 +66,9 @@ class TestDataWitnessForward:
         linear.zero_grad()
 
         # Compute loss with witness
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         ids = torch.tensor([0, 0, 0, 0])
-        witness_out = witness(ids)  # (4, 1) of zeros
+        witness_out = witness(ids, ids)  # (4, 1) of zeros
 
         torch.manual_seed(0)
         h = embed(tokens)  # (4, 16)
@@ -82,45 +80,42 @@ class TestDataWitnessForward:
         assert torch.equal(grad_linear_no, linear.weight.grad)
 
 
-
-
 class TestRecordAndLogWitnessParam:
     def test_logs_nonzero_weight_rows(self) -> None:
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         witness.witness.weight.data[3] = 1.0
         witness.witness.weight.data[7] = 2.0
 
-        with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(step=0, witness=witness, position="head_witness")
+            _record_and_log_witness_param(witness=witness, instance_id="pp0.head")
 
             mock_logger.log.assert_called_once()
             # New API: log(event_cls, partial_dict)
             partial = mock_logger.log.call_args[0][1]
-            assert set(partial["nonzero_ids"]) == {3, 7}
-            assert partial["position"] == "head_witness"
+            assert set(partial["nonzero_witness_ids"]) == {3, 7}
+            assert partial["instance_id"] == "pp0.head"
 
     def test_record_and_log_event_fields(self) -> None:
-        witness = _DataWitness(num_ids=10)
+        witness = _DataWitness(buffer_size=10)
         witness.witness.weight.data[1] = 0.5
         witness.witness.weight.data[4] = -0.3
 
-        with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(step=5, witness=witness, position="tail_witness")
+            _record_and_log_witness_param(witness=witness, instance_id="pp0.tail")
 
             mock_logger.log.assert_called_once()
             from miles.utils.event_logger.models import WitnessSnapshotParamEvent
 
             assert mock_logger.log.call_args[0][0] is WitnessSnapshotParamEvent
             partial = mock_logger.log.call_args[0][1]
-            assert partial["step"] == 5
-            assert partial["position"] == "tail_witness"
-            assert set(partial["nonzero_ids"]) == {1, 4}
+            assert partial["instance_id"] == "pp0.tail"
+            assert set(partial["nonzero_witness_ids"]) == {1, 4}
 
 
 # ---------------------------------------------------------------------------
