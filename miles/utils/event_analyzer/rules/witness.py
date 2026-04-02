@@ -7,6 +7,7 @@ from miles.utils.event_logger.models import (
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
 )
+from miles.utils.process_identity import TrainProcessIdentity
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
             step_end_events.append(event)
 
         elif isinstance(event, WitnessSnapshotParamEvent):
+            assert isinstance(event.source, TrainProcessIdentity)
             snapshot_events.append(event)
 
     # Precompute cumulative expected witness IDs per rollout_id to avoid O(N²) rebuild
@@ -81,7 +83,12 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
             if outcome_str != "NORMAL":
                 continue
 
-            for snap in matching_snapshots:
+            cell_snapshots = [
+                snap for snap in matching_snapshots
+                if snap.source.cell_index == cell_index
+            ]
+
+            for snap in cell_snapshots:
                 stale_range = set(snap.stale_ids)
 
                 filtered_expected = expected_witness_ids - stale_range
