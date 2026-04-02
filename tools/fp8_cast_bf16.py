@@ -7,6 +7,7 @@ from glob import glob
 import torch
 import triton
 import triton.language as tl
+from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 from tqdm import tqdm
 
@@ -45,13 +46,20 @@ def main(fp8_path, bf16_path):
     os.system("cp -rf " + fp8_path + "/config.json " + bf16_path)
     os.system("cp -rf " + fp8_path + "/*.py " + bf16_path)
     os.system("cp -rf " + fp8_path + "/tokenizer* " + bf16_path)
-    os.system("cp -rf " + fp8_path + "/chat_template* " + bf16_path)
-    model_index_file = os.path.join(fp8_path, "model.safetensors.index.json")
-    with open(model_index_file) as f:
-        model_index = json.load(f)
-    weight_map = model_index["weight_map"]
+    os.system("cp -rf " + fp8_path + "/chat_template* " + bf16_path + " 2>/dev/null || true")
 
-    # Cache for loaded safetensor files
+    safetensor_files = list(glob(os.path.join(fp8_path, "*.safetensors")))
+    safetensor_files.sort()
+
+    # Some upstream checkpoints ship an incorrect model.safetensors.index.json.
+    # Build the authoritative key -> shard mapping from the actual safetensor files.
+    weight_map = {}
+    for safetensor_file in safetensor_files:
+        file_name = os.path.basename(safetensor_file)
+        with safe_open(safetensor_file, framework="pt", device="cpu") as f:
+            for key in f.keys():
+                weight_map[key] = file_name
+
     loaded_files = {}
     fp8_weight_names = []
 
@@ -63,8 +71,6 @@ def main(fp8_path, bf16_path):
             loaded_files[file_name] = load_file(file_path, device="cuda")
         return loaded_files[file_name][tensor_name]
 
-    safetensor_files = list(glob(os.path.join(fp8_path, "*.safetensors")))
-    safetensor_files.sort()
     for safetensor_file in tqdm(safetensor_files):
         print(f"Handling file: {safetensor_file}")
         file_name = os.path.basename(safetensor_file)

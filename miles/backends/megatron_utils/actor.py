@@ -1,8 +1,12 @@
 import logging
+import os
 import random
+import shutil
 import socket
+import subprocess
 from argparse import Namespace
 from contextlib import nullcontext
+from pathlib import Path
 
 import ray
 import torch
@@ -32,7 +36,7 @@ from ..training_utils.log_utils import log_perf_data, log_rollout_data
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
 from .checkpoint import load_checkpoint
 from .initialize import init, is_megatron_main_rank
-from .model import forward_only, initialize_model_and_optimizer, save, train
+from .model import forward_only, initialize_model_and_optimizer, save, save_hf_model_to_path, train
 from .parallel import create_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
@@ -149,6 +153,8 @@ class MegatronTrainRayActor(TrainRayActor):
             self.sleep()
 
         self.rollout_engines = None
+        self._rollout_sync_initialized = False
+        self._rollout_sync_seq = 0
 
         self.rollout_data_postprocess = None
         if self.args.rollout_data_postprocess_path is not None:
@@ -192,6 +198,68 @@ class MegatronTrainRayActor(TrainRayActor):
     def _set_replay_stage(self, stage: str) -> None:
         for m in all_replay_managers:
             m.stage = stage
+
+    def _use_rollout_nvfp4_restart_sync(self) -> bool:
+        return bool(getattr(self.args, "rollout_nvfp4_restart_sync", False))
+
+    def _cleanup_rollout_sync_dirs(self, parent_dir: Path, prefix: str, keep: int = 2) -> None:
+        candidates = sorted([path for path in parent_dir.glob(f"{prefix}_*") if path.is_dir()])
+        for path in candidates[:-keep]:
+            logger.info(f"Removing stale rollout sync directory {path}")
+            shutil.rmtree(path, ignore_errors=False)
+
+    def _export_hf_bf16_checkpoint(self) -> Path:
+        """Export BF16 HF checkpoint using bridge.
+
+        Must be called while model is still on GPU (before offload/sleep),
+        because the bridge uses NCCL to gather weights across PP ranks.
+        """
+        parent_dir = Path(getattr(self.args, "rollout_refresh_parent_dir", None) or "")
+        if not parent_dir or str(parent_dir) == "":
+            raise ValueError("--rollout-refresh-parent-dir is required when --rollout-nvfp4-restart-sync is enabled.")
+        parent_dir.mkdir(parents=True, exist_ok=True)
+
+        bf16_dir = parent_dir / f"hf_bf16_sync_{self._rollout_sync_seq:06d}"
+        save_hf_model_to_path(self.args, bf16_dir, self.model)
+        dist.barrier(group=get_gloo_group())
+        return bf16_dir
+
+    def _convert_and_link_nvfp4_checkpoint(self, bf16_dir: Path) -> None:
+        """Phase 2: Convert BF16 to NVFP4 and update symlink (needs GPU freed for subprocess)."""
+        parent_dir = bf16_dir.parent
+        nvfp4_dir = parent_dir / f"nvfp4_sync_{self._rollout_sync_seq:06d}"
+        current_link = Path(self.args.hf_checkpoint)
+
+        if dist.get_rank() == 0:
+            tool_path = Path(__file__).resolve().parents[3] / "tools" / "convert_hf_to_nvfp4.py"
+            cmd = [
+                "python",
+                str(tool_path),
+                "--model-dir",
+                str(bf16_dir),
+                "--save-dir",
+                str(nvfp4_dir),
+            ]
+            keep_first_n = int(getattr(self.args, "rollout_refresh_keep_first_n", 0) or 0)
+            keep_last_n = int(getattr(self.args, "rollout_refresh_keep_last_n", 0) or 0)
+            if keep_first_n > 0:
+                cmd.extend(["--keep-first-n", str(keep_first_n)])
+            if keep_last_n > 0:
+                cmd.extend(["--keep-last-n", str(keep_last_n)])
+
+            logger.info("Converting refreshed BF16 checkpoint to NVFP4: %s", " ".join(cmd))
+            subprocess.run(cmd, check=True)
+
+            current_link.parent.mkdir(parents=True, exist_ok=True)
+            tmp_link = current_link.parent / f".{current_link.name}.tmp"
+            if tmp_link.exists() or tmp_link.is_symlink():
+                tmp_link.unlink()
+            os.symlink(nvfp4_dir, tmp_link)
+            os.replace(tmp_link, current_link)
+            self._cleanup_rollout_sync_dirs(parent_dir, "hf_bf16_sync")
+            self._cleanup_rollout_sync_dirs(parent_dir, "nvfp4_sync")
+
+        dist.barrier(group=get_gloo_group())
 
     def _fill_replay_data(
         self,
@@ -420,6 +488,13 @@ class MegatronTrainRayActor(TrainRayActor):
         # update the cpu actor weight to the latest model
         self.weights_backuper.backup("actor")
 
+        # Pre-export BF16 checkpoint while model is still on GPU (before offload).
+        # The NVFP4 conversion + engine restart happens later in update_weights().
+        if self._use_rollout_nvfp4_restart_sync() and self._rollout_sync_initialized:
+            with timer("nvfp4_bf16_export"):
+                self._rollout_sync_seq += 1
+                self._pending_bf16_dir = self._export_hf_bf16_checkpoint()
+
         # Update ref model if needed
         if (
             self.args.ref_update_interval is not None
@@ -482,6 +557,36 @@ class MegatronTrainRayActor(TrainRayActor):
             dist.barrier(group=get_gloo_group())
             if dist.get_rank() == 0:
                 ray.get(self.rollout_manager.clear_num_new_engines.remote())
+
+        if self._use_rollout_nvfp4_restart_sync():
+            print_memory("before rollout checkpoint refresh")
+            bf16_dir = getattr(self, "_pending_bf16_dir", None)
+            if bf16_dir is not None:
+                # BF16 export was done in train_actor() while model was on GPU.
+                # Now convert BF16→NVFP4 (subprocess) and restart engine.
+                self._convert_and_link_nvfp4_checkpoint(bf16_dir)
+                self._pending_bf16_dir = None
+
+                if dist.get_rank() == 0:
+                    ray.get(self.rollout_manager.restart_rollout_engines.remote())
+            elif not self._rollout_sync_initialized:
+                logger.info("Skip initial rollout refresh because rollout engine already loaded the initial NVFP4 checkpoint.")
+                self._rollout_sync_initialized = True
+
+            dist.barrier(group=get_gloo_group())
+            rollout_engines, rollout_engine_lock, num_new_engines = ray.get(
+                self.rollout_manager.get_rollout_engines_and_lock.remote()
+            )
+            if num_new_engines > 0:
+                self.weight_updater.connect_rollout_engines(rollout_engines, rollout_engine_lock)
+                dist.barrier(group=get_gloo_group())
+                if dist.get_rank() == 0:
+                    ray.get(self.rollout_manager.clear_num_new_engines.remote())
+            print_memory("after rollout checkpoint refresh")
+
+            if self.args.offload_train:
+                destroy_process_groups()
+            return
 
         with torch_memory_saver.disable() if self.args.offload_train else nullcontext():
             print_memory("before update_weights")

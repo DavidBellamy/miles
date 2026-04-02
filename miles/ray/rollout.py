@@ -215,6 +215,38 @@ class RolloutManager:
         # when fault tolerance is not enabled, we need to manually clear num_new_engines after update_weights
         self.num_new_engines = 0
 
+    def restart_rollout_engines(self):
+        """Restart all rollout engines in-place.
+
+        This is used by rollout update flows that regenerate a checkpoint on disk
+        and need SGLang to cold-load the new checkpoint instead of doing an in-place
+        parameter update.
+        """
+        self.health_monitoring_pause()
+
+        for i, engine in enumerate(self.all_rollout_engines):
+            if engine is None:
+                continue
+            try:
+                ray.get(engine.shutdown.remote())
+            except Exception as e:
+                logger.warning(f"Failed to shutdown rollout engine {i}: {e}")
+            try:
+                ray.kill(engine)
+            except Exception as e:
+                logger.warning(f"Failed to kill rollout engine {i}: {e}")
+            self.all_rollout_engines[i] = None
+
+        self.num_new_engines = init_rollout_engines(self.args, self.pg, self.all_rollout_engines)
+        logger.info(f"Restarted rollout engines, created {self.num_new_engines} new engines")
+
+        if self.args.offload_rollout and self.num_new_engines > 0:
+            new_engines = [engine for engine in self.all_rollout_engines if engine is not None]
+            ray.get([engine.release_memory_occupation.remote() for engine in new_engines])
+            ray.get([engine.resume_memory_occupation.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS]) for engine in new_engines])
+
+        return self.rollout_engines, self.rollout_engine_lock, self.num_new_engines
+
     def health_monitoring_pause(self) -> None:
         if self._health_monitor is not None:
             self._health_monitor.pause()

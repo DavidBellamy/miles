@@ -691,13 +691,7 @@ def save(
         enable_forward_pre_hook(model)
 
 
-def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
-    """Save Megatron model in HuggingFace format.
-
-    Args:
-        model (Sequence[DDP]): Sequence of DDP-wrapped model chunks.
-        rollout_id (int): Rollout ID for path formatting.
-    """
+def _save_hf_model_impl(args, path: Path, model: Sequence[DDP]) -> None:
     should_log = (
         mpu.get_data_parallel_rank(with_context_parallel=True) == 0 and mpu.get_tensor_model_parallel_rank() == 0
     )
@@ -707,12 +701,13 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
 
         from miles.utils.megatron_bridge_utils import patch_megatron_model
 
-        path = Path(args.save_hf.format(rollout_id=rollout_id))
-
         if should_log:
             logger.info(f"Saving model in HuggingFace format to {path}")
 
-        bridge = AutoBridge.from_hf_pretrained(args.hf_checkpoint, trust_remote_code=True)
+        bridge = AutoBridge.from_hf_pretrained(
+            getattr(args, "bridge_hf_checkpoint", None) or args.hf_checkpoint,
+            trust_remote_code=True,
+        )
 
         path.mkdir(parents=True, exist_ok=True)
 
@@ -727,6 +722,20 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
     except Exception as e:
         if should_log:
             logger.error(f"Failed to save HuggingFace format: {e}")
+
+
+def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
+    """Save Megatron model in HuggingFace format.
+
+    Args:
+        model (Sequence[DDP]): Sequence of DDP-wrapped model chunks.
+        rollout_id (int): Rollout ID for path formatting.
+    """
+    _save_hf_model_impl(args, Path(args.save_hf.format(rollout_id=rollout_id)), model)
+
+
+def save_hf_model_to_path(args, path: str | Path, model: Sequence[DDP]) -> None:
+    _save_hf_model_impl(args, Path(path), model)
 
 
 def initialize_model_and_optimizer(
