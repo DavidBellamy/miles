@@ -68,6 +68,21 @@ class _DataWitness(nn.Module):
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
+def _clear_witness_stale_rows(
+        *,
+        model: Sequence[nn.Module],
+        stale_ids: list[int],
+        optimizer: torch.optim.Optimizer,
+) -> None:
+    if not stale_ids:
+        return
+
+    witnesses = list(_get_all_witnesses_in_model(model))
+    for witness in witnesses:
+        idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
+        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
+
+
 def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> list[_DataWitness]:
     witnesses: list[_DataWitness] = []
     for chunk in model_chunks:
@@ -109,18 +124,3 @@ def _record_and_log_witness_param(
         ),
         print_log=False,
     )
-
-
-def _clear_witness_stale_rows(
-        *,
-        model: Sequence[nn.Module],
-        stale_ids: list[int],
-        optimizer: torch.optim.Optimizer,
-) -> None:
-    if not stale_ids:
-        return
-
-    witnesses = list(_get_all_witnesses_in_model(model))
-    for witness in witnesses:
-        idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
-        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
