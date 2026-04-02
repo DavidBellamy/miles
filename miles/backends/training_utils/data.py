@@ -43,9 +43,10 @@ def get_rollout_data(
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
     if args.enable_witness:
+        seq_witness_ids = rollout_data.pop("seq_witness_ids")
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
-            for t, sid in zip(rollout_data["tokens"], rollout_data["seq_witness_ids"], strict=True)
+            for t, sid in zip(rollout_data["tokens"], seq_witness_ids, strict=True)
         ]
 
     if "multimodal_train_inputs" in rollout_data:
