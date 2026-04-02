@@ -1,11 +1,9 @@
 """Tests for miles.utils.witness: DataWitness, WitnessIdAllocator."""
 
-from unittest.mock import MagicMock, patch
-
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, WitnessIdAllocator, _record_and_log_witness_param
+from miles.utils.witness import DataWitness, WitnessIdAllocator
 
 
 class TestDataWitnessForward:
@@ -173,40 +171,3 @@ class TestWitnessIdAllocator:
 
         for i in range(5):
             assert witness.witness.weight.data[i].item() != 0.0
-
-
-class TestRecordAndLogWitnessParam:
-    def test_logs_nonzero_weight_rows(self) -> None:
-        witness = DataWitness(num_ids=10)
-        witness.witness.weight.data[3] = 1.0
-        witness.witness.weight.data[7] = 2.0
-
-        with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-
-            _record_and_log_witness_param(step=0, quorum_id=0, rank=0, witness=witness, position="head_witness")
-
-            mock_logger.log.assert_called_once()
-            event = mock_logger.log.call_args[0][0]
-            assert set(event.nonzero_ids) == {3, 7}
-            assert event.position == "head_witness"
-
-    def test_record_and_log_event_fields(self) -> None:
-        witness = DataWitness(num_ids=10)
-        witness.witness.weight.data[1] = 0.5
-        witness.witness.weight.data[4] = -0.3
-
-        with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-
-            _record_and_log_witness_param(step=5, quorum_id=2, rank=1, witness=witness, position="tail_witness")
-
-            mock_logger.log.assert_called_once()
-            event = mock_logger.log.call_args[0][0]
-            assert event.step == 5
-            assert event.quorum_id == 2
-            assert event.rank == 1
-            assert event.position == "tail_witness"
-            assert set(event.nonzero_ids) == {1, 4}

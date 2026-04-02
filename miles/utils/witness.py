@@ -6,9 +6,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from miles.utils.event_logger.logger import get_event_logger
-from miles.utils.event_logger.models import WitnessEvent
-
 logger = logging.getLogger(__name__)
 
 
@@ -45,25 +42,6 @@ def install_witness(model: nn.Module, *, num_ids: int) -> None:
     model.tail_witness = DataWitness(num_ids=num_ids)
 
 
-def dump_witness_params(
-    *,
-    model_chunks: Sequence[nn.Module],
-    step: int,
-    quorum_id: int,
-) -> None:
-    """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
-    for chunk in model_chunks:
-        for attr in _WITNESS_ATTRS:
-            witness: Optional[DataWitness] = getattr(chunk.module, attr, None)
-            if witness is not None:
-                _record_and_log_witness_param(
-                    step=step,
-                    quorum_id=quorum_id,
-                    witness=witness,
-                    position=attr,
-                )
-
-
 # ---------------------------------------------------------------------------
 # Classes
 # ---------------------------------------------------------------------------
@@ -78,8 +56,7 @@ class DataWitness(nn.Module):
     def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
         assert input_ids.shape == witness_ids.shape
         w = self.witness(witness_ids)  # (*, 1)
-        out = w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
-        return out
+        return w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
 
 
 class WitnessIdAllocator:
@@ -179,24 +156,3 @@ def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.op
         for key in ("exp_avg", "exp_avg_sq"):
             if key in state:
                 state[key][idx] = 0.0
-
-
-def _record_and_log_witness_param(
-    *,
-    step: int,
-    quorum_id: int,
-    witness: DataWitness,
-    position: str,
-) -> None:
-    weight = witness.witness.weight.data
-    nonzero_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
-
-    get_event_logger().log(
-        WitnessEvent(
-            step=step,
-            quorum_id=quorum_id,
-            position=position,
-            nonzero_ids=nonzero_ids,
-        ),
-        print_log=False,
-    )
