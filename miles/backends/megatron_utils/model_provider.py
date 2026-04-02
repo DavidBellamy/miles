@@ -24,11 +24,6 @@ from miles.utils.witness import install_witness
 logger = logging.getLogger(__name__)
 
 
-def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
-    if args.enable_witness:
-        install_witness(model, num_ids=args.witness_ring_buffer_size)
-
-
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82
 class LinearForLastLayer(torch.nn.Linear):
     def __init__(
@@ -128,7 +123,7 @@ def get_model_provider_func(
         ) -> GPTModel:
             assert config is None, "miles builds the config from args, so it expects config to be None"
             model = provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
-            _maybe_install_witness(args, model)
+            assert not args.enable_witness, "Witness is not supported yet in this mode"
             return model
 
         return wrapped_bridge_provider
@@ -259,3 +254,8 @@ def get_model_provider_func(
         return model
 
     return model_provider
+
+
+def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
+    if args.enable_witness:
+        install_witness(model, num_ids=args.witness_ring_buffer_size)
