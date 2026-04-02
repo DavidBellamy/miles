@@ -13,14 +13,14 @@
 
 Each test runs with `--mode`:
 
-| Mode | Nodes | GPUs | DP cells | Parallelism | Rollout GPUs | Coverage |
-|------|-------|------|----------|-------------|-------------|----------|
-| `dp2_cp2_tp2_ep2` | 1 | 8 | 2 | CP2 TP2 EP2 | 0 | TP + EP |
-| `dp2_cp2_pp2` | 1 | 8 | 2 | CP2 PP2 | 0 | PP |
-| `dp4_cp2` | 1 | 8 | 4 | CP2 | 0 | Multi-replica (>=4 cells) |
-| `dp2_cp2_real_rollout` | 1 | 8 | 2 | CP2 | 4 | Real weight update path |
-| `8node_dp4_tp4_cp2_ep4` | 8 | 64 | 4 | TP4 CP2 EP4 | 0 | Large-scale, MoE EP |
-| `8node_dp8_tp4_cp2` | 8 | 64 | 8 | TP4 CP2 | 0 | Large-scale, many replicas |
+All modes are **disaggregated** (training and rollout on separate nodes). Modes without rollout use debug rollout data.
+
+| Mode | Train Nodes | DP cells | Parallelism | Rollout | Coverage |
+|------|-------------|----------|-------------|---------|----------|
+| `dp2_cp2_tp2_ep2` | 1 | 2 | CP2 TP2 EP2 | debug data | TP + EP |
+| `dp2_cp2_pp2` | 1 | 2 | CP2 PP2 | debug data | PP |
+| `dp4_cp2` | 1 | 4 | CP2 | debug data | Multi-replica (>=4 cells) |
+| `6node_dp4_cp2_tp2_pp2_ep2_etp2` | 4 (+2 rollout) | 4 | CP2 TP2 PP2 EP2 ETP2 | 2 engines × 8 GPU | Large-scale, disagg, all parallelism |
 
 ## Running
 
@@ -44,8 +44,8 @@ python tests/e2e/ft/test_trainer_ft_no_failure.py compare  --mode dp2_cp2_tp2_ep
 # With-failure has phases (phase_a saves ckpt, phase_b resumes + injects fault)
 python tests/e2e/ft/test_trainer_ft_with_failure.py run --mode dp4_cp2
 
-# Deterministic healing (designed for large-scale)
-python tests/e2e/ft/test_trainer_ft_deterministic.py run --mode 8node_dp4_tp4_cp2_ep4
+# Deterministic healing (designed for large-scale disagg)
+python tests/e2e/ft/test_trainer_ft_deterministic.py run --mode 6node_dp4_cp2_tp2_pp2_ep2_etp2
 ```
 
 ### Non-comparison tests (`test_ft_random.py`)

@@ -11,14 +11,12 @@ def prepare(mode: FTTestMode) -> None:
     U.convert_checkpoint(
         model_name=mode.model_name,
         megatron_model_type=mode.megatron_model_type,
-        num_gpus_per_node=mode.num_gpus_total,
+        num_gpus_per_node=mode.train_gpus_per_node,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
 
 
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
-    train_gpus_per_node: int = (mode.num_gpus_total - mode.rollout_gpus) // mode.num_nodes
-
     ckpt_args = (
         f"--hf-checkpoint /root/models/{mode.model_name} "
         f"--ref-load /root/{mode.model_name}_torch_dist "
@@ -32,14 +30,14 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--accumulate-allreduce-grads-in-fp32 "
     )
 
-    debug_rollout_args: str
-    if mode.rollout_gpus == 0:
-        debug_rollout_args = (
+    rollout_args: str
+    if not mode.has_rollout:
+        rollout_args = (
             "--load-debug-rollout-data /root/datasets/ft-test-debug-rollout-data/{rollout_id}.pt "
             "--debug-train-only "
         )
     else:
-        debug_rollout_args = (
+        rollout_args = (
             "--prompt-data /root/datasets/gsm8k/train.parquet "
             "--input-key messages "
             "--label-key label "
@@ -51,6 +49,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
             "--rollout-batch-size 1 "
             "--n-samples-per-prompt 1 "
             "--sglang-disable-cuda-graph "
+            f"--rollout-num-gpus-per-engine {mode.rollout_gpus_per_engine} "
         )
 
     event_logger_args = f"--save-debug-event-data {dump_dir}/events "
@@ -60,20 +59,14 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--hidden-dropout 0.0 "
         "--attention-softmax-in-fp32 "
         "--attention-backend flash "
-        f"--actor-num-nodes {mode.num_nodes} "
-        f"--actor-num-gpus-per-node {train_gpus_per_node} "
+        f"--actor-num-nodes {mode.train_num_nodes} "
+        f"--actor-num-gpus-per-node {mode.train_gpus_per_node} "
         "--global-batch-size 1 "
         "--moe-token-dispatcher-type alltoall "
         "--advantage-estimator grpo "
         "--eps-clip 0.2 "
         f"--num-rollout {num_steps if num_steps is not None else mode.num_steps} "
     )
-
-    if mode.rollout_gpus > 0:
-        misc_args += (
-            f"--rollout-num-gpus {mode.rollout_gpus} "
-            "--colocate "
-        )
 
     ft_args = (
         "--use-fault-tolerance "
@@ -84,7 +77,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     train_args = (
         f"{ckpt_args} "
         f"{optimizer_args} "
-        f"{debug_rollout_args} "
+        f"{rollout_args} "
         f"{event_logger_args} "
         f"{mode.parallel_args} "
         f"{misc_args} "
@@ -106,6 +99,6 @@ def get_indep_dp_args(mode: FTTestMode) -> str:
 def run_training(train_args: str, mode: FTTestMode) -> None:
     U.execute_train(
         train_args=train_args,
-        num_gpus_per_node=mode.num_gpus_total // mode.num_nodes,
+        num_gpus_per_node=mode.train_gpus_per_node,
         megatron_model_type=mode.megatron_model_type,
     )

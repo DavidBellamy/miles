@@ -14,75 +14,66 @@ DEBUG_ROLLOUT_DATA_HF_REPO: str = "fzyzcjy/miles-ft-test-debug-rollout-data"
 class FTTestMode:
     model_name: str
     megatron_model_type: str
-    num_gpus_total: int
     num_cells: int
     parallel_args: str
-    rollout_gpus: int
-    num_nodes: int = 1
+    train_num_nodes: int = 1
+    train_gpus_per_node: int = 8
+    rollout_num_engines: int = 0
+    rollout_gpus_per_engine: int = 0
     num_steps: int = 10
+
+    @property
+    def has_rollout(self) -> bool:
+        return self.rollout_num_engines > 0
+
+    @property
+    def total_rollout_gpus(self) -> int:
+        return self.rollout_num_engines * self.rollout_gpus_per_engine
 
 
 MODES: dict[str, FTTestMode] = {
+    # --- 1-node (8 GPUs) variants, debug rollout data only ---
     "dp2_cp2_tp2_ep2": FTTestMode(
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
-        num_gpus_total=8,
         num_cells=2,
-        rollout_gpus=0,
         parallel_args=(
-            "--tensor-model-parallel-size 2 --context-parallel-size 2 "
-            "--expert-model-parallel-size 2 --sequence-parallel"
+            "--tensor-model-parallel-size 2 "
+            "--context-parallel-size 2 "
+            "--expert-model-parallel-size 2 "
+            "--sequence-parallel"
         ),
     ),
     "dp2_cp2_pp2": FTTestMode(
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
-        num_gpus_total=8,
         num_cells=2,
-        rollout_gpus=0,
-        parallel_args="--pipeline-model-parallel-size 2 --context-parallel-size 2",
+        parallel_args=(
+            "--pipeline-model-parallel-size 2 "
+            "--context-parallel-size 2"
+        ),
     ),
     "dp4_cp2": FTTestMode(
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
-        num_gpus_total=8,
         num_cells=4,
-        rollout_gpus=0,
         parallel_args="--context-parallel-size 2",
     ),
-    "dp2_cp2_real_rollout": FTTestMode(
+    # --- 6-node (48 GPUs) disaggregated: 4 train nodes + 2 rollout nodes ---
+    "6node_dp4_cp2_tp2_pp2_ep2_etp2": FTTestMode(
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
-        num_gpus_total=8,
-        num_cells=2,
-        rollout_gpus=4,
-        parallel_args="--context-parallel-size 2",
-    ),
-    # --- 8-node (64 GPUs) large-scale variants ---
-    "8node_dp4_tp4_cp2_ep4": FTTestMode(
-        model_name=MODEL_NAME,
-        megatron_model_type=MODEL_TYPE,
-        num_gpus_total=64,
         num_cells=4,
-        rollout_gpus=0,
-        num_nodes=8,
+        train_num_nodes=4,
+        train_gpus_per_node=8,
+        rollout_num_engines=2,
+        rollout_gpus_per_engine=8,
         parallel_args=(
-            "--tensor-model-parallel-size 4 "
+            "--tensor-model-parallel-size 2 "
             "--context-parallel-size 2 "
-            "--expert-model-parallel-size 4 "
-            "--sequence-parallel"
-        ),
-    ),
-    "8node_dp8_tp4_cp2": FTTestMode(
-        model_name=MODEL_NAME,
-        megatron_model_type=MODEL_TYPE,
-        num_gpus_total=64,
-        num_cells=8,
-        rollout_gpus=0,
-        num_nodes=8,
-        parallel_args=(
-            "--tensor-model-parallel-size 4 "
-            "--context-parallel-size 2 "
+            "--pipeline-model-parallel-size 2 "
+            "--expert-model-parallel-size 2 "
+            "--expert-tensor-parallel-size 2 "
             "--sequence-parallel"
         ),
     ),
