@@ -114,6 +114,7 @@ class RayTrainGroup:
 
     async def train(self, rollout_id: int, rollout_data_pack):
         """Do one rollout training"""
+
         run_analysis_from_args(self.args)
 
         async def _fn(attempt: int):
