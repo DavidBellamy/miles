@@ -45,8 +45,8 @@ def run(
         + get_indep_dp_args(ft_mode)
         + "--mini-ft-controller-enable "
         + f"--ci-ft-test-scenario random_failure "
-        + f"--ci-ft-random-seed {seed} "
-        + f"--ci-ft-crash-probability {crash_probability} "
+        + f"--ci-ft-test-random-seed {seed} "
+        + f"--ci-ft-test-crash-probability {crash_probability} "
         + "--save-local-weight-checksum "
         + "--enable-event-analyzer "
     )
