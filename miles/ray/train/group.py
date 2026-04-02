@@ -162,7 +162,7 @@ class RayTrainGroup:
         if is_event_logger_initialized():
             cell_outcomes: dict[int, str] = {}
             for cell, cell_results in zip(
-                    [c for c in self._cells if c.is_alive], results, strict=True
+                [c for c in self._cells if c.is_alive], results, strict=True
             ):
                 if isinstance(cell_results, BaseException):
                     cell_outcomes[cell.cell_index] = "ERROR"
