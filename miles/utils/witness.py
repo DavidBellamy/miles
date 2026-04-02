@@ -45,19 +45,19 @@ def install_witness(model: nn.Module, *, num_ids: int) -> None:
     model.tail_witness = DataWitness(num_ids=num_ids)
 
 
-def dump_witness_grads(
+def dump_witness_params(
     *,
     model_chunks: Sequence[nn.Module],
     step: int,
     quorum_id: int,
     rank: int,
 ) -> None:
-    """Find all witness submodules (head + tail) in model chunks and log their gradients."""
+    """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
     for chunk in model_chunks:
-        for attr in ("head_witness", "tail_witness"):
+        for attr in _WITNESS_ATTRS:
             witness: Optional[DataWitness] = getattr(chunk.module, attr, None)
             if witness is not None:
-                _record_and_log_witness_grad(
+                _record_and_log_witness_param(
                     step=step,
                     quorum_id=quorum_id,
                     rank=rank,
@@ -77,9 +77,11 @@ class DataWitness(nn.Module):
         self.witness = nn.Embedding(num_embeddings=num_ids, embedding_dim=1)
         nn.init.zeros_(self.witness.weight)
 
-    def forward(self, witness_ids: Tensor) -> Tensor:
+    def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
+        assert input_ids.shape == witness_ids.shape
         w = self.witness(witness_ids)  # (*, 1)
-        return w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
+        out = w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
+        return out
 
 
 class WitnessIdAllocator:
@@ -181,14 +183,7 @@ def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.op
                 state[key][idx] = 0.0
 
 
-def _get_witness_grad(witness: DataWitness) -> Optional[Tensor]:
-    main_grad: Optional[Tensor] = getattr(witness.witness.weight, "main_grad", None)
-    if main_grad is not None:
-        return main_grad
-    return witness.witness.weight.grad
-
-
-def _record_and_log_witness_grad(
+def _record_and_log_witness_param(
     *,
     step: int,
     quorum_id: int,
@@ -196,12 +191,8 @@ def _record_and_log_witness_grad(
     witness: DataWitness,
     position: str,
 ) -> None:
-    grad = _get_witness_grad(witness)
-    if grad is None:
-        logger.warning("No gradient found on %s at step %d rank %d", position, step, rank)
-        return
-
-    nonzero_ids: list[int] = grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
+    weight = witness.witness.weight.data
+    nonzero_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     get_event_logger().log(
         WitnessEvent(

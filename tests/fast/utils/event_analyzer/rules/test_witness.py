@@ -13,11 +13,13 @@ def _make_event(
     quorum_id: int,
     rank: int,
     nonzero_ids: list[int],
+    position: str = "head_witness",
 ) -> WitnessEvent:
     return WitnessEvent(
         step=step,
         quorum_id=quorum_id,
         rank=rank,
+        position=position,
         nonzero_ids=nonzero_ids,
     )
 

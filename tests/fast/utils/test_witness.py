@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, WitnessIdAllocator, _record_and_log_witness_grad
+from miles.utils.witness import DataWitness, WitnessIdAllocator, _record_and_log_witness_param
 
 
 class TestDataWitnessForward:
@@ -83,7 +83,7 @@ class TestDataWitnessForward:
 class TestWitnessIdAllocator:
     def test_monotonic_and_wraps(self) -> None:
         witness = DataWitness(num_ids=5)
-        allocator = WitnessIdAllocator(ring_buffer_size=5, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=5, witnesses=[witness])
 
         ids1 = allocator.allocate_for_sequences(3)
         assert ids1 == [0, 1, 2]
@@ -93,13 +93,13 @@ class TestWitnessIdAllocator:
 
     def test_allocate_for_sequences_returns_correct_count(self) -> None:
         witness = DataWitness(num_ids=100)
-        allocator = WitnessIdAllocator(ring_buffer_size=100, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=100, witnesses=[witness])
         ids = allocator.allocate_for_sequences(7)
         assert len(ids) == 7
 
     def test_per_sequence_id_same_for_all_tokens(self) -> None:
         witness = DataWitness(num_ids=100)
-        allocator = WitnessIdAllocator(ring_buffer_size=100, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=100, witnesses=[witness])
         seq_ids = allocator.allocate_for_sequences(3)
 
         token_lengths = [10, 20, 15]
@@ -118,7 +118,7 @@ class TestWitnessIdAllocator:
         # Make all weights nonzero
         witness.witness.weight.data.fill_(1.0)
 
-        allocator = WitnessIdAllocator(ring_buffer_size=5, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=5, witnesses=[witness])
         # Allocate 7 IDs → counter=7, head=2
         # IDs allocated: [0,1,2,3,4,0,1], last 2 are [0,1]
         allocator.allocate_for_sequences(7)
@@ -150,7 +150,7 @@ class TestWitnessIdAllocator:
         assert param in optimizer.state
         assert "exp_avg" in optimizer.state[param]
 
-        allocator = WitnessIdAllocator(ring_buffer_size=5, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=5, witnesses=[witness])
         allocator.allocate_for_sequences(7)
         allocator.clear_stale(optimizer=optimizer, keep_count=2)
 
@@ -165,7 +165,7 @@ class TestWitnessIdAllocator:
 
         witness.witness.weight.data.fill_(1.0)
 
-        allocator = WitnessIdAllocator(ring_buffer_size=5, witness=witness)
+        allocator = WitnessIdAllocator(ring_buffer_size=5, witnesses=[witness])
         allocator.allocate_for_sequences(7)
 
         # Keep all 5 (ring_buffer_size) → nothing stale
@@ -175,44 +175,38 @@ class TestWitnessIdAllocator:
             assert witness.witness.weight.data[i].item() != 0.0
 
 
-class TestRecordAndLogWitnessGrad:
-    def test_reads_main_grad(self) -> None:
+class TestRecordAndLogWitnessParam:
+    def test_logs_nonzero_weight_rows(self) -> None:
         witness = DataWitness(num_ids=10)
-        ids = torch.tensor([3, 7])
-        out = witness(ids)
-        out.sum().backward()
-
-        # Simulate main_grad (Megatron DDP sets this)
-        fake_main_grad = torch.zeros_like(witness.witness.weight)
-        fake_main_grad[3] = 1.0
-        fake_main_grad[7] = 1.0
-        witness.witness.weight.main_grad = fake_main_grad
+        witness.witness.weight.data[3] = 1.0
+        witness.witness.weight.data[7] = 2.0
 
         with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_grad(step=0, quorum_id=0, rank=0, witness=witness)
+            _record_and_log_witness_param(step=0, quorum_id=0, rank=0, witness=witness, position="head_witness")
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]
             assert set(event.nonzero_ids) == {3, 7}
+            assert event.position == "head_witness"
 
-    def test_record_and_log_event(self) -> None:
+    def test_record_and_log_event_fields(self) -> None:
         witness = DataWitness(num_ids=10)
-        ids = torch.tensor([1, 4])
-        out = witness(ids)
-        out.sum().backward()
+        witness.witness.weight.data[1] = 0.5
+        witness.witness.weight.data[4] = -0.3
 
         with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_grad(step=5, quorum_id=2, rank=1, witness=witness)
+            _record_and_log_witness_param(step=5, quorum_id=2, rank=1, witness=witness, position="tail_witness")
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]
             assert event.step == 5
             assert event.quorum_id == 2
             assert event.rank == 1
+            assert event.position == "tail_witness"
             assert set(event.nonzero_ids) == {1, 4}
