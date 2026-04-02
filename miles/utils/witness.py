@@ -77,7 +77,10 @@ class DataWitness(nn.Module):
 
 class WitnessIdAllocator:
     def __init__(self, *, witnesses: list[DataWitness]) -> None:
-        self._buffer_size = witnesses[0].buffer_size
+        buffer_sizes = [x.buffer_size for x in witnesses]
+        assert all(buffer_sizes[0] == x for x in buffer_sizes)
+        self._buffer_size = buffer_sizes[0]
+
         self._witnesses = witnesses
         self._counter: int = 0
 
