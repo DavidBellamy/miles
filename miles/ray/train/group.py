@@ -122,13 +122,20 @@ class RayTrainGroup:
             ]
         )
 
-    async def train(self, rollout_id: int, rollout_data_ref):
+    async def train(self, rollout_id: int, rollout_data_pack):
         """Do one rollout training"""
         run_analysis_from_args(self.args)
 
+        rollout_sample_ids = rollout_data_pack["sample_ids"]
+        TODO_compute_witness_ids
+
         async def _fn():
             await self._refresh_cells()
-            results = await self._execute_all_alive_and_catch("train", rollout_id, rollout_data_ref)
+            results = await self._execute_all_alive_and_catch(
+                "train",
+                rollout_id=rollout_id,
+                rollout_data_ref=rollout_data_pack["rollout_data_ref"],
+            )
             self._check_train_one_attempt(results)
 
         await retry(_fn)
