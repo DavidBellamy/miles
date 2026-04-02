@@ -1,6 +1,7 @@
 # NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
 
+import logging
 import random
 import sys
 import tempfile
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Annotated
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _MILES_ROOT: Path = Path(__file__).resolve().parents[3]
 if str(_MILES_ROOT) not in sys.path:
@@ -45,6 +48,7 @@ def _run_fault_injection_loop(
             resp.raise_for_status()
             cells = resp.json()["items"]
         except Exception:
+            logger.debug("Failed to list cells from control server", exc_info=True)
             continue
 
         alive = [c for c in cells if c["status"]["phase"] == "Running"]
@@ -62,7 +66,7 @@ def _run_fault_injection_loop(
                 timeout=5,
             )
         except Exception:
-            pass
+            logger.debug("Failed to inject fault into %s", cell_name, exc_info=True)
 
 
 @app.command()
