@@ -19,7 +19,7 @@ class TestSplitTrainDataIncludesWitnessIds:
 
         data = {
             "tokens": tokens,
-            "witness_ids": witness_ids,
+            "seq_witness_ids": witness_ids,
             "response_lengths": [1, 1, 1, 1],
             "loss_masks": [[0, 0, 1], [0, 1], [0, 0, 0, 1], [0, 1]],
         }
@@ -30,10 +30,10 @@ class TestSplitTrainDataIncludesWitnessIds:
         result = split_train_data_by_dp(args, data, dp_size=2)
 
         assert len(result) == 2
-        assert "witness_ids" in result[0]
-        assert "witness_ids" in result[1]
-        assert len(result[0]["witness_ids"]) == 2
-        assert len(result[1]["witness_ids"]) == 2
+        assert "seq_witness_ids" in result[0]
+        assert "seq_witness_ids" in result[1]
+        assert len(result[0]["seq_witness_ids"]) == 2
+        assert len(result[1]["seq_witness_ids"]) == 2
 
     def test_no_witness_ids_when_absent(self) -> None:
         tokens = [[1, 2], [3, 4]]
@@ -47,4 +47,4 @@ class TestSplitTrainDataIncludesWitnessIds:
         args.balance_data = False
 
         result = split_train_data_by_dp(args, data, dp_size=1)
-        assert "witness_ids" not in result[0]
+        assert "seq_witness_ids" not in result[0]
