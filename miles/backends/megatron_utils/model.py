@@ -520,7 +520,7 @@ def train_one_step(
 
     if outcome == TrainStepOutcome.NORMAL:
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
-        if args.enable_witness and witness_info is not None:
+        if args.enable_witness:
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
