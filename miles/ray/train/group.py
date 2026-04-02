@@ -129,6 +129,7 @@ class RayTrainGroup:
 
         async def _fn():
             # NOTE: Need to allocate *new* witness ids for each retry
+            sample_indices = rollout_data_pack["sample_indices"]
             witness_info = witness_allocator.allocate()
             log_event(WitnessAllocateIdEvent(witness_id_and_sample_id_etc))
 
