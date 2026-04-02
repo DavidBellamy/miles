@@ -25,7 +25,7 @@ from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
 from miles.utils.witness import init_witness_allocator
-from ...utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.logger import event_logger_context
 
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper

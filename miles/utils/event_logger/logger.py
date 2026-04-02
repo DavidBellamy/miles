@@ -1,6 +1,7 @@
+import functools
 import logging
 import threading
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,6 +74,28 @@ def get_event_logger() -> EventLogger:
 
 def is_event_logger_initialized() -> bool:
     return _event_logger is not None
+
+
+def event_logger_context(ctx_fn: Callable[..., dict[str, Any]]) -> Callable:
+    """Decorator that wraps a method with EventLogger.with_context if initialized.
+
+    ``ctx_fn`` receives the same arguments as the decorated method and returns
+    the context dict.  If the event logger is not initialized, the method runs
+    without any context.
+    """
+
+    def decorator(method: Callable) -> Callable:
+        @functools.wraps(method)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if is_event_logger_initialized():
+                ctx = ctx_fn(*args, **kwargs)
+                with get_event_logger().with_context(ctx):
+                    return method(*args, **kwargs)
+            return method(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def read_events(log_dir: Path) -> list[Event]:
