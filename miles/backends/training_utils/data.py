@@ -37,11 +37,10 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
     if args.enable_witness:
-        allocator = get_witness_id_allocator()
-        seq_ids = allocator.allocate_for_sequences(len(rollout_data["tokens"]))
+        seq_witness_ids = get_witness_id_allocator().allocate_for_sequences(len(rollout_data["tokens"]))
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
-            for t, sid in zip(rollout_data["tokens"], seq_ids, strict=True)
+            for t, sid in zip(rollout_data["tokens"], seq_witness_ids, strict=True)
         ]
 
     if "multimodal_train_inputs" in rollout_data:
