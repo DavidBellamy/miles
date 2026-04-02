@@ -94,7 +94,6 @@ class LocalWeightChecksumEvent(EventBase):
 class WitnessEvent(EventBase):
     type: Literal["witness"] = "witness"
     step: int
-    quorum_id: int
     position: str
     nonzero_ids: list[int]
 

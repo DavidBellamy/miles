@@ -49,7 +49,6 @@ def dump_witness_params(
     *,
     model_chunks: Sequence[nn.Module],
     step: int,
-    quorum_id: int,
 ) -> None:
     """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
     for chunk in model_chunks:
@@ -58,7 +57,6 @@ def dump_witness_params(
             if witness is not None:
                 _record_and_log_witness_param(
                     step=step,
-                    quorum_id=quorum_id,
                     witness=witness,
                     position=attr,
                 )
@@ -184,7 +182,6 @@ def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.op
 def _record_and_log_witness_param(
     *,
     step: int,
-    quorum_id: int,
     witness: DataWitness,
     position: str,
 ) -> None:
@@ -194,7 +191,6 @@ def _record_and_log_witness_param(
     get_event_logger().log(
         WitnessEvent(
             step=step,
-            quorum_id=quorum_id,
             position=position,
             nonzero_ids=nonzero_ids,
         ),
