@@ -81,6 +81,8 @@ def _find_mismatches(
         rollout_id = step_event.rollout_id
 
         for cell_index, cell_outcome in step_event.cell_outcomes.items():
+            if cell_outcome == "error":
+                continue
             if not all(r == TrainStepOutcome.NORMAL for r in cell_outcome):
                 continue
 
