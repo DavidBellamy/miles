@@ -1,20 +1,26 @@
 """Tests for event_analyzer rules/weight_checksum."""
 
+from datetime import datetime, timezone
+
 from miles.utils.event_analyzer.rules.cross_replica_weight_checksum import _flatten_event, _flatten_nested, check
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState, OptimizerStateInfo
+from miles.utils.process_identity import TrainProcessIdentity
+
+_FIXED_TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _make_event(
-    step: int,
-    rank: int,
+    rollout_id: int,
+    cell_index: int = 0,
+    rank_within_cell: int = 0,
     param_hashes: dict[str, str] | None = None,
     buffer_hashes: dict[str, str] | None = None,
     optimizer_state_dict: dict | None = None,
 ) -> LocalWeightChecksumEvent:
     return LocalWeightChecksumEvent(
-        step=step,
-        cell_index=0,
-        rank_within_cell=rank,
+        timestamp=_FIXED_TS,
+        source=TrainProcessIdentity(component="actor", cell_index=cell_index, rank_within_cell=rank_within_cell),
+        rollout_id=rollout_id,
         state=LocalWeightChecksumState(
             param_hashes=param_hashes or {},
             buffer_hashes=buffer_hashes or {},
@@ -35,16 +41,16 @@ def _make_event(
 class TestCheck:
     def test_matching_replicas_no_mismatches(self) -> None:
         events = [
-            _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}),
-            _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}),
-            _make_event(step=0, rank=2, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(rollout_id=0, cell_index=2, param_hashes={"pp0.weight": "aaa"}),
         ]
         assert check(events) == []
 
     def test_param_hash_mismatch_detected(self) -> None:
         events = [
-            _make_event(step=5, rank=0, param_hashes={"pp0.weight": "aaa"}),
-            _make_event(step=5, rank=1, param_hashes={"pp0.weight": "zzz"}),
+            _make_event(rollout_id=5, cell_index=0, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(rollout_id=5, cell_index=1, param_hashes={"pp0.weight": "zzz"}),
         ]
         mismatches = check(events)
 
@@ -54,8 +60,8 @@ class TestCheck:
 
     def test_missing_key_in_one_replica_detected(self) -> None:
         events = [
-            _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}),
-            _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}),
+            _make_event(rollout_id=0, cell_index=1, param_hashes={"pp0.weight": "aaa"}),
         ]
         mismatches = check(events)
 
@@ -67,32 +73,32 @@ class TestCheck:
     def test_multiple_steps_only_mismatched_step_reported(self) -> None:
         events = [
             # Step 0: match
-            _make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"}),
-            _make_event(step=0, rank=1, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, param_hashes={"pp0.w": "aaa"}),
             # Step 1: mismatch
-            _make_event(step=1, rank=0, param_hashes={"pp0.w": "aaa"}),
-            _make_event(step=1, rank=1, param_hashes={"pp0.w": "zzz"}),
+            _make_event(rollout_id=1, cell_index=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=1, cell_index=1, param_hashes={"pp0.w": "zzz"}),
             # Step 2: match
-            _make_event(step=2, rank=0, param_hashes={"pp0.w": "aaa"}),
-            _make_event(step=2, rank=1, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=2, cell_index=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=2, cell_index=1, param_hashes={"pp0.w": "aaa"}),
         ]
         mismatches = check(events)
 
         assert len(mismatches) >= 1
         for m in mismatches:
-            assert "step_1/" in m.label_a or "step_1/" in m.label_b
+            assert "rollout_1/" in m.label_a or "rollout_1/" in m.label_b
 
     def test_empty_events_no_mismatches(self) -> None:
         assert check([]) == []
 
     def test_single_replica_no_comparison(self) -> None:
-        events = [_make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"})]
+        events = [_make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.w": "aaa"})]
         assert check(events) == []
 
     def test_buffer_mismatch_detected(self) -> None:
         events = [
-            _make_event(step=0, rank=0, buffer_hashes={"pp0.running_mean": "aaa"}),
-            _make_event(step=0, rank=1, buffer_hashes={"pp0.running_mean": "bbb"}),
+            _make_event(rollout_id=0, cell_index=0, buffer_hashes={"pp0.running_mean": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, buffer_hashes={"pp0.running_mean": "bbb"}),
         ]
         mismatches = check(events)
 
@@ -101,8 +107,8 @@ class TestCheck:
 
     def test_optimizer_state_mismatch_detected(self) -> None:
         events = [
-            _make_event(step=3, rank=0, optimizer_state_dict={"state": {0: {"exp_avg": "aaa"}}}),
-            _make_event(step=3, rank=1, optimizer_state_dict={"state": {0: {"exp_avg": "bbb"}}}),
+            _make_event(rollout_id=3, cell_index=0, optimizer_state_dict={"state": {0: {"exp_avg": "aaa"}}}),
+            _make_event(rollout_id=3, cell_index=1, optimizer_state_dict={"state": {0: {"exp_avg": "bbb"}}}),
         ]
         mismatches = check(events)
 
@@ -111,8 +117,8 @@ class TestCheck:
 
     def test_non_tensor_state_mismatch_detected(self) -> None:
         events = [
-            _make_event(step=0, rank=0, optimizer_state_dict={"state": {0: {"step": 10}}}),
-            _make_event(step=0, rank=1, optimizer_state_dict={"state": {0: {"step": 20}}}),
+            _make_event(rollout_id=0, cell_index=0, optimizer_state_dict={"state": {0: {"step": 10}}}),
+            _make_event(rollout_id=0, cell_index=1, optimizer_state_dict={"state": {0: {"step": 20}}}),
         ]
         mismatches = check(events)
 
@@ -122,14 +128,14 @@ class TestCheck:
 
 class TestFlattenEvent:
     def test_excludes_metadata_fields(self) -> None:
-        event = _make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"})
+        event = _make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.w": "aaa"})
         flat = _flatten_event(event)
 
         assert not any(k.startswith("step") or k.startswith("rank") or k.startswith("type") for k in flat.keys())
         assert "param_hashes.pp0.w" in flat
 
     def test_includes_optimizer_hashes(self) -> None:
-        event = _make_event(step=0, rank=0, optimizer_state_dict={"state": {0: {"exp_avg": "hash1"}}})
+        event = _make_event(rollout_id=0, cell_index=0, optimizer_state_dict={"state": {0: {"exp_avg": "hash1"}}})
         flat = _flatten_event(event)
 
         assert any("exp_avg" in k for k in flat.keys())

@@ -27,12 +27,12 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 
     all_mismatches: list[ChecksumMismatchIssue] = []
 
-    events_by_step: dict[int, list[LocalWeightChecksumEvent]] = {}
+    events_by_rollout: dict[int, list[LocalWeightChecksumEvent]] = {}
     for event in checksum_events:
-        events_by_step.setdefault(event.step, []).append(event)
+        events_by_rollout.setdefault(event.rollout_id, []).append(event)
 
-    for step in sorted(events_by_step.keys()):
-        all_mismatches += list(_check_one_step(events=events_by_step[step]))
+    for rollout_id in sorted(events_by_rollout.keys()):
+        all_mismatches += list(_check_one_step(events=events_by_rollout[rollout_id]))
 
     return all_mismatches
 
@@ -49,8 +49,8 @@ def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[Checksum
         )
 
 
-def _compute_label(event: LocalWeightChecksumEvent):
-    return f"step_{event.step}/cell_{event.cell_index}/rank_{event.rank_within_cell}"
+def _compute_label(event: LocalWeightChecksumEvent) -> str:
+    return f"rollout_{event.rollout_id}/{event.source.to_name()}"
 
 
 def _flatten_event(event: LocalWeightChecksumEvent) -> dict[str, Any]:

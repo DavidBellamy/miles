@@ -1,4 +1,4 @@
-"""Rule: cross-rank witness gradient consistency."""
+"""Rule: cross-rank witness param consistency."""
 
 from collections import defaultdict
 
@@ -7,13 +7,12 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
 class WitnessMismatch(FrozenStrictBaseModel):
-    step: int
-    quorum_id: int
+    rollout_id: int
     description: str
 
 
 def check(events: list[Event]) -> list[WitnessMismatch]:
-    """Verify that all ranks within the same (quorum_id, step) see identical nonzero witness IDs.
+    """Verify that all ranks within the same (rollout_id, position) see identical nonzero witness IDs.
 
     Returns:
         List of mismatches found. Empty list means all ranks agree.
@@ -22,15 +21,15 @@ def check(events: list[Event]) -> list[WitnessMismatch]:
     if not witness_events:
         return []
 
-    grouped: dict[tuple[int, int, str], list[WitnessEvent]] = defaultdict(list)
+    grouped: dict[tuple[int, str], list[WitnessEvent]] = defaultdict(list)
     for event in witness_events:
-        grouped[(event.quorum_id, event.step, event.position)].append(event)
+        grouped[(event.rollout_id, event.position)].append(event)
 
     mismatches: list[WitnessMismatch] = []
 
-    for (quorum_id, step, position), group in sorted(grouped.items()):
+    for (rollout_id, position), group in sorted(grouped.items()):
         reference = set(group[0].nonzero_ids)
-        reference_rank = group[0].rank
+        ref_source = group[0].source
 
         for event in group[1:]:
             current = set(event.nonzero_ids)
@@ -39,12 +38,11 @@ def check(events: list[Event]) -> list[WitnessMismatch]:
                 only_in_cur = current - reference
                 mismatches.append(
                     WitnessMismatch(
-                        step=step,
-                        quorum_id=quorum_id,
+                        rollout_id=rollout_id,
                         description=(
-                            f"{position}: rank {reference_rank} vs rank {event.rank}: "
-                            f"only_in_{reference_rank}={sorted(only_in_ref)}, "
-                            f"only_in_{event.rank}={sorted(only_in_cur)}"
+                            f"{position}: {ref_source.to_name()} vs {event.source.to_name()}: "
+                            f"only_in_first={sorted(only_in_ref)}, "
+                            f"only_in_second={sorted(only_in_cur)}"
                         ),
                     )
                 )

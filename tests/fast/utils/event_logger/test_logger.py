@@ -16,25 +16,16 @@ def _make_logger(log_dir: Path, file_name: str = "events.jsonl") -> EventLogger:
     return EventLogger(log_dir=log_dir, file_name=file_name, source=_TEST_SOURCE)
 
 
-def _make_event() -> CellStateChangedEvent:
-    return CellStateChangedEvent(
-        cell_index=0,
-        old_state="pending",
-        new_state="alive",
-    )
+_EVENT_CLS = CellStateChangedEvent
+_EVENT_PARTIAL: dict = dict(cell_index=0, old_state="pending", new_state="alive")
 
 
 class TestEventLoggerWritesJsonl:
     def test_writes_multiple_events(self, tmp_path: Path) -> None:
         logger = _make_logger(tmp_path, file_name="test.jsonl")
 
-        logger.log(_make_event())
-        logger.log(
-            GenericEvent(
-                message="hi",
-                details={"x": 1},
-            )
-        )
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
+        logger.log(GenericEvent, dict(message="hi", details={"x": 1}))
         logger.close()
 
         lines = (tmp_path / "test.jsonl").read_text().strip().split("\n")
@@ -50,7 +41,7 @@ class TestEventLoggerAutoFillsMetadata:
         logger = _make_logger(tmp_path)
 
         before = datetime.now(timezone.utc)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
         after = datetime.now(timezone.utc)
         logger.close()
 
@@ -62,7 +53,7 @@ class TestEventLoggerAutoFillsMetadata:
     def test_source_auto_filled(self, tmp_path: Path) -> None:
         source = TrainProcessIdentity(component="actor", cell_index=2, rank_within_cell=3)
         logger = EventLogger(log_dir=tmp_path, source=source)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger.close()
 
         parsed = json.loads((tmp_path / "events.jsonl").read_text().strip())
@@ -79,7 +70,7 @@ class TestEventLoggerThreadSafety:
 
         def writer() -> None:
             for _ in range(events_per_thread):
-                logger.log(_make_event())
+                logger.log(_EVENT_CLS, _EVENT_PARTIAL)
 
         threads = [threading.Thread(target=writer) for _ in range(num_threads)]
         for t in threads:
@@ -130,7 +121,7 @@ class TestGetEventLoggerRaisesWhenNotSet:
 class TestEventLoggerFlushOnEachWrite:
     def test_readable_before_close(self, tmp_path: Path) -> None:
         logger = _make_logger(tmp_path)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
 
         content = (tmp_path / "events.jsonl").read_text()
         assert len(content.strip()) > 0
@@ -141,7 +132,7 @@ class TestEventLoggerCreatesDirectory:
     def test_creates_nested_dir(self, tmp_path: Path) -> None:
         nested = tmp_path / "a" / "b" / "c"
         logger = _make_logger(nested)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger.close()
         assert (nested / "events.jsonl").exists()
 
@@ -149,7 +140,7 @@ class TestEventLoggerCreatesDirectory:
 class TestEventLoggerClose:
     def test_file_closed_after_close(self, tmp_path: Path) -> None:
         logger = _make_logger(tmp_path)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger.close()
         assert logger._file.closed
 
@@ -159,7 +150,7 @@ class TestReadEvents:
         from miles.utils.event_logger.logger import read_events
 
         logger = _make_logger(tmp_path)
-        logger.log(_make_event())
+        logger.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger.close()
 
         with open(tmp_path / "events.jsonl", "a") as f:
