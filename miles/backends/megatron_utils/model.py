@@ -28,6 +28,7 @@ from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_repli
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
+from miles.utils.witness import dump_witness_params
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
 from ..training_utils.data import DataIterator, get_batch
@@ -522,6 +523,13 @@ def train_one_step(
         optimizer=optimizer,
         step=accumulated_step,
     )
+
+    if args.enable_witness:
+        dump_witness_params(
+            model_chunks=model,
+            step=accumulated_step,
+            quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
+        )
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
