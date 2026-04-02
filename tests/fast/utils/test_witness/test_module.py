@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, clear_witness_stale_rows, install_witness
+from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, clear_witness_stale_rows, install_witness
 
 
 class TestDataWitnessForward:
@@ -240,3 +240,45 @@ class TestInstallWitness:
         ids = torch.tensor([0, 1, 2])
         out = witness(ids, ids)
         assert torch.all(out == 0.0)
+
+
+class TestZeroWitnessRows:
+    def test_weight_is_zeroed(self) -> None:
+        witness = _DataWitness(buffer_size=10)
+        witness.witness.weight.data.fill_(1.0)
+        optimizer = torch.optim.Adam(witness.parameters(), lr=0.01)
+
+        idx = torch.tensor([2, 5, 7])
+        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
+
+        for i in [2, 5, 7]:
+            assert witness.witness.weight.data[i].item() == 0.0
+        for i in [0, 1, 3, 4, 6, 8, 9]:
+            assert witness.witness.weight.data[i].item() == 1.0
+
+    def test_optimizer_state_is_zeroed(self) -> None:
+        """After an optimizer step, exp_avg and exp_avg_sq should be zeroed for stale rows."""
+        witness = _DataWitness(buffer_size=10)
+
+        optimizer = torch.optim.Adam(witness.parameters(), lr=0.01)
+        ids = torch.arange(10)
+        out = witness(ids, ids)
+        out.sum().backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        weight = witness.witness.weight
+        state = optimizer.state[weight]
+        assert not torch.all(state["exp_avg"] == 0.0)
+
+        stale_idx = torch.tensor([3, 6])
+        _zero_witness_rows(witness=witness, idx=stale_idx, optimizer=optimizer)
+
+        assert weight.data[3].item() == 0.0
+        assert weight.data[6].item() == 0.0
+
+        for key in ("exp_avg", "exp_avg_sq"):
+            assert state[key][3].item() == 0.0
+            assert state[key][6].item() == 0.0
+            non_stale = [i for i in range(10) if i not in [3, 6]]
+            assert not torch.all(state[key][non_stale] == 0.0)
