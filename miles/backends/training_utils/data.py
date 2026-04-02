@@ -10,7 +10,7 @@ from miles.utils.data import get_minimum_num_micro_batch_size
 from miles.utils.process_group_utils import GeneralPGUtil
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import RolloutBatch
-from miles.utils.witness import get_witness_id_allocator
+from miles.utils.witness.allocator import WitnessInfo
 
 from ...utils.data import process_rollout_data
 from ...utils.ray_utils import Box
@@ -20,7 +20,12 @@ from .parallel import ParallelState
 logger = logging.getLogger(__name__)
 
 
-def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: ParallelState) -> RolloutBatch:
+def get_rollout_data(
+    args: Namespace,
+    rollout_data_ref: Box,
+    parallel_state: ParallelState,
+    witness_info: WitnessInfo | None = None,
+) -> RolloutBatch:
     # Fetch data through ray on CPU, not sure if this will be performance bottleneck.
     # Both first pp stage and the last pp stage will receive the data.
     rollout_data = process_rollout_data(
@@ -36,11 +41,15 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
     rollout_data["loss_masks"] = [
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
-    if args.enable_witness:
-        seq_witness_ids = witness_info.blahblah
+    if args.enable_witness and witness_info is not None:
+        seq_witness_ids = witness_info.witness_ids
+        dp_rank = parallel_state.effective_dp.rank
+        dp_size = parallel_state.effective_dp.size
+        per_rank = len(seq_witness_ids) // dp_size
+        local_witness_ids = seq_witness_ids[dp_rank * per_rank : (dp_rank + 1) * per_rank]
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
-            for t, sid in zip(rollout_data["tokens"], seq_witness_ids, strict=True)
+            for t, sid in zip(rollout_data["tokens"], local_witness_ids, strict=True)
         ]
 
     if "multimodal_train_inputs" in rollout_data:

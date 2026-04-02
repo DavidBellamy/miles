@@ -28,7 +28,8 @@ from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_repli
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
-from miles.utils.witness import witness_dump_and_clear_stale
+from miles.utils.witness.allocator import WitnessInfo
+from miles.utils.witness.module import witness_dump_and_clear_stale
 
 from ...utils.misc import filter_keys
 from ..training_utils.ci_utils import check_grad_norm, check_kl
@@ -341,6 +342,7 @@ def train_one_step(
     opt_param_scheduler: OptimizerParamScheduler,
     num_microbatches: int,
     parallel_state: ParallelState,
+    witness_info: "WitnessInfo | None" = None,
 ) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
 
@@ -518,8 +520,8 @@ def train_one_step(
 
     if outcome == TrainStepOutcome.NORMAL:
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
-        if args.enable_witness:
-            witness_dump_and_clear_stale(model=model, witness_info=witness_info)
+        if args.enable_witness and witness_info is not None:
+            witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
@@ -544,6 +546,7 @@ def train(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
+    witness_info: "WitnessInfo | None" = None,
 ) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
 
@@ -638,6 +641,7 @@ def train(
             opt_param_scheduler,
             num_microbatches[step_id],
             parallel_state,
+            witness_info=witness_info,
         )
 
         if step_id == 0:

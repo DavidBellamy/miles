@@ -19,7 +19,7 @@ from megatron.training.arguments import core_transformer_config_from_args
 
 from miles.utils.misc import load_function
 from miles.utils.replay_base import routing_replay_manager
-from miles.utils.witness import install_witness
+from miles.utils.witness.module import install_witness
 
 logger = logging.getLogger(__name__)
 

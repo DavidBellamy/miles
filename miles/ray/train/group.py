@@ -10,11 +10,13 @@ from miles.ray.train.actor_factory import allocate_gpus_for_actor
 from miles.ray.train.cell import RayTrainCell, create_trainer_cell_health_checker
 from miles.utils.async_utils import AsyncioGatherUtils
 from miles.utils.event_analyzer.analyzer import run_analysis_from_args
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import TrainGroupStepEndEvent, WitnessAllocateIdEvent
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
-from miles.utils.witness.allocator import WitnessInfo
+from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo
 
 if TYPE_CHECKING:
     import torch
@@ -104,6 +106,10 @@ class RayTrainGroup:
 
         self._cells: list[RayTrainCell] = [_create_cell(cell_index) for cell_index in range(num_cells)]
 
+        self._witness_allocator: WitnessIdAllocator | None = (
+            WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
+        )
+
     # ------------------------ APIs ------------------------
 
     async def init(self):
@@ -126,21 +132,53 @@ class RayTrainGroup:
     async def train(self, rollout_id: int, rollout_data_pack):
         """Do one rollout training"""
         run_analysis_from_args(self.args)
+        attempt_counter = 0
 
         async def _fn():
+            nonlocal attempt_counter
+
             # NOTE: Need to allocate *new* witness ids for each retry
             sample_indices = rollout_data_pack["sample_indices"]
-            witness_info = witness_allocator.allocate()
-            log_event(WitnessAllocateIdEvent(witness_id_and_sample_id_etc))
+
+            witness_info: WitnessInfo | None = None
+            if self._witness_allocator is not None:
+                witness_info = self._witness_allocator.allocate(num_ids=len(sample_indices))
+                witness_id_to_sample_index = dict(zip(witness_info.witness_ids, sample_indices, strict=True))
+                if is_event_logger_initialized():
+                    get_event_logger().log(
+                        WitnessAllocateIdEvent,
+                        dict(
+                            rollout_id=rollout_id,
+                            attempt=attempt_counter,
+                            witness_id_to_sample_index=witness_id_to_sample_index,
+                        ),
+                    )
 
             await self._refresh_cells()
             results = await self._execute_all_alive_and_catch(
                 "train",
                 rollout_id=rollout_id,
-                rollout_data_ref=rollout_data_pack["rollout_data_ref"],
+                rollout_data_ref=rollout_data_pack["data_ref"],
                 witness_info=witness_info,
             )
             self._check_train_one_attempt(results)
+
+            if is_event_logger_initialized():
+                cell_outcomes: dict[int, str] = {}
+                for cell, cell_results in zip(
+                    [c for c in self._cells if c.is_alive], results, strict=True
+                ):
+                    if isinstance(cell_results, BaseException):
+                        cell_outcomes[cell.cell_index] = "ERROR"
+                    else:
+                        for r in cell_results:
+                            cell_outcomes[cell.cell_index] = r.name
+                get_event_logger().log(
+                    TrainGroupStepEndEvent,
+                    dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
+                )
+
+            attempt_counter += 1
 
         await retry(_fn)
 
