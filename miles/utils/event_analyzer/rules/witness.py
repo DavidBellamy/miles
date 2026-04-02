@@ -63,13 +63,13 @@ def _filter_by_type(arr: list, ty: Type) -> list:
 
 
 def _compute_expected_witness_ids_of_step(events: list[WitnessAllocateIdEvent]) -> dict[int, set[int]]:
-    allocations_by_rollout = {e.rollout_id: e.witness_id_to_sample_index for e in events}
+    allocated_witness_ids_of_rollout_id = {e.rollout_id: list(e.witness_id_to_sample_index.keys()) for e in events}
 
     ans: dict[int, set[int]] = {}
     running: set[int] = set()
-    for rid in sorted(allocations_by_rollout.keys()):
-        running = running | set(allocations_by_rollout[rid].keys())
-        ans[rid] = set(running)
+    for rollout_id in sorted(allocated_witness_ids_of_rollout_id.keys()):
+        running = running | set(allocated_witness_ids_of_rollout_id[rollout_id])
+        ans[rollout_id] = set(running)
     return ans
 
 
