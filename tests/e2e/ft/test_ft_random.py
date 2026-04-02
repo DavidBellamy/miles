@@ -20,7 +20,7 @@ if str(_MILES_ROOT) not in sys.path:
 
 import typer
 
-from tests.e2e.ft.conftest_ft.comparison import assert_events_dir_exists
+from miles.utils.test_utils.metric_comparison import assert_events_dir_exists
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
