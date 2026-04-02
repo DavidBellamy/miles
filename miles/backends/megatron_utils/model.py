@@ -529,7 +529,7 @@ def train_one_step(
             model_chunks=model,
             step=accumulated_step,
             quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
-            rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
+            rank=parallel_state.indep_dp.rank,
         )
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
