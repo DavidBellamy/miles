@@ -126,7 +126,7 @@ class RayTrainGroup:
             )
 
             await self._refresh_cells()
-            results = await self._execute_all_alive_and_catch(
+            snapshot_alive_cells, results = await self._execute_all_alive_and_catch(
                 "train",
                 rollout_id=rollout_id,
                 rollout_data_ref=rollout_data_pack["data_ref"],
@@ -134,7 +134,9 @@ class RayTrainGroup:
             )
             self._check_train_one_attempt(results)
 
-            self._log_step_end_event(rollout_id=rollout_id, results=results)
+            self._log_step_end_event(
+                rollout_id=rollout_id, snapshot_alive_cells=snapshot_alive_cells, results=results,
+            )
 
         await retry(_fn)
 
@@ -158,12 +160,10 @@ class RayTrainGroup:
 
         return witness_info
 
-    def _log_step_end_event(self, *, rollout_id: int, results):
+    def _log_step_end_event(self, *, rollout_id: int, snapshot_alive_cells: list, results: list):
         if is_event_logger_initialized():
             cell_outcomes: dict[int, str] = {}
-            for cell, cell_results in zip(
-                [c for c in self._cells if c.is_alive], results, strict=True
-            ):
+            for cell, cell_results in zip(snapshot_alive_cells, results, strict=True):
                 if isinstance(cell_results, BaseException):
                     cell_outcomes[cell.cell_index] = "ERROR"
                 elif any(r == TrainStepOutcome.DISCARDED_SHOULD_RETRY for r in cell_results):
@@ -257,14 +257,14 @@ class RayTrainGroup:
     # ------------------------ utils to forward calls to cells ------------------------
 
     async def _execute_all_alive_and_catch(self, fn_name: str, *args, **kwargs):
-        alive_cells = [c for c in self._cells if c.is_alive]
-        assert alive_cells, "No alive cells"
+        snapshot_alive_cells = [c for c in self._cells if c.is_alive]
+        assert snapshot_alive_cells, "No alive cells"
         outputs = await asyncio.gather(
-            *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
+            *[cell.execute(fn_name, *args, **kwargs) for cell in snapshot_alive_cells],
             return_exceptions=True,
         )
         AsyncioGatherUtils.log_error(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
-        return outputs
+        return snapshot_alive_cells, outputs
 
     async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]

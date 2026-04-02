@@ -3,6 +3,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Discriminator
 
+from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.process_identity import ProcessIdentity
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
@@ -117,7 +118,7 @@ class WitnessAllocateIdEvent(EventBase):
 class TrainGroupStepEndEvent(EventBase):
     type: Literal["train_group_step_end"] = "train_group_step_end"
     rollout_id: int
-    cell_outcomes: dict[int, str]
+    cell_outcomes: dict[int, Literal["error"] | list[TrainStepOutcome]]
 
 
 Event = Annotated[
