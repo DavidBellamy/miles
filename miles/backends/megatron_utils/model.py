@@ -441,13 +441,11 @@ def train_one_step(
                 "labels": None,
                 "packed_seq_params": get_packed_seq_params(batch, args),
                 "loss_mask": batch["full_loss_masks"],
+                **filter_keys(batch, ["witness_ids"]),
             }
 
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
-
-            if (witness_ids := batch.get("witness_ids")) is not None:
-                forward_kwargs["witness_ids"] = witness_ids
 
             if batch["multimodal_train_inputs"] is not None:
                 forward_kwargs.update(batch["multimodal_train_inputs"])
