@@ -516,16 +516,14 @@ def train_one_step(
 
     dumper_phase_util.finalize(model)
 
-    accumulated_step = rollout_id * args.num_steps_per_rollout + step_id
     dump_local_weight_checksums(
         args=args,
         model=model,
         optimizer=optimizer,
-        step=accumulated_step,
     )
 
     if args.enable_witness:
-        dump_witness_params(model_chunks=model, step=accumulated_step)
+        dump_witness_params(model_chunks=model)
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)

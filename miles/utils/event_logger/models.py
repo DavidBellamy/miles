@@ -85,9 +85,7 @@ class LocalWeightChecksumState(FrozenStrictBaseModel):
 
 class LocalWeightChecksumEvent(EventBase):
     type: Literal["local_weight_checksum"] = "local_weight_checksum"
-    step: int
-    cell_index: int
-    rank_within_cell: int
+    rollout_id: int
     state: LocalWeightChecksumState
 
 

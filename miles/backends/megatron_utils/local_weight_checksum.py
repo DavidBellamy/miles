@@ -35,7 +35,6 @@ def dump_local_weight_checksums(
     args: Namespace,
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
-    step: int,
 ) -> None:
     """Compute and dump weight checksums if enabled."""
 
@@ -45,19 +44,13 @@ def dump_local_weight_checksums(
     assert is_event_logger_initialized(), "save_local_weight_checksum is enabled but EventLogger is not initialized"
 
     event_logger = get_event_logger()
-    source = event_logger.source
     state = _compute_weight_checksum_state(
         model=model,
         optimizer=optimizer,
     )
     event_logger.log(
         LocalWeightChecksumEvent,
-        dict(
-            step=step,
-            cell_index=source.cell_index,
-            rank_within_cell=source.rank_within_cell,
-            state=state,
-        ),
+        dict(state=state),
         print_log=False,
     )
 
