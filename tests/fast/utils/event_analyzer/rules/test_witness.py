@@ -30,7 +30,7 @@ def _make_snapshot(
     instance_id: str = "pp0.head",
     cell_index: int = 0,
     rank_within_cell: int = 0,
-    stale_threshold: int = 0,
+    stale_ids: list[int] | None = None,
 ) -> WitnessSnapshotParamEvent:
     return WitnessSnapshotParamEvent(
         timestamp=_FIXED_TS,
@@ -38,7 +38,7 @@ def _make_snapshot(
         rollout_id=rollout_id,
         instance_id=instance_id,
         nonzero_witness_ids=nonzero_witness_ids,
-        stale_threshold=stale_threshold,
+        stale_ids=stale_ids or [],
     )
 
 
@@ -121,12 +121,12 @@ class TestWitnessCheck:
         ]
         assert check(events) == []
 
-    def test_stale_threshold_ids_are_ignored(self) -> None:
-        """IDs in [0, stale_threshold) are ignored in both expected and actual."""
+    def test_stale_ids_are_ignored(self) -> None:
+        """IDs in stale_ids are ignored in both expected and actual."""
         events: list[Event] = [
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1, 2]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={2: 0, 5: 1, 8: 2}),
-            _make_snapshot(rollout_id=0, nonzero_witness_ids=[5, 8], stale_threshold=3),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[5, 8], stale_ids=[0, 1, 2]),
             _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
         ]
         assert check(events) == []
@@ -175,11 +175,11 @@ class TestWitnessEventSerialization:
             nonzero_witness_ids=[10, 20],
             instance_id="pp0.tail",
             cell_index=1,
-            stale_threshold=3,
+            stale_ids=[0, 1, 2],
         )
         parsed = _event_adapter.validate_json(event.model_dump_json())
         assert isinstance(parsed, WitnessSnapshotParamEvent)
         assert parsed.rollout_id == 5
         assert parsed.instance_id == "pp0.tail"
         assert parsed.nonzero_witness_ids == [10, 20]
-        assert parsed.stale_threshold == 3
+        assert parsed.stale_ids == [0, 1, 2]

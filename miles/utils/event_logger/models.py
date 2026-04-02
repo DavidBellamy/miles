@@ -98,7 +98,7 @@ class WitnessSnapshotParamEvent(_ActorTrainEventBase):
     instance_id: str
     # TODO: may shrink a contiguous range of numbers into a pair, if this is too large/slow
     nonzero_witness_ids: list[int]
-    stale_threshold: int
+    stale_ids: list[int]
 
 
 class RolloutGenerateCompletedEvent(EventBase):

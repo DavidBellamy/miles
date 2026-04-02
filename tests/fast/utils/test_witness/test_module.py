@@ -90,7 +90,7 @@ class TestRecordAndLogWitnessParam:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(witness=witness, instance_id="pp0.head")
+            _record_and_log_witness_param(witness=witness, instance_id="pp0.head", stale_ids=[])
 
             mock_logger.log.assert_called_once()
             # New API: log(event_cls, partial_dict)
@@ -107,7 +107,7 @@ class TestRecordAndLogWitnessParam:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(witness=witness, instance_id="pp0.tail")
+            _record_and_log_witness_param(witness=witness, instance_id="pp0.tail", stale_ids=[])
 
             mock_logger.log.assert_called_once()
             from miles.utils.event_logger.models import WitnessSnapshotParamEvent

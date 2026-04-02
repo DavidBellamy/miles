@@ -110,7 +110,7 @@ class TestTrainGroupStepEndEvent:
         assert parsed.cell_outcomes == {0: "NORMAL", 1: "DISCARDED"}
 
 
-class TestWitnessSnapshotParamEventWithStaleThreshold:
+class TestWitnessSnapshotParamEventWithStaleIds:
     def test_json_roundtrip(self) -> None:
         event = WitnessSnapshotParamEvent(
             timestamp=_FIXED_TS,
@@ -118,11 +118,11 @@ class TestWitnessSnapshotParamEventWithStaleThreshold:
             rollout_id=5,
             instance_id="actor_cell0_rank0",
             nonzero_witness_ids=[10, 11, 12],
-            stale_threshold=8,
+            stale_ids=[0, 1, 2, 3, 4, 5, 6, 7],
         )
         parsed = _event_adapter.validate_json(event.model_dump_json())
         assert isinstance(parsed, WitnessSnapshotParamEvent)
-        assert parsed.stale_threshold == 8
+        assert parsed.stale_ids == [0, 1, 2, 3, 4, 5, 6, 7]
         assert parsed.nonzero_witness_ids == [10, 11, 12]
 
 

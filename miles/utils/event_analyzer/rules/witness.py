@@ -38,7 +38,7 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     * To correlate witness_id vs sample_id utilize WitnessAllocateIdEvent.
     * To get *all* samples used in a step, must use RolloutGenerateCompletedEvent as source of truth.
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
-      all values in the range of 0..`WitnessSnapshotParamEvent.stale_threshold`
+      all values in `WitnessSnapshotParamEvent.stale_ids`
     """
 
     allocations_by_rollout: dict[int, dict[int, int]] = {}
@@ -82,7 +82,7 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
                 continue
 
             for snap in matching_snapshots:
-                stale_range = set(range(snap.stale_threshold))
+                stale_range = set(snap.stale_ids)
 
                 filtered_expected = expected_witness_ids - stale_range
                 filtered_actual = set(snap.nonzero_witness_ids) - stale_range
