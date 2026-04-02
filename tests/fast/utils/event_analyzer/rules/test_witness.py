@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 
 from pydantic import TypeAdapter
 
-from miles.utils.event_analyzer.rules.witness import WitnessDataMismatchIssue, check
+from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.utils.event_analyzer.rules.witness import WitnessDataMismatchIssue, WitnessMissingSnapshotIssue, check
 from miles.utils.event_logger.models import (
     Event,
     RolloutGenerateCompletedEvent,
@@ -65,7 +66,10 @@ def _make_allocate(
     )
 
 
-def _make_step_end(rollout_id: int, cell_outcomes: dict[int, str]) -> TrainGroupStepEndEvent:
+def _make_step_end(
+    rollout_id: int,
+    cell_outcomes: dict[int, str | list[TrainStepOutcome]],
+) -> TrainGroupStepEndEvent:
     return TrainGroupStepEndEvent(
         timestamp=_FIXED_TS,
         source=_MAIN_SOURCE,
@@ -83,7 +87,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
 
@@ -92,7 +96,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         issues = check(events)
         assert len(issues) == 1
@@ -105,7 +109,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11, 99]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         issues = check(events)
         assert len(issues) == 1
@@ -117,7 +121,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "DISCARDED"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.DISCARDED_SHOULD_RETRY]}),
         ]
         assert check(events) == []
 
@@ -127,7 +131,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1, 2]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={2: 0, 5: 1, 8: 2}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[5, 8], stale_ids=[0, 1, 2]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
 
@@ -137,7 +141,7 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL", 1: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL], 1: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
 
@@ -148,7 +152,7 @@ class TestWitnessCheck:
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}, attempt=0),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={20: 0, 21: 1}, attempt=1),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[20, 21]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
 
@@ -158,14 +162,52 @@ class TestWitnessCheck:
             _make_rollout_completed(rollout_id=0, sample_indices=[0]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
-            _make_step_end(rollout_id=0, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
 
             _make_rollout_completed(rollout_id=1, sample_indices=[1]),
             _make_allocate(rollout_id=1, witness_id_to_sample_index={11: 1}),
             _make_snapshot(rollout_id=1, nonzero_witness_ids=[10, 11]),
-            _make_step_end(rollout_id=1, cell_outcomes={0: "NORMAL"}),
+            _make_step_end(rollout_id=1, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
+
+
+    def test_missing_snapshot_for_normal_cell_returns_issue(self) -> None:
+        """Cell claims NORMAL but has no WitnessSnapshotParamEvent — should return WitnessMissingSnapshotIssue."""
+        events: list[Event] = [
+            _make_rollout_completed(rollout_id=0, sample_indices=[0]),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+        ]
+        issues = check(events)
+        assert len(issues) == 1
+        assert isinstance(issues[0], WitnessMissingSnapshotIssue)
+        assert issues[0].rollout_id == 0
+        assert issues[0].cell_index == 0
+
+    def test_error_cell_outcome_is_skipped(self) -> None:
+        """cell_outcomes with 'error' string should not produce any issue."""
+        events: list[Event] = [
+            _make_rollout_completed(rollout_id=0, sample_indices=[0]),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
+            _make_step_end(rollout_id=0, cell_outcomes={0: "error"}),
+        ]
+        assert check(events) == []
+
+    def test_multiple_snapshots_per_cell(self) -> None:
+        """Same cell has head and tail snapshots; only the mismatched one produces an issue."""
+        events: list[Event] = [
+            _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11], instance_id="pp0.head"),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[10], instance_id="pp0.tail"),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+        ]
+        issues = check(events)
+        assert len(issues) == 1
+        assert isinstance(issues[0], WitnessDataMismatchIssue)
+        assert 11 in issues[0].expected_witness_ids
+        assert 11 not in issues[0].actual_witness_ids
 
 
 class TestWitnessEventSerialization:
