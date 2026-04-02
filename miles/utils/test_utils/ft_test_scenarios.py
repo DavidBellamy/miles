@@ -10,6 +10,8 @@ The scenario is called as a *step callback* — it receives the current
 
 import logging
 import random
+import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -142,58 +144,81 @@ class DeterministicScenario(FTTestScenarioBase):
 
 @register_scenario("random_failure")
 class RandomFailureScenario(FTTestScenarioBase):
-    """Task 4: Random unexpected crashes via control server fault injection API.
+    """Task 4: Random unexpected crashes at random times via control server API.
 
-    At each step boundary, rolls the dice per cell. If triggered, sends
-    POST /api/v1/cells/{name}/inject-fault to the control server, which
-    calls actor.inject_fault.remote(mode) in a dedicated concurrency group
-    thread. The actor process dies immediately (SIGKILL, os._exit, segfault).
+    On before_step(0), starts a daemon thread that independently injects
+    faults at random intervals — completely asynchronous to the training
+    loop. Faults can hit mid-step, not just at step boundaries.
+
+    The daemon thread:
+      1. Sleeps a random interval (exponential, mean = mean_interval_seconds)
+      2. Picks a random alive cell + random actor within it
+      3. POSTs /api/v1/cells/{name}/inject-fault
+      4. Repeats until the scenario completes
 
     The health checker detects dead actors via heartbeat timeout.
     The mini FT controller auto-recovers (suspend → resume).
     """
+
+    _MEAN_INTERVAL_SECONDS: float = 15.0
 
     def __init__(self, ctx: FTTestContext) -> None:
         super().__init__(ctx)
         assert ctx.control_server_port > 0, (
             "RandomFailureScenario requires --control-server-port > 0"
         )
-        self._rng = random.Random(ctx.random_seed)
         self._base_url = f"http://localhost:{ctx.control_server_port}"
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
         logger.info(
-            "RandomFailureScenario: seed=%d, crash_probability=%.3f, base_url=%s",
-            ctx.random_seed, ctx.crash_probability, self._base_url,
+            "RandomFailureScenario: seed=%d, base_url=%s",
+            ctx.random_seed, self._base_url,
         )
 
-    def after_step(self, step: int) -> None:
-        if self._rng.random() >= self.ctx.crash_probability:
-            return
-
-        alive_cells = [
-            i for i in range(self.ctx.num_cells)
-            if self.ctx.group._cells[i].is_alive
-        ]
-        if len(alive_cells) <= 1:
-            logger.info(
-                "RandomFailureScenario: skipping crash at step %d (only %d alive)",
-                step, len(alive_cells),
+    def before_step(self, step: int) -> None:
+        if step == 0:
+            self._thread = threading.Thread(
+                target=self._injection_loop,
+                daemon=True,
+                name="ft-random-fault-injector",
             )
+            self._thread.start()
+
+    def _injection_loop(self) -> None:
+        rng = random.Random(self.ctx.random_seed)
+        logger.info("RandomFailureScenario: injection loop started")
+
+        while not self._stop_event.is_set():
+            delay = rng.expovariate(1.0 / self._MEAN_INTERVAL_SECONDS)
+            if self._stop_event.wait(timeout=delay):
+                break
+
+            self._inject_one_fault(rng)
+
+        logger.info("RandomFailureScenario: injection loop stopped")
+
+    def _inject_one_fault(self, rng: random.Random) -> None:
+        try:
+            resp = requests.get(f"{self._base_url}/api/v1/cells", timeout=5)
+            resp.raise_for_status()
+            cells = resp.json()["items"]
+        except Exception:
+            logger.warning("RandomFailureScenario: failed to list cells", exc_info=True)
             return
 
-        target_cell = self._rng.choice(alive_cells)
-        cell = self.ctx.group._cells[target_cell]
-        sub_index = self._rng.randrange(len(cell._get_actor_handles()))
-        mode = self._rng.choice(_FAILURE_MODES)
-        cell_name = f"actor-{target_cell}"
+        alive = [c for c in cells if c["status"]["phase"] == "Running"]
+        if len(alive) <= 1:
+            return
 
-        logger.info(
-            "RandomFailureScenario: injecting %s into %s actor %d at step %d",
-            mode, cell_name, sub_index, step,
-        )
+        target = rng.choice(alive)
+        cell_name = target["metadata"]["name"]
+        mode = rng.choice(_FAILURE_MODES)
+
+        logger.info("RandomFailureScenario: injecting %s into %s", mode.value, cell_name)
         try:
             resp = requests.post(
                 f"{self._base_url}/api/v1/cells/{cell_name}/inject-fault",
-                json={"mode": mode.value, "sub_index": sub_index},
+                json={"mode": mode.value, "sub_index": 0},
                 timeout=5,
             )
             resp.raise_for_status()
@@ -204,6 +229,9 @@ class RandomFailureScenario(FTTestScenarioBase):
             )
 
     def on_complete(self) -> None:
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
         logger.info("RandomFailureScenario: completed")
 
 
