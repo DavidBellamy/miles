@@ -4,15 +4,6 @@ from miles.utils.event_logger.logger import read_events
 from miles.utils.event_logger.models import MetricEvent
 
 
-def read_metric_events(dump_dir: Path) -> list[MetricEvent]:
-    """Read MetricEvents from the event logger output directory."""
-    events_dir: Path = dump_dir / "events"
-    if not events_dir.exists():
-        return []
-    all_events = read_events(events_dir)
-    return [e for e in all_events if isinstance(e, MetricEvent)]
-
-
 def compare_metrics(
     baseline_dir: str,
     target_dir: str,
@@ -27,8 +18,8 @@ def compare_metrics(
     if key_prefixes is None:
         key_prefixes = ["train/"]
 
-    baseline_metrics = read_metric_events(Path(baseline_dir))
-    target_metrics = read_metric_events(Path(target_dir))
+    baseline_metrics = _read_metric_events(Path(baseline_dir))
+    target_metrics = _read_metric_events(Path(target_dir))
 
     assert len(baseline_metrics) > 0, f"No MetricEvents found in baseline dir: {baseline_dir}"
     assert len(target_metrics) > 0, f"No MetricEvents found in target dir: {target_dir}"
@@ -66,3 +57,14 @@ def assert_events_dir_exists(dump_dir: str) -> None:
     assert events_dir.exists(), f"Events directory not found: {events_dir}"
     jsonl_files = list(events_dir.glob("**/*.jsonl"))
     assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
+
+
+def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
+    """Read MetricEvents from the event logger output directory."""
+    events_dir: Path = dump_dir / "events"
+    if not events_dir.exists():
+        return []
+    all_events = read_events(events_dir)
+    return [e for e in all_events if isinstance(e, MetricEvent)]
+
+
