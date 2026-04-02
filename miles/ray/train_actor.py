@@ -129,15 +129,15 @@ class TrainRayActor(RayActor):
         return self._heartbeat.status()
 
     @ray.method(concurrency_group="fault_injector")
-    def start_fault_injector(self, *, seed: int, crash_probability: float) -> None:
-        """Start background fault injection loop. Runs in a dedicated concurrency group thread.
+    def inject_fault(self, mode: str) -> None:
+        """Inject a fault immediately. Runs in a dedicated concurrency group thread.
 
-        This method blocks forever (until the process crashes). Call it with
-        actor.start_fault_injector.remote() — do NOT ray.get() the result.
+        Does not return — the process dies or deadlocks. Call with
+        actor.inject_fault.remote(mode) — do NOT ray.get() the result.
         """
-        from miles.utils.test_utils.fault_injector import run_fault_injector
+        from miles.utils.test_utils.fault_injector import inject_fault
 
-        run_fault_injector(seed=seed, crash_probability=crash_probability)
+        inject_fault(mode=mode)
 
     def clear_memory(self):
         print_memory("before TrainRayActor.clear_memory")

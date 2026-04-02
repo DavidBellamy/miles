@@ -63,6 +63,14 @@ class _ActorCellHandle(_CellHandle):
     async def resume(self) -> None:
         self._group.start_cell(self._cell_index)
 
+    async def inject_fault(self, mode: str) -> None:
+        """Inject a fault into one actor of this cell (rank 0). Fire-and-forget."""
+        cell = self._group._cells[self._cell_index]
+        if not cell.is_alive:
+            raise RuntimeError(f"Cell {self._cell_index} is not alive, cannot inject fault")
+        actor = cell._actors[0]
+        actor.inject_fault.remote(mode)
+
 
 # TODO the code will NOT work before implementing rollout ft
 class _RolloutCellHandle(_CellHandle):

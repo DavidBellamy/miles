@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.control_server.handles import _ActorCellHandle, _CellHandle, _RolloutCellHandle
-from miles.utils.control_server.models import Cell, CellList, CellPatch, K8sStatus, _OkResponse
+from miles.utils.control_server.models import Cell, CellList, CellPatch, FaultInjection, K8sStatus, _OkResponse
 from miles.utils.control_server.registry import _CellRegistry
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,24 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
                 ) from err
 
         return await handle.get_cell()
+
+    @app.post("/api/v1/cells/{name}/inject-fault")
+    async def inject_fault(name: str, body: FaultInjection) -> _OkResponse:
+        handle = _get_handle(name)
+        if not hasattr(handle, "inject_fault"):
+            raise _K8sError(
+                status_code=400, reason="BadRequest",
+                message=f"Cell '{name}' does not support fault injection",
+            )
+        try:
+            await handle.inject_fault(mode=body.mode)
+        except Exception as err:
+            logger.error("Failed to inject fault into cell %s", name, exc_info=True)
+            raise _K8sError(
+                status_code=500, reason="InternalError",
+                message=f"Failed to inject fault into cell '{name}'",
+            ) from err
+        return _OkResponse()
 
     # -------------------------- utils ------------------------------
 

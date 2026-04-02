@@ -70,6 +70,10 @@ class CellPatch(StrictBaseModel):
     spec: CellPatchSpec | None = None
 
 
+class FaultInjection(StrictBaseModel):
+    mode: Literal["sigkill", "exit", "segfault", "deadlock"]
+
+
 class K8sStatus(StrictBaseModel):
     apiVersion: Literal["v1"] = "v1"
     kind: Literal["Status"] = "Status"

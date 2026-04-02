@@ -9,13 +9,18 @@ The scenario is called as a *step callback* — it receives the current
 """
 
 import logging
+import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+import requests
 
 if TYPE_CHECKING:
     from miles.ray.train.group import RayTrainGroup
 
 logger = logging.getLogger(__name__)
+
+_FAILURE_MODES: list[str] = ["sigkill", "exit", "segfault"]
 
 SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
@@ -33,6 +38,7 @@ class FTTestContext:
     """Runtime context shared across scenario callbacks."""
     group: "RayTrainGroup"
     num_cells: int
+    control_server_port: int = 0
     current_step: int = 0
     random_seed: int = 42
     crash_probability: float = 0.1
@@ -115,52 +121,64 @@ class DeterministicScenario(FTTestScenarioBase):
 
 @register_scenario("random_failure")
 class RandomFailureScenario(FTTestScenarioBase):
-    """Task 4: Random unexpected crashes in train actor background threads.
+    """Task 4: Random unexpected crashes via control server fault injection API.
 
-    Unlike tasks 1-3 (coordinated stop/start from the orchestrator), this
-    scenario injects *genuine* unexpected crashes inside the train actors:
+    At each step boundary, rolls the dice per cell. If triggered, sends
+    POST /api/v1/cells/{name}/inject-fault to the control server, which
+    calls actor.inject_fault.remote(mode) in a dedicated concurrency group
+    thread. The actor process dies immediately (SIGKILL, os._exit, segfault).
 
-    1. On ``before_step`` of step 0, fires ``start_fault_injector.remote()``
-       on every actor in every cell. Each actor runs a background loop (in a
-       dedicated ray concurrency group thread) that randomly crashes the
-       process (SIGKILL, os._exit, segfault, or GIL deadlock).
-
-    2. The health checker detects dead actors via heartbeat timeout.
-
-    3. The mini FT controller auto-recovers (suspend → resume).
-
-    The scenario itself does nothing after step 0 — all fault injection
-    happens autonomously inside actors.
+    The health checker detects dead actors via heartbeat timeout.
+    The mini FT controller auto-recovers (suspend → resume).
     """
 
-    def before_step(self, step: int) -> None:
-        if step == 0:
-            self._arm_all_actors()
-
-    def _arm_all_actors(self) -> None:
-        ctx = self.ctx
+    def __init__(self, ctx: FTTestContext) -> None:
+        super().__init__(ctx)
+        assert ctx.control_server_port > 0, (
+            "RandomFailureScenario requires --control-server-port > 0"
+        )
+        self._rng = random.Random(ctx.random_seed)
+        self._base_url = f"http://localhost:{ctx.control_server_port}"
         logger.info(
-            "RandomFailureScenario: arming fault injectors on all actors "
-            "(seed=%d, crash_probability=%.3f)",
-            ctx.random_seed, ctx.crash_probability,
+            "RandomFailureScenario: seed=%d, crash_probability=%.3f, base_url=%s",
+            ctx.random_seed, ctx.crash_probability, self._base_url,
         )
 
-        actor_index = 0
-        for cell_index in range(ctx.num_cells):
-            cell = ctx.group._cells[cell_index]
-            if not cell.is_alive:
-                continue
-            for actor in cell._actors:
-                actor.start_fault_injector.remote(
-                    seed=ctx.random_seed + actor_index,
-                    crash_probability=ctx.crash_probability,
-                )
-                actor_index += 1
+    def after_step(self, step: int) -> None:
+        if self._rng.random() >= self.ctx.crash_probability:
+            return
+
+        alive_cells = [
+            i for i in range(self.ctx.num_cells)
+            if self.ctx.group._cells[i].is_alive
+        ]
+        if len(alive_cells) <= 1:
+            logger.info(
+                "RandomFailureScenario: skipping crash at step %d (only %d alive)",
+                step, len(alive_cells),
+            )
+            return
+
+        target_cell = self._rng.choice(alive_cells)
+        mode = self._rng.choice(_FAILURE_MODES)
+        cell_name = f"actor-{target_cell}"
 
         logger.info(
-            "RandomFailureScenario: armed %d actors with fault injectors",
-            actor_index,
+            "RandomFailureScenario: injecting %s into %s at step %d",
+            mode, cell_name, step,
         )
+        try:
+            resp = requests.post(
+                f"{self._base_url}/api/v1/cells/{cell_name}/inject-fault",
+                json={"mode": mode},
+                timeout=5,
+            )
+            resp.raise_for_status()
+        except Exception:
+            logger.warning(
+                "RandomFailureScenario: failed to inject fault into %s",
+                cell_name, exc_info=True,
+            )
 
     def on_complete(self) -> None:
         logger.info("RandomFailureScenario: completed")
