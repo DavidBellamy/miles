@@ -6,12 +6,12 @@
 
 ## Test Overview
 
-| Test | Type | What it verifies |
-|------|------|-----------------|
-| `test_trainer_ft_no_failure.py` | Comparison (baseline vs target) | indep_dp and normal DP produce same results without faults |
-| `test_trainer_ft_with_failure.py` | Comparison, multi-phase | Weights/grads roughly match after fault + ckpt resume |
+| Test | Type | What it verifies                                                               |
+|------|------|--------------------------------------------------------------------------------|
+| `test_trainer_ft_no_failure.py` | Comparison (baseline vs target) | When no faults, indep_dp and normal DP produce same results |
+| `test_trainer_ft_with_failure.py` | Comparison, multi-phase | Weights/grads roughly match after fault + ckpt resume                          |
 | `test_trainer_ft_deterministic.py` | Comparison | Normal DP vs indep_dp with stop+start healing (no missed steps, bitwise equal) |
-| `test_ft_random.py` | Non-comparison | System survives random crashes without hanging |
+| `test_ft_random.py` | Non-comparison | System survives random crashes without hanging                                 |
 
 ## Mode Variants
 
