@@ -216,6 +216,8 @@ def compare_metrics(
 
             b_val = b_event.metrics[key]
             t_val = t_event.metrics[key]
+            if not isinstance(b_val, (int, float)) or not isinstance(t_val, (int, float)):
+                continue
             if b_val == 0.0 and t_val == 0.0:
                 continue
 

@@ -39,6 +39,4 @@ def log(args, metrics, step_key: str):
         prom.update.remote(metrics)
 
     if is_event_logger_initialized():
-        float_metrics = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
-        if float_metrics:
-            get_event_logger().log(MetricEvent, {"metrics": float_metrics}, print_log=False)
+        get_event_logger().log(MetricEvent, {"metrics": dict(metrics)}, print_log=False)

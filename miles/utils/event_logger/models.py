@@ -65,7 +65,7 @@ class TrainGroupStepEndEvent(EventBase):
 
 class MetricEvent(EventBase):
     type: Literal["metric"] = "metric"
-    metrics: dict[str, float]
+    metrics: dict[str, Any]
 
 
 Event = Annotated[
