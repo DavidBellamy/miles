@@ -162,14 +162,10 @@ class RayTrainGroup:
 
     def _log_step_end_event(self, *, rollout_id: int, snapshot_alive_cells: list, results: list):
         if is_event_logger_initialized():
-            cell_outcomes: dict[int, str] = {}
-            for cell, cell_results in zip(snapshot_alive_cells, results, strict=True):
-                if isinstance(cell_results, BaseException):
-                    cell_outcomes[cell.cell_index] = "ERROR"
-                elif any(r == TrainStepOutcome.DISCARDED_SHOULD_RETRY for r in cell_results):
-                    cell_outcomes[cell.cell_index] = TrainStepOutcome.DISCARDED_SHOULD_RETRY.name
-                else:
-                    cell_outcomes[cell.cell_index] = TrainStepOutcome.NORMAL.name
+            cell_outcomes = {
+                ("ERROR" if isinstance(cell_results, BaseException) else [r.name for r in cell_results])
+                for cell, cell_results in zip(snapshot_alive_cells, results, strict=True)
+            }
             get_event_logger().log(
                 TrainGroupStepEndEvent,
                 dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
