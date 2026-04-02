@@ -110,24 +110,7 @@ class RayTrainGroup:
             WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
         )
 
-    # ------------------------ APIs ------------------------
-
-    async def init(self):
-        """
-        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
-        """
-        await asyncio.gather(
-            *[
-                cell.init(
-                    indep_dp_info=self._compute_indep_dp_info(
-                        cell_index=cell.cell_index,
-                        # all cells will be alive for this first initialization
-                        alive_cell_indices=list(range(len(self._cells))),
-                    )
-                )
-                for cell in self._cells
-            ]
-        )
+    # ------------------------ API :: train ------------------------
 
     async def train(self, rollout_id: int, rollout_data_pack):
         """Do one rollout training"""
@@ -200,6 +183,25 @@ class RayTrainGroup:
             if not isinstance(cell_results, BaseException)
         ):
             raise ValueError("Exists DISCARDED_SHOULD_RETRY, thus need retry")
+
+    # ------------------------ API :: others ------------------------
+
+    async def init(self):
+        """
+        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
+        """
+        await asyncio.gather(
+            *[
+                cell.init(
+                    indep_dp_info=self._compute_indep_dp_info(
+                        cell_index=cell.cell_index,
+                        # all cells will be alive for this first initialization
+                        alive_cell_indices=list(range(len(self._cells))),
+                    )
+                )
+                for cell in self._cells
+            ]
+        )
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
