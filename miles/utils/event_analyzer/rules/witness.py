@@ -97,18 +97,16 @@ def _find_mismatches(
     for step_event in all_step_events:
         rollout_id = step_event.rollout_id
 
-        witness_events_of_step = [e for e in all_witness_events if e.rollout_id == rollout_id]
-
         for cell_index, cell_outcome in step_event.cell_outcomes.items():
             if not all(r == TrainStepOutcome.NORMAL for r in cell_outcome):
                 continue
 
-            cell_snapshots = [
-                event for event in witness_events_of_step
-                if event.source.cell_index == cell_index
+            witness_events_of_cell = [
+                e for e in witness_events_of_step
+                if e.rollout_id == rollout_id and e.source.cell_index == cell_index
             ]
 
-            for event in cell_snapshots:
+            for event in witness_events_of_cell:
                 issue = _compare_snapshot(
                     event=event, expected=expected_witness_ids.get(rollout_id, set()),
                     rollout_id=rollout_id, cell_index=cell_index,
