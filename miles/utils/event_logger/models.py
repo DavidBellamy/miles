@@ -93,8 +93,8 @@ class LocalWeightChecksumEvent(_ActorTrainEventBase):
     state: LocalWeightChecksumState
 
 
-class WitnessEvent(_ActorTrainEventBase):
-    type: Literal["witness"] = "witness"
+class WitnessSnapshotParamEvent(_ActorTrainEventBase):
+    type: Literal["witness_snapshot_param"] = "witness_snapshot_param"
     position: str
     nonzero_ids: list[int]
 
@@ -110,7 +110,7 @@ Event = Annotated[
     | CheckpointTransferStartedEvent
     | CheckpointTransferCompletedEvent
     | LocalWeightChecksumEvent
-    | WitnessEvent,
+    | WitnessSnapshotParamEvent,
     Discriminator("type"),
 ]
 

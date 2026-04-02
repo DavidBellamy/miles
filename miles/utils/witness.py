@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from miles.utils.event_logger.logger import get_event_logger
-from miles.utils.event_logger.models import WitnessEvent
+from miles.utils.event_logger.models import WitnessSnapshotParamEvent
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def _record_and_log_witness_param(
     nonzero_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     get_event_logger().log(
-        WitnessEvent,
+        WitnessSnapshotParamEvent,
         dict(
             position=position,
             nonzero_ids=nonzero_ids,

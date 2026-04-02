@@ -14,7 +14,10 @@ class ChecksumMismatchIssue(FrozenStrictBaseModel):
 
 
 def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
-    """Weight checksum across replicas should be exactly the same."""
+    """
+    Check: weight checksum across replicas should be exactly the same
+    """
+
     checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
     if not checksum_events:
         return []

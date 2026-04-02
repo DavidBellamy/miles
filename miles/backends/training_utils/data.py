@@ -42,6 +42,7 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
             for t, sid in zip(rollout_data["tokens"], seq_witness_ids, strict=True)
         ]
+        TODO(WitnessAllocateIdEvent(witness_id_and_sample_id))
 
     if "multimodal_train_inputs" in rollout_data:
         # Move multimodal training tensors to GPU in advance

@@ -249,9 +249,9 @@ class TestRecordAndLogWitnessParam:
             _record_and_log_witness_param(step=5, witness=witness, position="tail_witness")
 
             mock_logger.log.assert_called_once()
-            from miles.utils.event_logger.models import WitnessEvent
+            from miles.utils.event_logger.models import WitnessSnapshotParamEvent
 
-            assert mock_logger.log.call_args[0][0] is WitnessEvent
+            assert mock_logger.log.call_args[0][0] is WitnessSnapshotParamEvent
             partial = mock_logger.log.call_args[0][1]
             assert partial["step"] == 5
             assert partial["position"] == "tail_witness"
