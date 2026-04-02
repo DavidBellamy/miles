@@ -196,8 +196,7 @@ def get_batch(
 
     batch["tokens"] = tokens
 
-    witness_ids = batch.get("witness_ids")
-    if witness_ids is not None:
+    if (witness_ids := batch.get("witness_ids")) is not None:
         batch["witness_ids"] = TODO
 
     if get_position_ids:
