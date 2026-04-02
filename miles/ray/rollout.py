@@ -32,6 +32,8 @@ from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
 from miles.utils.misc import load_function
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import RolloutGenerateCompletedEvent
 from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.ray_utils import Box
 from miles.utils.tracking_utils import init_tracking
@@ -445,6 +447,12 @@ class RolloutManager:
         _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
         sample_indices = data.get("sample_indices")
+
+        if is_event_logger_initialized():
+            get_event_logger().log(
+                RolloutGenerateCompletedEvent,
+                dict(rollout_id=rollout_id, sample_indices=sample_indices),
+            )
 
         if self.args.delay_split_train_data_by_dp:
             data = Box(ray.put(data))
@@ -1079,9 +1087,6 @@ def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any]
 
 
 def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
-    # TODO: discuss with human - what is a better name?
-    TODO(RolloutDataEvent(sample_ids_etc))
-
     if args.custom_rollout_log_function_path is not None:
         custom_log_func = load_function(args.custom_rollout_log_function_path)
         if custom_log_func(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
