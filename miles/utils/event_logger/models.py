@@ -12,6 +12,10 @@ class EventBase(FrozenStrictBaseModel):
     source: ProcessIdentity
 
 
+class _ActorTrainEventBase(EventBase):
+    rollout_id: int
+
+
 class GenericEvent(EventBase):
     type: Literal["generic"] = "generic"
     message: str
@@ -83,15 +87,13 @@ class LocalWeightChecksumState(FrozenStrictBaseModel):
     optimizer_hashes: list[OptimizerStateInfo]
 
 
-class LocalWeightChecksumEvent(EventBase):
+class LocalWeightChecksumEvent(_ActorTrainEventBase):
     type: Literal["local_weight_checksum"] = "local_weight_checksum"
-    rollout_id: int
     state: LocalWeightChecksumState
 
 
-class WitnessEvent(EventBase):
+class WitnessEvent(_ActorTrainEventBase):
     type: Literal["witness"] = "witness"
-    step: int
     position: str
     nonzero_ids: list[int]
 
