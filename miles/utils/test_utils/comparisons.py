@@ -9,6 +9,7 @@ from miles.utils.event_logger.models import MetricEvent
 logger = logging.getLogger(__name__)
 
 
+# TODO unify w/ run_megatron's compare code
 def compare_dumps(
     baseline_dir: str,
     target_dir: str,
