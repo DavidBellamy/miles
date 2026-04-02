@@ -24,7 +24,7 @@ from miles.utils.replay_base import all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
-from miles.utils.witness import WitnessIdAllocator, find_witness_in_model_chunks, set_witness_id_allocator
+from miles.utils.witness import init_witness_allocator
 
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
@@ -139,12 +139,7 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         if args.enable_witness:
-            head_witness = find_witness_in_model_chunks(self.model)
-            if head_witness is not None:
-                set_witness_id_allocator(WitnessIdAllocator(
-                    ring_buffer_size=args.witness_ring_buffer_size,
-                    witness=head_witness,
-                ))
+            init_witness_allocator(model_chunks=self.model, ring_buffer_size=args.witness_ring_buffer_size)
 
         self.parallel_state = get_parallel_state()
         verify_megatron_parallel_state(self.parallel_state, self.model)

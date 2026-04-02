@@ -171,6 +171,16 @@ def dump_witness_grads(
             )
 
 
+def init_witness_allocator(*, model_chunks: Sequence[nn.Module], ring_buffer_size: int) -> None:
+    """Find the witness in model chunks and set up the global allocator."""
+    witness = find_witness_in_model_chunks(model_chunks)
+    if witness is not None:
+        set_witness_id_allocator(WitnessIdAllocator(
+            ring_buffer_size=ring_buffer_size,
+            witness=witness,
+        ))
+
+
 _witness_id_allocator: Optional[WitnessIdAllocator] = None
 
 
