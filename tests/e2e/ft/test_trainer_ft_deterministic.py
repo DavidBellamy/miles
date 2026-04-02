@@ -8,7 +8,7 @@ _MILES_ROOT: Path = Path(__file__).resolve().parents[3]
 if str(_MILES_ROOT) not in sys.path:
     sys.path.insert(0, str(_MILES_ROOT))
 
-from miles.utils.test_utils.metric_comparison import compare_dumps, compare_metrics
+from miles.utils.test_utils.comparisons import compare_dumps, compare_metrics
 from tests.e2e.ft.conftest_ft.app import create_comparison_app
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
 from tests.e2e.ft.conftest_ft.modes import FTTestMode

@@ -179,17 +179,19 @@ class RandomFailureScenario(FTTestScenarioBase):
             return
 
         target_cell = self._rng.choice(alive_cells)
+        cell = self.ctx.group._cells[target_cell]
+        sub_index = self._rng.randrange(len(cell._actors))
         mode = self._rng.choice(_FAILURE_MODES)
         cell_name = f"actor-{target_cell}"
 
         logger.info(
-            "RandomFailureScenario: injecting %s into %s at step %d",
-            mode, cell_name, step,
+            "RandomFailureScenario: injecting %s into %s actor %d at step %d",
+            mode, cell_name, sub_index, step,
         )
         try:
             resp = requests.post(
                 f"{self._base_url}/api/v1/cells/{cell_name}/inject-fault",
-                json={"mode": mode},
+                json={"mode": mode, "sub_index": sub_index},
                 timeout=5,
             )
             resp.raise_for_status()

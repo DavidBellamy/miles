@@ -17,6 +17,7 @@ from miles.utils.heartbeat_utils import HeartbeatStatus, SimpleHeartbeat
 from miles.utils.logging_utils import configure_logger
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.process_identity import TrainProcessIdentity
+from miles.utils.test_utils.fault_injector import inject_fault as _inject_fault
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +136,7 @@ class TrainRayActor(RayActor):
         Does not return — the process dies or deadlocks. Call with
         actor.inject_fault.remote(mode) — do NOT ray.get() the result.
         """
-        from miles.utils.test_utils.fault_injector import inject_fault
-
-        inject_fault(mode=mode)
+        _inject_fault(mode=mode)
 
     def clear_memory(self):
         print_memory("before TrainRayActor.clear_memory")

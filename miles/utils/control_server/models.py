@@ -72,6 +72,7 @@ class CellPatch(StrictBaseModel):
 
 class FaultInjection(StrictBaseModel):
     mode: Literal["sigkill", "exit", "segfault", "deadlock"]
+    sub_index: int = 0
 
 
 class K8sStatus(StrictBaseModel):
