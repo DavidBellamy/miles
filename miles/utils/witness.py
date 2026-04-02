@@ -99,21 +99,13 @@ class WitnessIdAllocator:
             _zero_witness_rows(witness=witness, idx=idx, optimizer=self._optimizer)
 
     def _compute_stale_ids(self, *, keep_count: int) -> list[int]:
-        if self._counter == 0:
-            return []
-
         n = self._buffer_size
-        actual_keep = min(keep_count, self._counter, n)
-        if actual_keep >= n:
+        num_stale = n - min(keep_count, self._counter, n)
+        if num_stale == 0:
             return []
 
         head = self._counter % n
-        active_start = (head - actual_keep) % n
-
-        if active_start < head:
-            return list(range(0, active_start)) + list(range(head, n))
-        else:
-            return list(range(head, active_start))
+        return [(head + i) % n for i in range(num_stale)]
 
 
 # ---------------------------------------------------------------------------
