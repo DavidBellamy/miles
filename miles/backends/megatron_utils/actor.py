@@ -25,8 +25,6 @@ from miles.utils.replay_base import all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
-from miles.utils.witness import init_witness_allocator
-
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
 from ..training_utils.cp_utils import slice_with_cp
@@ -138,9 +136,6 @@ class MegatronTrainRayActor(TrainRayActor):
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role, checkpointing_context=checkpointing_context
         )
-
-        if args.enable_witness:
-            init_witness_allocator(model=self.model, optimizer=self.optimizer)
 
         self.parallel_state = get_parallel_state()
         verify_megatron_parallel_state(self.parallel_state, self.model)

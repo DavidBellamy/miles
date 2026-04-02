@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
@@ -7,6 +7,7 @@ from torch import Tensor
 
 from miles.utils.event_logger.logger import get_event_logger
 from miles.utils.event_logger.models import WitnessSnapshotParamEvent
+from miles.utils.witness.allocator import WitnessInfo
 
 logger = logging.getLogger(__name__)
 
@@ -16,30 +17,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def init_witness_allocator(*, model: Sequence[nn.Module], optimizer: torch.optim.Optimizer) -> None:
-    """Find all witnesses in model chunks and set up the global allocator."""
-    witnesses = list(_get_all_witnesses_in_model(model))
-    assert len(witnesses) > 0
-    _set_witness_id_allocator(
-        WitnessIdAllocator(
-            witnesses=witnesses,
-            optimizer=optimizer,
-        )
-    )
-
-
-def get_witness_id_allocator() -> "WitnessIdAllocator":
-    if _witness_id_allocator is None:
-        raise RuntimeError("WitnessIdAllocator not initialized. Call init_witness_allocator() first.")
-    return _witness_id_allocator
-
-
 def install_witness(model: nn.Module, *, buffer_size: int) -> None:
     model.head_witness = _DataWitness(buffer_size=buffer_size)
     model.tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
-def witness_dump_and_clear_stale(*, model: Sequence[nn.Module]) -> None:
+def witness_dump_and_clear_stale(
+    *,
+    model: Sequence[nn.Module],
+    witness_info: WitnessInfo,
+    optimizer: torch.optim.Optimizer,
+) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
     for chunk_index, chunk in enumerate(model):
         for attr in _WITNESS_ATTRS:
@@ -49,7 +37,22 @@ def witness_dump_and_clear_stale(*, model: Sequence[nn.Module]) -> None:
                 instance_id=f"pp{chunk_index}." + attr.replace("_witness", ""),
             )
 
-    get_witness_id_allocator().clear_stale()
+    clear_witness_stale_rows(model=model, stale_ids=witness_info.stale_ids, optimizer=optimizer)
+
+
+def clear_witness_stale_rows(
+    *,
+    model: Sequence[nn.Module],
+    stale_ids: list[int],
+    optimizer: torch.optim.Optimizer,
+) -> None:
+    if not stale_ids:
+        return
+
+    witnesses = list(_get_all_witnesses_in_model(model))
+    for witness in witnesses:
+        idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
+        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
 
 
 # ---------------------------------------------------------------------------
@@ -71,67 +74,20 @@ class _DataWitness(nn.Module):
         return out
 
 
-class WitnessIdAllocator:
-    def __init__(self, *, witnesses: list[_DataWitness], optimizer: torch.optim.Optimizer) -> None:
-        buffer_sizes = [x.buffer_size for x in witnesses]
-        assert all(buffer_sizes[0] == x for x in buffer_sizes)
-        self._buffer_size = buffer_sizes[0]
-
-        self._witnesses = witnesses
-        self._optimizer = optimizer
-
-        self._counter: int = 0
-
-    # TODO: rename to allocate()
-    def allocate_for_sequences(self, num_sequences: int) -> list[int]:
-        ids = [(self._counter + i) % self._buffer_size for i in range(num_sequences)]
-        self._counter += num_sequences
-        return ids
-
-    def clear_stale(self) -> None:
-        self._clear_stale(keep_count=int(self._buffer_size * 0.7))
-
-    def _clear_stale(self, *, keep_count: int) -> None:
-        stale_ids = self._compute_stale_ids(
-            keep_count=keep_count, counter=self._counter, buffer_size=self._buffer_size
-        )
-        if not stale_ids:
-            return
-
-        for witness in self._witnesses:
-            idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
-            _zero_witness_rows(witness=witness, idx=idx, optimizer=self._optimizer)
-
-    @classmethod
-    def _compute_stale_ids(cls, *, keep_count: int, counter: int, buffer_size: int) -> list[int]:
-        num_stale = buffer_size - min(keep_count, counter, buffer_size)
-        if num_stale == 0:
-            return []
-
-        head = counter % buffer_size
-        return [(head + i) % buffer_size for i in range(num_stale)]
-
-
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
 
-_witness_id_allocator: WitnessIdAllocator | None = None
-
-
-def _set_witness_id_allocator(allocator: WitnessIdAllocator | None) -> None:
-    global _witness_id_allocator
-    _witness_id_allocator = allocator
-
-
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
-def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> Iterable[_DataWitness]:
+def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> list[_DataWitness]:
+    witnesses: list[_DataWitness] = []
     for chunk in model_chunks:
         for attr in _WITNESS_ATTRS:
-            yield getattr(chunk.module, attr)
+            witnesses.append(getattr(chunk.module, attr))
+    return witnesses
 
 
 def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.optim.Optimizer) -> None:
