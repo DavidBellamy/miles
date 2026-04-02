@@ -44,8 +44,8 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     parsed = _parse_events(events)
     expected_witness_ids = _build_expected_witness_ids(parsed.allocations_by_rollout)
     return _find_mismatches(
-        step_end_events=parsed.step_end_events,
-        witness_events=parsed.witness_events,
+        all_step_events=parsed.step_end_events,
+        all_witness_events=parsed.witness_events,
         expected_witness_ids=expected_witness_ids,
     )
 
@@ -88,26 +88,23 @@ def _build_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]
 
 def _find_mismatches(
     *,
-    step_end_events: list[TrainGroupStepEndEvent],
-    witness_events: list[WitnessSnapshotParamEvent],
+    all_step_events: list[TrainGroupStepEndEvent],
+    all_witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids: dict[int, set[int]],
 ) -> list[WitnessDataMismatchIssue]:
     issues: list[WitnessDataMismatchIssue] = []
 
-    for step_end in step_end_events:
-        rollout_id = step_end.rollout_id
+    for step_event in all_step_events:
+        rollout_id = step_event.rollout_id
 
-        matching_snapshots = [
-            event for event in witness_events
-            if event.rollout_id == rollout_id
-        ]
+        witness_events_of_step = [e for e in all_witness_events if e.rollout_id == rollout_id]
 
-        for cell_index, outcome in step_end.cell_outcomes.items():
-            if _is_non_normal_outcome(outcome):
+        for cell_index, cell_outcome in step_event.cell_outcomes.items():
+            if not all(r == TrainStepOutcome.NORMAL for r in cell_outcome):
                 continue
 
             cell_snapshots = [
-                event for event in matching_snapshots
+                event for event in witness_events_of_step
                 if event.source.cell_index == cell_index
             ]
 
@@ -120,10 +117,6 @@ def _find_mismatches(
                     issues.append(issue)
 
     return issues
-
-
-def _is_non_normal_outcome(outcome: Literal["error"] | list[TrainStepOutcome]) -> bool:
-    return outcome == "error" or any(r != TrainStepOutcome.NORMAL for r in outcome)
 
 
 def _compare_snapshot(
