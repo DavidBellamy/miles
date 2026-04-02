@@ -185,12 +185,13 @@ class TestRecordAndLogWitnessParam:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(step=0, quorum_id=0, rank=0, witness=witness, position="head_witness")
+            _record_and_log_witness_param(step=0, witness=witness, position="head_witness")
 
             mock_logger.log.assert_called_once()
-            event = mock_logger.log.call_args[0][0]
-            assert set(event.nonzero_ids) == {3, 7}
-            assert event.position == "head_witness"
+            # New API: log(event_cls, partial_dict)
+            partial = mock_logger.log.call_args[0][1]
+            assert set(partial["nonzero_ids"]) == {3, 7}
+            assert partial["position"] == "head_witness"
 
     def test_record_and_log_event_fields(self) -> None:
         witness = DataWitness(num_ids=10)
@@ -201,12 +202,13 @@ class TestRecordAndLogWitnessParam:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            _record_and_log_witness_param(step=5, quorum_id=2, rank=1, witness=witness, position="tail_witness")
+            _record_and_log_witness_param(step=5, witness=witness, position="tail_witness")
 
             mock_logger.log.assert_called_once()
-            event = mock_logger.log.call_args[0][0]
-            assert event.step == 5
-            assert event.quorum_id == 2
-            assert event.rank == 1
-            assert event.position == "tail_witness"
-            assert set(event.nonzero_ids) == {1, 4}
+            from miles.utils.event_logger.models import WitnessEvent
+
+            assert mock_logger.log.call_args[0][0] is WitnessEvent
+            partial = mock_logger.log.call_args[0][1]
+            assert partial["step"] == 5
+            assert partial["position"] == "tail_witness"
+            assert set(partial["nonzero_ids"]) == {1, 4}
