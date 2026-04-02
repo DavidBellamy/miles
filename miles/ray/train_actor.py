@@ -131,11 +131,6 @@ class TrainRayActor(RayActor):
 
     @ray.method(concurrency_group="fault_injector")
     def inject_fault(self, mode: str) -> None:
-        """Inject a fault immediately. Runs in a dedicated concurrency group thread.
-
-        Does not return — the process dies or deadlocks. Call with
-        actor.inject_fault.remote(mode) — do NOT ray.get() the result.
-        """
         _inject_fault(mode=mode)
 
     def clear_memory(self):
