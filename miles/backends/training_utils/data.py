@@ -93,42 +93,6 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
     return rollout_data
 
 
-def _cp_slice_and_pack_1d(
-    tensors: list[torch.Tensor],
-    *,
-    pad_value: int,
-    pad: int,
-    parallel_state: ParallelState,
-    qkv_format: str,
-    allgather_cp: bool,
-    max_seqlen: int | None,
-) -> torch.Tensor:
-    """Apply the same CP slicing / padding / reshape that ``get_batch`` uses for tokens.
-
-    Works for any per-sequence 1-D tensor list (witness_ids, position_ids, etc.).
-    Returns a tensor with shape ``[B, T_padded]`` (bshd) or ``[1, T_padded]`` (thd).
-    """
-    if qkv_format == "bshd":
-        assert max_seqlen is not None
-        result = [slice_with_cp(t, pad_value, parallel_state, qkv_format, max_seqlen) for t in tensors]
-        return torch.stack(result)
-
-    assert qkv_format == "thd"
-    cp_size = parallel_state.cp.size
-    cp_rank = parallel_state.cp.rank
-    if allgather_cp:
-        result = torch.cat(tensors, dim=0)
-        if pad != 0:
-            result = F.pad(result, (0, pad), value=pad_value)
-        result = result.chunk(cp_size, dim=0)[cp_rank]
-    else:
-        result_list = [slice_with_cp(t, pad_value, parallel_state, qkv_format) for t in tensors]
-        result = torch.cat(result_list)
-        if pad != 0:
-            result = F.pad(result, (0, pad), value=pad_value)
-    return result.unsqueeze(0)
-
-
 def get_batch(
     data_iterator: "DataIterator",
     keys: Sequence[str],
@@ -174,16 +138,15 @@ def get_batch(
     batch["unconcat_tokens"] = tokens
 
     cp_size = parallel_state.cp.size
-    cp_rank = parallel_state.cp.rank
 
     if qkv_format == "bshd":
         max_seqlen = batch["max_seq_lens"][0]
         assert max([t.size(0) for t in tokens]) <= max_seqlen
         tokens = [slice_with_cp(t, pad_token_id, parallel_state, qkv_format, max_seqlen) for t in tokens]
         tokens = torch.stack(tokens)
-        pad = 0
 
     elif qkv_format == "thd":
+        cp_rank = parallel_state.cp.rank
 
         if allgather_cp:
             # DSA mode: concatenate all sequences first, then slice once with CP.
@@ -235,31 +198,27 @@ def get_batch(
 
     witness_ids = batch.get("witness_ids")
     if witness_ids is not None:
-        batch["witness_ids"] = _cp_slice_and_pack_1d(
-            witness_ids,
-            pad_value=0,
-            pad=pad,
-            parallel_state=parallel_state,
-            qkv_format=qkv_format,
-            allgather_cp=allgather_cp,
-            max_seqlen=max_seqlen,
-        )
+        batch["witness_ids"] = TODO
 
     if get_position_ids:
         assert not allgather_cp, "allgather CP is not supported for FSDP"
-        position_ids_list = [
-            torch.arange(t.size(0), device=t.device, dtype=torch.long)
-            for t in batch["unconcat_tokens"]
-        ]
-        batch["position_ids"] = _cp_slice_and_pack_1d(
-            position_ids_list,
-            pad_value=0,
-            pad=pad,
-            parallel_state=parallel_state,
-            qkv_format=qkv_format,
-            allgather_cp=allgather_cp,
-            max_seqlen=max_seqlen,
-        )
+        position_ids_list = []
+        for t in batch["unconcat_tokens"]:
+            seq_len = t.size(0)
+            pos_ids = torch.arange(seq_len, device=t.device, dtype=torch.long)
+            position_ids_list.append(pos_ids)
+
+        if qkv_format == "bshd":
+            position_ids = [slice_with_cp(p, 0, parallel_state, qkv_format, max_seqlen) for p in position_ids_list]
+            position_ids = torch.stack(position_ids)
+        elif qkv_format == "thd":
+            position_ids = [slice_with_cp(p, 0, parallel_state, qkv_format) for p in position_ids_list]
+            position_ids = torch.cat(position_ids)
+            if pad != 0:
+                position_ids = F.pad(position_ids, (0, pad), value=0)
+            position_ids = position_ids.unsqueeze(0)
+
+        batch["position_ids"] = position_ids
 
     # loss masks
     loss_masks = []
