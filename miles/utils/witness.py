@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Public API (called by actor.py, model.py, model_provider.py, data.py)
+# Public API
 # ---------------------------------------------------------------------------
 
 
