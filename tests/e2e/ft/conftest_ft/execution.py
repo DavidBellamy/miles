@@ -58,6 +58,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
             "--rollout-batch-size 1 "
             "--n-samples-per-prompt 1 "
             "--sglang-disable-cuda-graph "
+            f"--rollout-num-gpus {mode.total_rollout_gpus} "
             f"--rollout-num-gpus-per-engine {mode.rollout_gpus_per_engine} "
         )
 

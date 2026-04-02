@@ -68,7 +68,7 @@ def create_comparison_app(
     @app.command()
     def compare(
         mode: Annotated[str, typer.Option(help="Test mode variant")],
-        dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
+        dump_dir: Annotated[str, typer.Option(help="Dump base directory")],
     ) -> None:
         """Compare baseline and target dumps."""
         ft_mode = resolve_mode(mode)
