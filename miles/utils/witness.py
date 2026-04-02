@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Sequence
-from typing import Optional
+from typing import Optional, Iterable
 
 import torch
 import torch.nn as nn
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def init_witness_allocator(*, model: Sequence[nn.Module], optimizer: torch.optim.Optimizer) -> None:
     """Find all witnesses in model chunks and set up the global allocator."""
-    witnesses = _find_all_witnesses_in_model_chunks(model)
+    witnesses = list(_get_all_witnesses_in_model(model))
     assert len(witnesses) > 0
     _set_witness_id_allocator(WitnessIdAllocator(
         witnesses=witnesses,
@@ -132,16 +132,10 @@ def _set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
-def _find_all_witnesses_in_model_chunks(model_chunks: Sequence[nn.Module]) -> list[_DataWitness]:
-    witnesses: list[_DataWitness] = []
+def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> Iterable[_DataWitness]:
     for chunk in model_chunks:
         for attr in _WITNESS_ATTRS:
-            w: Optional[_DataWitness] = getattr(chunk.module, attr, None)
-            if w is not None:
-                witnesses.append(w)
-        if witnesses:
-            break
-    return witnesses
+            yield getattr(chunk.module, attr)
 
 
 def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.optim.Optimizer) -> None:
