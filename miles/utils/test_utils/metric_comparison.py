@@ -52,14 +52,6 @@ def compare_metrics(
     print(f"MetricEvent comparison passed: {len(baseline_metrics)} steps compared")
 
 
-def assert_events_dir_exists(dump_dir: str) -> None:
-    """Assert that the events directory exists and contains jsonl files."""
-    events_dir: Path = Path(dump_dir) / "events"
-    assert events_dir.exists(), f"Events directory not found: {events_dir}"
-    jsonl_files = list(events_dir.glob("**/*.jsonl"))
-    assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
-
-
 def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
     """Read MetricEvents from the event logger output directory."""
     events_dir: Path = dump_dir / "events"
