@@ -5,7 +5,7 @@ from typing import Annotated
 
 import typer
 
-from tests.e2e.ft.conftest_ft.args import run_training
+from tests.e2e.ft.conftest_ft.execution import run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 from tests.e2e.ft.conftest_ft.prepare import prepare
 

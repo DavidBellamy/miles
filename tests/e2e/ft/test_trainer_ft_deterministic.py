@@ -16,7 +16,7 @@ if str(_MILES_ROOT) not in sys.path:
     sys.path.insert(0, str(_MILES_ROOT))
 
 from tests.e2e.ft.conftest_ft.app import create_non_comparison_app
-from tests.e2e.ft.conftest_ft.args import get_common_train_args, get_indep_dp_args
+from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
 from tests.e2e.ft.conftest_ft.comparison import assert_events_dir_exists
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
