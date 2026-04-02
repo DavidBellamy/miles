@@ -55,7 +55,7 @@ def run(
 
     prepare(ft_mode)
 
-    base = get_common_train_args(ft_mode, dump_dir=dump_dir)
+    base = get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
     base += get_indep_dp_args(ft_mode)
 
     base += "--mini-ft-controller-enable "

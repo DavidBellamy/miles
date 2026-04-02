@@ -96,7 +96,7 @@ def prepare(mode: FTTestMode) -> None:
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
 
 
-def get_common_train_args(mode: FTTestMode, *, dump_dir: str) -> str:
+def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
     """Base args shared by all FT tests.
 
     Includes: checkpoint paths, amplified-error optimizer hyperparams,
@@ -128,7 +128,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str) -> str:
             "--input-key messages --label-key label --apply-chat-template "
             "--rollout-shuffle --rm-type math "
             "--rollout-max-response-len 3 --rollout-temperature 0.8 "
-            "--num-rollout 1 --rollout-batch-size 1 --n-samples-per-prompt 1 "
+            "--rollout-batch-size 1 --n-samples-per-prompt 1 "
             "--sglang-disable-cuda-graph "
         )
 
@@ -143,6 +143,9 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str) -> str:
         "--moe-token-dispatcher-type alltoall "
         "--advantage-estimator grpo --eps-clip 0.2 "
     )
+
+    effective_num_steps: int = num_steps if num_steps is not None else mode.num_steps
+    misc_args += f"--num-rollout {effective_num_steps} "
 
     if mode.rollout_gpus > 0:
         misc_args += f"--rollout-num-gpus {mode.rollout_gpus} --colocate "
