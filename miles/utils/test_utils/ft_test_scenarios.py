@@ -98,21 +98,40 @@ class WithFailureScenario(FTTestScenarioBase):
 
 @register_scenario("deterministic")
 class DeterministicScenario(FTTestScenarioBase):
-    """Task 3: Stop + start (no missed steps) for bitwise healing verification.
+    """Task 3: Deterministic healing + degraded retry + checkpoint resume verification.
 
-    Timeline:
-      train() #0, #1: all N cells normal
-      after #1:       stop_cell(X) + start_cell(X)
-      train() #2:     _refresh_cells() heals X from cell_0, all N cells run
+    Timeline (phase_b, resuming from ckpt):
+      train() #0, #1: all N cells normal (2 good steps)
+      after #1:       stop_cell(X) + start_cell(X) (marks pending, healing at next step)
+      train() #2:     healing happens at start, then normal execution.
+                      after #2: stop_cell(X) again (create degraded state)
+      train() #3:     N-1 cells, allreduce fails -> should_commit=false ->
+                      DISCARDED_SHOULD_RETRY -> retry succeeds with N-1 cells.
+                      after #3: start_cell(X) to restore
+      train() #4:     healing + normal execution
     """
 
     def after_step(self, step: int) -> None:
         if step == 1:
             logger.info(
-                "DeterministicScenario: stop+start cell %d after step %d",
+                "DeterministicScenario: stop+start cell %d after step %d (trigger healing)",
                 self._target_cell_index, step,
             )
             self.ctx.group.stop_cell(self._target_cell_index)
+            self.ctx.group.start_cell(self._target_cell_index)
+
+        elif step == 2:
+            logger.info(
+                "DeterministicScenario: stopping cell %d after step %d (create degraded state)",
+                self._target_cell_index, step,
+            )
+            self.ctx.group.stop_cell(self._target_cell_index)
+
+        elif step == 3:
+            logger.info(
+                "DeterministicScenario: starting cell %d after step %d (restore for healing)",
+                self._target_cell_index, step,
+            )
             self.ctx.group.start_cell(self._target_cell_index)
 
     def on_complete(self) -> None:
