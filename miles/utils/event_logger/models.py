@@ -84,6 +84,7 @@ class OptimizerStateInfo(FrozenStrictBaseModel):
 class LocalWeightChecksumState(FrozenStrictBaseModel):
     param_hashes: dict[str, str]
     buffer_hashes: dict[str, str]
+    # May be skipped in non-debug mode if too expensive
     optimizer_hashes: list[OptimizerStateInfo]
 
 
