@@ -32,6 +32,39 @@ class TestWitnessIdAllocator:
         assert info.witness_ids == [0, 1, 2, 3, 4, 5, 6, 7]
         assert set(info.stale_ids) == {8, 9, 0}
 
+    def test_allocate_zero_ids(self) -> None:
+        """allocate(num_ids=0) should return empty witness_ids and reasonable stale_ids."""
+        allocator = WitnessIdAllocator(buffer_size=5)
+        allocator.allocate(3)
+        info = allocator.allocate(0)
+        assert info.witness_ids == []
+        assert isinstance(info.stale_ids, list)
+
+    def test_allocate_more_than_buffer_size(self) -> None:
+        """num_ids > buffer_size causes the ring buffer to wrap, producing duplicate IDs."""
+        allocator = WitnessIdAllocator(buffer_size=4)
+        info = allocator.allocate(6)
+        assert len(info.witness_ids) == 6
+        assert len(set(info.witness_ids)) < len(info.witness_ids)
+
+    def test_consecutive_allocations_stale_ids_evolve(self) -> None:
+        """Consecutive allocate calls should produce evolving stale_ids as counter grows."""
+        allocator = WitnessIdAllocator(buffer_size=10)
+
+        info1 = allocator.allocate(3)
+        stale1 = set(info1.stale_ids)
+
+        info2 = allocator.allocate(3)
+        stale2 = set(info2.stale_ids)
+
+        info3 = allocator.allocate(3)
+        stale3 = set(info3.stale_ids)
+
+        assert stale1 != stale2 or stale2 != stale3, "stale_ids should evolve across allocations"
+        all_ids = set(range(10))
+        for stale in [stale1, stale2, stale3]:
+            assert stale.issubset(all_ids)
+
 
 class TestComputeStaleIds:
     """Direct tests for _compute_stale_ids module-level function."""
