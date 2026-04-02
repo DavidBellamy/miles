@@ -209,18 +209,56 @@ class MegatronTrainRayActor(TrainRayActor):
             shutil.rmtree(path, ignore_errors=False)
 
     def _export_hf_bf16_checkpoint(self) -> Path:
-        """Export BF16 HF checkpoint using bridge.
+        """Export BF16 HF checkpoint using the existing weight-update iterator.
 
-        Must be called while model is still on GPU (before offload/sleep),
-        because the bridge uses NCCL to gather weights across PP ranks.
+        Reuses HfWeightIteratorDirect (PP/EP/TP gather + convert_to_hf) which
+        is the same path as the normal in-place weight update.  Rank 0 writes
+        safetensors to disk.  Must be called while model is on GPU.
         """
+        import json
+
+        import safetensors.torch
+
         parent_dir = Path(getattr(self.args, "rollout_refresh_parent_dir", None) or "")
         if not parent_dir or str(parent_dir) == "":
             raise ValueError("--rollout-refresh-parent-dir is required when --rollout-nvfp4-restart-sync is enabled.")
         parent_dir.mkdir(parents=True, exist_ok=True)
 
         bf16_dir = parent_dir / f"hf_bf16_sync_{self._rollout_sync_seq:06d}"
-        save_hf_model_to_path(self.args, bf16_dir, self.model)
+        bf16_dir.mkdir(parents=True, exist_ok=True)
+
+        rank = dist.get_rank()
+        megatron_local_weights = self.weights_backuper.get("actor")
+
+        # Reuse existing iterator — handles PP broadcast, EP gather, TP
+        # all-gather and convert_to_hf, exactly like normal weight update.
+        # Temporarily disable quantization to get BF16 output.
+        orig_qconfig = self.weight_updater._hf_weight_iterator.quantization_config
+        self.weight_updater._hf_weight_iterator.quantization_config = None
+        try:
+            all_hf: dict[str, torch.Tensor] = {}
+            for chunk in self.weight_updater._hf_weight_iterator.get_hf_weight_chunks(megatron_local_weights):
+                for name, param in chunk:
+                    all_hf[name] = param.cpu().contiguous()
+        finally:
+            self.weight_updater._hf_weight_iterator.quantization_config = orig_qconfig
+
+        if rank == 0:
+            safetensors.torch.save_file(all_hf, str(bf16_dir / "model.safetensors"))
+            weight_map = {k: "model.safetensors" for k in all_hf}
+            total_size = sum(t.numel() * t.element_size() for t in all_hf.values())
+            with open(bf16_dir / "model.safetensors.index.json", "w") as f:
+                json.dump({"metadata": {"total_size": total_size}, "weight_map": weight_map}, f, indent=2)
+
+            src_dir = Path(getattr(self.args, "bridge_hf_checkpoint", None) or self.args.hf_checkpoint)
+            for fname in ("config.json", "tokenizer.json", "tokenizer_config.json", "configuration_deepseek.py"):
+                src_file = src_dir / fname
+                if src_file.exists():
+                    shutil.copy2(str(src_file), str(bf16_dir / fname))
+            logger.info("Saved BF16 HF checkpoint (%d params) to %s", len(all_hf), bf16_dir)
+
+        del all_hf
+        clear_memory()
         dist.barrier(group=get_gloo_group())
         return bf16_dir
 
@@ -488,13 +526,6 @@ class MegatronTrainRayActor(TrainRayActor):
         # update the cpu actor weight to the latest model
         self.weights_backuper.backup("actor")
 
-        # Pre-export BF16 checkpoint while model is still on GPU (before offload).
-        # The NVFP4 conversion + engine restart happens later in update_weights().
-        if self._use_rollout_nvfp4_restart_sync() and self._rollout_sync_initialized:
-            with timer("nvfp4_bf16_export"):
-                self._rollout_sync_seq += 1
-                self._pending_bf16_dir = self._export_hf_bf16_checkpoint()
-
         # Update ref model if needed
         if (
             self.args.ref_update_interval is not None
@@ -560,16 +591,22 @@ class MegatronTrainRayActor(TrainRayActor):
 
         if self._use_rollout_nvfp4_restart_sync():
             print_memory("before rollout checkpoint refresh")
-            bf16_dir = getattr(self, "_pending_bf16_dir", None)
-            if bf16_dir is not None:
-                # BF16 export was done in train_actor() while model was on GPU.
-                # Now convert BF16→NVFP4 (subprocess) and restart engine.
+            if self._rollout_sync_initialized:
+                self._rollout_sync_seq += 1
+
+                # Export BF16 via HfWeightIterator (same gather path as
+                # normal weight update).  disable() allows GPU ops on
+                # CPU-backed weights without corrupting torch_memory_saver.
+                with torch_memory_saver.disable() if self.args.offload_train else nullcontext():
+                    with timer("nvfp4_bf16_export"):
+                        bf16_dir = self._export_hf_bf16_checkpoint()
+
+                # Convert BF16→NVFP4 (subprocess) and restart engine.
                 self._convert_and_link_nvfp4_checkpoint(bf16_dir)
-                self._pending_bf16_dir = None
 
                 if dist.get_rank() == 0:
                     ray.get(self.rollout_manager.restart_rollout_engines.remote())
-            elif not self._rollout_sync_initialized:
+            else:
                 logger.info("Skip initial rollout refresh because rollout engine already loaded the initial NVFP4 checkpoint.")
                 self._rollout_sync_initialized = True
 

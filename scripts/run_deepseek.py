@@ -41,8 +41,8 @@ class ScriptArgs(U.ExecuteTrainConfig):
     extra_args: str = ""
     task: Literal["dapo_aime", "gsm8k"] = "dapo_aime"
     data_dir: str = "/root/datasets"
-    model_dir: str = "/root/models"
-    model_local_dir: str = "/root/local_data"
+    model_dir: str = "/shared/zhichen/models"
+    model_local_dir: str = "/shared/zhichen/models"
     megatron_path: str = "/root/Megatron-LM"
     rollout_nvfp4: bool = False
     rollout_nvfp4_restart_sync: bool = False
@@ -103,11 +103,18 @@ def _prepare_megatron_ckpt(args: ScriptArgs):
     num_nodes = None
     layer_count = _get_layer_count(args.model_name)
     if layer_count == 5:
-        extra_args += (
-            "--pipeline-model-parallel-size 2 "
-            "--decoder-last-pipeline-num-layers 2 "
-            "--expert-model-parallel-size 1 "
-        )
+        if args.rollout_nvfp4:
+            # EP=4 layout: all layers on each GPU, experts split across EP.
+            extra_args += (
+                "--pipeline-model-parallel-size 1 "
+                "--expert-model-parallel-size 4 "
+            )
+        else:
+            extra_args += (
+                "--pipeline-model-parallel-size 2 "
+                "--decoder-last-pipeline-num-layers 2 "
+                "--expert-model-parallel-size 1 "
+            )
         num_gpus_per_node = min(4, num_gpus_per_node)
         multinode = False
     elif layer_count == 20:
@@ -224,7 +231,16 @@ def _execute_train(args: ScriptArgs):
             )
 
     layer_count = _get_layer_count(args.model_name)
-    if args.num_nodes <= 2 and layer_count == 5:
+    if args.num_nodes <= 2 and layer_count == 5 and args.rollout_nvfp4:
+        # EP=4 layout for NVFP4: all layers on each GPU, experts split.
+        perf_args = (
+            "--tensor-model-parallel-size 1 "
+            "--pipeline-model-parallel-size 1 "
+            "--context-parallel-size 1 "
+            "--expert-model-parallel-size 4 "
+            "--expert-tensor-parallel-size 1 "
+        )
+    elif args.num_nodes <= 2 and layer_count == 5:
         perf_args = (
             "--tensor-model-parallel-size 1 "
             "--pipeline-model-parallel-size 2 "
