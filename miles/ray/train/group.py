@@ -135,7 +135,7 @@ class RayTrainGroup:
 
         async def _fn(attempt: int):
             # NOTE: Need to allocate *new* witness ids for each retry
-            witness_info = await self._allocate_witness_info(
+            witness_info = self._allocate_witness_info(
                 rollout_id=rollout_id,
                 attempt=attempt,
                 sample_indices=rollout_data_pack["sample_indices"],
@@ -167,7 +167,7 @@ class RayTrainGroup:
 
         await retry(_fn)
 
-    async def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
+    def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
         if self._witness_allocator is None:
             return None
 
