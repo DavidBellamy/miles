@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
     if getattr(args, "enable_witness", False):
-        from miles.utils.witness import DataWitness, install_witness_hook
+        from miles.utils.witness import DataWitness, install_witness
 
-        install_witness_hook(model, DataWitness(num_ids=args.witness_ring_buffer_size))
+        install_witness(model, DataWitness(num_ids=args.witness_ring_buffer_size))
 
 
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82

@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Optional
 
 import torch
@@ -133,44 +134,41 @@ def record_and_log_witness_grad(
     )
 
 
-def install_witness_hook(model: nn.Module, witness: DataWitness) -> None:
-    """Attach a DataWitness submodule and register a pre-decoder hook on a GPTModel.
+def install_witness(model: nn.Module, witness: DataWitness) -> None:
+    """Attach a DataWitness as a submodule of a GPTModel.
 
-    The hook reads ``model._pending_witness_ids`` (set before each forward call)
-    and adds the witness output to decoder_input. After consumption the attribute
-    is cleared to ``None`` so stale IDs cannot leak into subsequent forward passes.
-    Megatron only sees a generic pre-decoder hook -- no witness-specific code there.
+    The witness participates in DDP, optimizer, and checkpointing automatically.
+    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate it.
     """
     model.head_witness = witness
-    model._pending_witness_ids = None
-
-    def _witness_hook(gpt_model: nn.Module, decoder_input: Optional[Tensor]) -> Optional[Tensor]:
-        witness_ids: Optional[Tensor] = gpt_model._pending_witness_ids
-        if witness_ids is None:
-            return decoder_input
-
-        gpt_model._pending_witness_ids = None
-
-        witness_out: Tensor = gpt_model.head_witness(witness_ids)
-
-        if decoder_input is not None:
-            # pre_process stage: decoder_input comes from embedding
-            return decoder_input + witness_out
-        else:
-            # non-pre_process stage: hidden states live in decoder.input_tensor
-            gpt_model.decoder.input_tensor = gpt_model.decoder.input_tensor + witness_out
-            return None
-
-    model.register_pre_decoder_hook(_witness_hook)
 
 
-def set_pending_witness_ids(model: nn.Module, witness_ids: Optional[Tensor]) -> None:
-    """Set witness IDs for consumption by the pre-decoder hook.
+def find_witness_in_model_chunks(model_chunks: Sequence[nn.Module]) -> Optional[DataWitness]:
+    """Find the first DataWitness submodule across DDP-wrapped model chunks."""
+    for chunk in model_chunks:
+        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
+        if witness is not None:
+            return witness
+    return None
 
-    This avoids callers directly touching the private ``_pending_witness_ids``
-    attribute that ``install_witness_hook`` manages.
-    """
-    model._pending_witness_ids = witness_ids
+
+def dump_witness_grads(
+    *,
+    model_chunks: Sequence[nn.Module],
+    step: int,
+    quorum_id: int,
+    rank: int,
+) -> None:
+    """Find all witness submodules in model chunks and log their gradients."""
+    for chunk in model_chunks:
+        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
+        if witness is not None:
+            record_and_log_witness_grad(
+                step=step,
+                quorum_id=quorum_id,
+                rank=rank,
+                witness=witness,
+            )
 
 
 _witness_id_allocator: Optional[WitnessIdAllocator] = None

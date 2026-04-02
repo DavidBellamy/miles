@@ -1,9 +1,9 @@
-"""Tests for witness injection into GPTModel via pre-decoder hooks."""
+"""Tests for witness injection into GPTModel via forward parameter."""
 
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, install_witness_hook, set_pending_witness_ids
+from miles.utils.witness import DataWitness, install_witness
 
 
 class _FakeDecoder(nn.Module):
@@ -18,34 +18,30 @@ class _FakeDecoder(nn.Module):
 
 
 class _FakeGPTModel(nn.Module):
-    """Minimal GPTModel stub with pre-decoder hook support."""
+    """Minimal GPTModel stub that mirrors Megatron's witness_ids handling."""
 
     def __init__(self, *, pre_process: bool = True) -> None:
         super().__init__()
         self.pre_process = pre_process
         self.decoder = _FakeDecoder()
-        self._pre_decoder_hooks: list = []
         self.embedding = nn.Embedding(100, 16)
-
-    def register_pre_decoder_hook(self, hook) -> None:
-        self._pre_decoder_hooks.append(hook)
 
     def forward(self, input_ids: torch.Tensor, witness_ids: torch.Tensor | None = None) -> torch.Tensor:
         # Simulate _preprocess
         if self.pre_process:
             decoder_input = self.embedding(input_ids)
         else:
-            # Non-pre_process: hidden states come from set_input_tensor
             decoder_input = None
 
-        set_pending_witness_ids(self, witness_ids)
-
-        # Run pre-decoder hooks
-        for hook in self._pre_decoder_hooks:
-            decoder_input = hook(self, decoder_input)
+        # Witness injection (mirrors Megatron GPTModel.forward)
+        if hasattr(self, 'head_witness') and witness_ids is not None:
+            witness_out = self.head_witness(witness_ids)
+            if decoder_input is not None:
+                decoder_input = decoder_input + witness_out
+            else:
+                self.decoder.input_tensor = self.decoder.input_tensor + witness_out
 
         if decoder_input is None:
-            # Non-pre_process: decoder reads from input_tensor
             decoder_input = self.decoder.input_tensor
 
         return self.decoder(hidden_states=decoder_input)
@@ -55,7 +51,7 @@ class TestInstallWitnessHook:
     def test_witness_is_submodule(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         assert hasattr(model, "head_witness")
         assert model.head_witness is witness
@@ -64,7 +60,7 @@ class TestInstallWitnessHook:
     def test_witness_in_parameters(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         param_names = [name for name, _ in model.named_parameters()]
         assert any("head_witness" in name for name in param_names)
@@ -72,7 +68,7 @@ class TestInstallWitnessHook:
     def test_hook_adds_zero_to_decoder_input(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
         witness_ids = torch.tensor([[0, 1, 2]])
@@ -88,7 +84,7 @@ class TestInstallWitnessHook:
     def test_hook_produces_gradient_on_witness(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
         witness_ids = torch.tensor([[5, 5, 5]])
@@ -105,7 +101,7 @@ class TestInstallWitnessHook:
     def test_no_witness_ids_no_effect(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
         out = model(tokens)  # No witness_ids
@@ -114,7 +110,7 @@ class TestInstallWitnessHook:
     def test_witness_in_state_dict(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         sd = model.state_dict()
         assert any("head_witness" in k for k in sd.keys())
@@ -122,7 +118,7 @@ class TestInstallWitnessHook:
     def test_witness_checkpoint_roundtrip(self) -> None:
         model = _FakeGPTModel()
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         # Make witness weights nonzero
         model.head_witness.witness.weight.data.fill_(42.0)
@@ -132,7 +128,7 @@ class TestInstallWitnessHook:
         # Create new model and load
         model2 = _FakeGPTModel()
         witness2 = DataWitness(num_ids=10)
-        install_witness_hook(model2, witness2)
+        install_witness(model2, witness2)
         model2.load_state_dict(sd)
 
         assert torch.equal(model2.head_witness.witness.weight.data, model.head_witness.witness.weight.data)
@@ -146,7 +142,7 @@ class TestInstallWitnessHook:
         """Non-pre_process stage: witness should modify decoder.input_tensor, not decoder_input."""
         model = _FakeGPTModel(pre_process=False)
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         # Simulate hidden states from previous PP stage
         hidden = torch.randn(1, 4, 16)
@@ -162,7 +158,7 @@ class TestInstallWitnessHook:
     def test_witness_middle_pp_stage_produces_gradient(self) -> None:
         model = _FakeGPTModel(pre_process=False)
         witness = DataWitness(num_ids=10)
-        install_witness_hook(model, witness)
+        install_witness(model, witness)
 
         hidden = torch.randn(1, 4, 16, requires_grad=True)
         model.decoder.input_tensor = hidden

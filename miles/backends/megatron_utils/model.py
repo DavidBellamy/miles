@@ -260,8 +260,6 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
-        from miles.utils.witness import set_pending_witness_ids
-        set_pending_witness_ids(model, batch.get("witness_ids"))
         forward_kwargs = {
             "input_ids": tokens,
             "position_ids": None,
@@ -270,6 +268,8 @@ def forward_only(
             "packed_seq_params": packed_seq_params,
             "loss_mask": batch["full_loss_masks"],
         }
+        if batch.get("witness_ids") is not None:
+            forward_kwargs["witness_ids"] = batch["witness_ids"]
         if batch["multimodal_train_inputs"] is not None:
             forward_kwargs.update(batch["multimodal_train_inputs"])
         output_tensor = model(**forward_kwargs)
@@ -341,18 +341,15 @@ def _dump_witness_grad(
     step_id: int,
     parallel_state: ParallelState,
 ) -> None:
-    from miles.utils.witness import DataWitness, record_and_log_witness_grad
+    from miles.utils.witness import dump_witness_grads
 
-    for model_chunk in model:
-        head_witness: DataWitness | None = getattr(model_chunk.module, "head_witness", None)
-        if head_witness is not None:
-            record_and_log_witness_grad(
-                step=rollout_id * args.num_steps_per_rollout + step_id,
-                # GroupInfo does not carry quorum_id; fall back to 0
-                quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
-                rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
-                witness=head_witness,
-            )
+    dump_witness_grads(
+        model_chunks=model,
+        step=rollout_id * args.num_steps_per_rollout + step_id,
+        # GroupInfo does not carry quorum_id; fall back to 0
+        quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
+        rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
+    )
 
 
 def train_one_step(
@@ -446,9 +443,6 @@ def train_one_step(
         for m in all_replay_managers:
             m.stage = "replay_forward"
 
-        from miles.utils.witness import set_pending_witness_ids
-        set_pending_witness_ids(model, batch.get("witness_ids"))
-
         if return_schedule_plan:
             assert not args.enable_mtp_training, "MTP training should not be enabled when using combined 1f1b"
             output_tensor = model.build_schedule_plan(
@@ -458,6 +452,7 @@ def train_one_step(
                 labels=None,
                 packed_seq_params=get_packed_seq_params(batch, args),
                 loss_mask=batch["full_loss_masks"],
+                witness_ids=batch.get("witness_ids"),
             )
         else:
             forward_kwargs = {
@@ -471,6 +466,9 @@ def train_one_step(
 
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
+
+            if batch.get("witness_ids") is not None:
+                forward_kwargs["witness_ids"] = batch["witness_ids"]
 
             if batch["multimodal_train_inputs"] is not None:
                 forward_kwargs.update(batch["multimodal_train_inputs"])
