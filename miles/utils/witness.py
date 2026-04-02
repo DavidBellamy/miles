@@ -12,6 +12,60 @@ from miles.utils.event_logger.models import WitnessEvent
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Public API (called by actor.py, model.py, model_provider.py, data.py)
+# ---------------------------------------------------------------------------
+
+
+def init_witness_allocator(*, model_chunks: Sequence[nn.Module], ring_buffer_size: int) -> None:
+    """Find the witness in model chunks and set up the global allocator."""
+    witness = _find_witness_in_model_chunks(model_chunks)
+    if witness is not None:
+        _set_witness_id_allocator(WitnessIdAllocator(
+            ring_buffer_size=ring_buffer_size,
+            witness=witness,
+        ))
+
+
+def get_witness_id_allocator() -> "WitnessIdAllocator":
+    if _witness_id_allocator is None:
+        raise RuntimeError("WitnessIdAllocator not initialized. Call init_witness_allocator() first.")
+    return _witness_id_allocator
+
+
+def install_witness(model: nn.Module, witness: "DataWitness") -> None:
+    """Attach a DataWitness as a submodule of a GPTModel.
+
+    The witness participates in DDP, optimizer, and checkpointing automatically.
+    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate it.
+    """
+    model.head_witness = witness
+
+
+def dump_witness_grads(
+    *,
+    model_chunks: Sequence[nn.Module],
+    step: int,
+    quorum_id: int,
+    rank: int,
+) -> None:
+    """Find all witness submodules in model chunks and log their gradients."""
+    for chunk in model_chunks:
+        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
+        if witness is not None:
+            _record_and_log_witness_grad(
+                step=step,
+                quorum_id=quorum_id,
+                rank=rank,
+                witness=witness,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Classes
+# ---------------------------------------------------------------------------
+
+
 class DataWitness(nn.Module):
     def __init__(self, num_ids: int) -> None:
         super().__init__()
@@ -48,11 +102,6 @@ class WitnessIdAllocator:
     def clear_stale(self, *, optimizer: torch.optim.Optimizer, keep_count: int) -> None:
         """Zero out witness rows (and their optimizer state) that are NOT among
         the ``keep_count`` most recently allocated IDs.
-
-        Args:
-            optimizer: The optimizer whose state should also be cleared.
-            keep_count: Number of most recent allocations to keep.
-                Typically equals the number of sequences in the current step.
         """
         stale_ids = self._compute_stale_ids(keep_count=keep_count)
         if not stale_ids:
@@ -63,12 +112,10 @@ class WitnessIdAllocator:
         model_weight = self._witness.witness.weight
         model_weight.data[idx] = 0.0
 
-        # Megatron stores fp32 copy as main_param; clear it if present
         opt_weight: Tensor = getattr(model_weight, "main_param", model_weight)
         if opt_weight is not model_weight:
             opt_weight.data[idx] = 0.0
 
-        # Megatron accumulates grads in main_grad; clear it if present
         main_grad: Optional[Tensor] = getattr(model_weight, "main_grad", None)
         if main_grad is not None:
             main_grad.data[idx] = 0.0
@@ -89,27 +136,43 @@ class WitnessIdAllocator:
             return []
 
         head = self._counter % n
-        # Active IDs occupy the contiguous range [active_start, head) mod n.
-        # Stale IDs are the complement: one or two contiguous ranges.
         active_start = (head - actual_keep) % n
 
         if active_start < head:
             return list(range(0, active_start)) + list(range(head, n))
         else:
-            # Wrapped: active spans [active_start, n) + [0, head)
             return list(range(head, active_start))
 
 
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+_witness_id_allocator: Optional[WitnessIdAllocator] = None
+
+
+def _set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
+    global _witness_id_allocator
+    _witness_id_allocator = allocator
+
+
+def _find_witness_in_model_chunks(model_chunks: Sequence[nn.Module]) -> Optional[DataWitness]:
+    for chunk in model_chunks:
+        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
+        if witness is not None:
+            return witness
+    return None
+
+
 def _get_witness_grad(witness: DataWitness) -> Optional[Tensor]:
-    """Return the gradient tensor for the witness embedding, preferring main_grad."""
-    # Megatron stores gradients in main_grad when using distributed optimizer
     main_grad: Optional[Tensor] = getattr(witness.witness.weight, "main_grad", None)
     if main_grad is not None:
         return main_grad
     return witness.witness.weight.grad
 
 
-def record_and_log_witness_grad(
+def _record_and_log_witness_grad(
     *,
     step: int,
     quorum_id: int,
@@ -132,64 +195,3 @@ def record_and_log_witness_grad(
         ),
         print_log=False,
     )
-
-
-def install_witness(model: nn.Module, witness: DataWitness) -> None:
-    """Attach a DataWitness as a submodule of a GPTModel.
-
-    The witness participates in DDP, optimizer, and checkpointing automatically.
-    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate it.
-    """
-    model.head_witness = witness
-
-
-def find_witness_in_model_chunks(model_chunks: Sequence[nn.Module]) -> Optional[DataWitness]:
-    """Find the first DataWitness submodule across DDP-wrapped model chunks."""
-    for chunk in model_chunks:
-        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
-        if witness is not None:
-            return witness
-    return None
-
-
-def dump_witness_grads(
-    *,
-    model_chunks: Sequence[nn.Module],
-    step: int,
-    quorum_id: int,
-    rank: int,
-) -> None:
-    """Find all witness submodules in model chunks and log their gradients."""
-    for chunk in model_chunks:
-        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
-        if witness is not None:
-            record_and_log_witness_grad(
-                step=step,
-                quorum_id=quorum_id,
-                rank=rank,
-                witness=witness,
-            )
-
-
-def init_witness_allocator(*, model_chunks: Sequence[nn.Module], ring_buffer_size: int) -> None:
-    """Find the witness in model chunks and set up the global allocator."""
-    witness = find_witness_in_model_chunks(model_chunks)
-    if witness is not None:
-        set_witness_id_allocator(WitnessIdAllocator(
-            ring_buffer_size=ring_buffer_size,
-            witness=witness,
-        ))
-
-
-_witness_id_allocator: Optional[WitnessIdAllocator] = None
-
-
-def set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
-    global _witness_id_allocator
-    _witness_id_allocator = allocator
-
-
-def get_witness_id_allocator() -> WitnessIdAllocator:
-    if _witness_id_allocator is None:
-        raise RuntimeError("WitnessIdAllocator not initialized. Call set_witness_id_allocator() first.")
-    return _witness_id_allocator

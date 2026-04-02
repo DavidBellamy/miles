@@ -1,11 +1,11 @@
-"""Tests for miles.utils.witness: DataWitness, WitnessIdAllocator, record_and_log_witness_grad."""
+"""Tests for miles.utils.witness: DataWitness, WitnessIdAllocator."""
 
 from unittest.mock import MagicMock, patch
 
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, WitnessIdAllocator, record_and_log_witness_grad
+from miles.utils.witness import DataWitness, WitnessIdAllocator, _record_and_log_witness_grad
 
 
 class TestDataWitnessForward:
@@ -192,7 +192,7 @@ class TestRecordAndLogWitnessGrad:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            record_and_log_witness_grad(step=0, quorum_id=0, rank=0, witness=witness)
+            _record_and_log_witness_grad(step=0, quorum_id=0, rank=0, witness=witness)
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]
@@ -208,7 +208,7 @@ class TestRecordAndLogWitnessGrad:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            record_and_log_witness_grad(step=5, quorum_id=2, rank=1, witness=witness)
+            _record_and_log_witness_grad(step=5, quorum_id=2, rank=1, witness=witness)
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]

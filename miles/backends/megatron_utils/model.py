@@ -269,10 +269,10 @@ def forward_only(
             "packed_seq_params": packed_seq_params,
             "loss_mask": batch["full_loss_masks"],
         }
-        if (witness_ids := batch.get("witness_ids")) is not None:
-            forward_kwargs["witness_ids"] = witness_ids
-        if batch["multimodal_train_inputs"] is not None:
-            forward_kwargs.update(batch["multimodal_train_inputs"])
+        if (x := batch.get("witness_ids")) is not None:
+            forward_kwargs["witness_ids"] = x
+        if (x := batch["multimodal_train_inputs"]) is not None:
+            forward_kwargs.update(x)
         output_tensor = model(**forward_kwargs)
 
         return output_tensor, partial(
