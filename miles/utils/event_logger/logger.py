@@ -38,6 +38,7 @@ class EventLogger:
         try:
             yield
         finally:
+            assert self._context == ctx
             self._context = prev
 
     def log(self, event_cls: Type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
