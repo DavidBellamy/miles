@@ -284,6 +284,35 @@ class TestZeroWitnessRows:
             non_stale = [i for i in range(10) if i not in [3, 6]]
             assert not torch.all(state[key][non_stale] == 0.0)
 
+    def test_zero_witness_rows_clears_main_param(self) -> None:
+        """When weight has a main_param attribute (Megatron mixed precision), _zero_witness_rows zeroes main_param.data and optimizer state keyed by main_param."""
+        witness = _DataWitness(buffer_size=10)
+
+        # Step 1: Set nonzero weight
+        witness.witness.weight.data[3] = 1.0
+
+        # Step 2: Create main_param and attach to weight
+        main_param = torch.ones(10, 1)
+        witness.witness.weight.main_param = main_param
+
+        # Step 3: Build optimizer keyed on main_param (as Megatron does)
+        optimizer = torch.optim.Adam([main_param], lr=0.01)
+        optimizer.step()  # initialize optimizer state
+
+        # Step 4: Call _zero_witness_rows
+        idx = torch.tensor([3])
+        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
+
+        # Step 5: Verify main_param.data is zeroed at idx
+        assert main_param.data[3].item() == 0.0
+        assert main_param.data[0].item() != 0.0
+
+        # Step 6: Verify optimizer state keyed by main_param is zeroed at idx
+        state = optimizer.state[main_param]
+        for key in ("exp_avg", "exp_avg_sq"):
+            assert state[key][3].item() == 0.0
+            assert state[key][0].item() != 0.0
+
 
 # ---------------------------------------------------------------------------
 # Helpers for witness_dump_and_clear_stale tests
