@@ -1,8 +1,8 @@
 import logging
+from dataclasses import dataclass, field
 
 from miles.utils.event_logger.models import (
     Event,
-    RolloutGenerateCompletedEvent,
     TrainGroupStepEndEvent,
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
@@ -41,33 +41,59 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
+    parsed = _parse_events(events)
+    cumulative_expected = _build_cumulative_expected(parsed.allocations_by_rollout)
+    return _find_mismatches(
+        step_end_events=parsed.step_end_events,
+        snapshot_events=parsed.snapshot_events,
+        cumulative_expected=cumulative_expected,
+    )
 
-    allocations_by_rollout: dict[int, dict[int, int]] = {}
+
+@dataclass
+class _ParsedEvents:
+    allocations_by_rollout: dict[int, dict[int, int]] = field(default_factory=dict)
+    step_end_events: list[TrainGroupStepEndEvent] = field(default_factory=list)
+    snapshot_events: list[WitnessSnapshotParamEvent] = field(default_factory=list)
+
+
+def _parse_events(events: list[Event]) -> _ParsedEvents:
+    parsed = _ParsedEvents()
     max_attempt_by_rollout: dict[int, int] = {}
-    step_end_events: list[TrainGroupStepEndEvent] = []
-    snapshot_events: list[WitnessSnapshotParamEvent] = []
 
     for event in events:
         if isinstance(event, WitnessAllocateIdEvent):
             prev_attempt = max_attempt_by_rollout.get(event.rollout_id, -1)
             if event.attempt > prev_attempt:
                 max_attempt_by_rollout[event.rollout_id] = event.attempt
-                allocations_by_rollout[event.rollout_id] = event.witness_id_to_sample_index
+                parsed.allocations_by_rollout[event.rollout_id] = event.witness_id_to_sample_index
 
         elif isinstance(event, TrainGroupStepEndEvent):
-            step_end_events.append(event)
+            parsed.step_end_events.append(event)
 
         elif isinstance(event, WitnessSnapshotParamEvent):
             assert isinstance(event.source, TrainProcessIdentity)
-            snapshot_events.append(event)
+            parsed.snapshot_events.append(event)
 
-    # Precompute cumulative expected witness IDs per rollout_id to avoid O(N²) rebuild
-    cumulative_expected: dict[int, set[int]] = {}
+    return parsed
+
+
+def _build_cumulative_expected(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
+    """Precompute cumulative expected witness IDs per rollout_id."""
+    cumulative: dict[int, set[int]] = {}
     running: set[int] = set()
     for rid in sorted(allocations_by_rollout.keys()):
         running = running | set(allocations_by_rollout[rid].keys())
-        cumulative_expected[rid] = set(running)
+        cumulative[rid] = set(running)
+    return cumulative
 
+
+def _find_mismatches(
+    *,
+    step_end_events: list[TrainGroupStepEndEvent],
+    snapshot_events: list[WitnessSnapshotParamEvent],
+    cumulative_expected: dict[int, set[int]],
+) -> list[WitnessDataMismatchIssue]:
     issues: list[WitnessDataMismatchIssue] = []
 
     for step_end in step_end_events:
@@ -89,10 +115,9 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
             ]
 
             for snap in cell_snapshots:
-                stale_range = set(snap.stale_ids)
-
-                filtered_expected = expected_witness_ids - stale_range
-                filtered_actual = set(snap.nonzero_witness_ids) - stale_range
+                stale_set = set(snap.stale_ids)
+                filtered_expected = expected_witness_ids - stale_set
+                filtered_actual = set(snap.nonzero_witness_ids) - stale_set
 
                 if filtered_expected != filtered_actual:
                     issues.append(WitnessDataMismatchIssue(
