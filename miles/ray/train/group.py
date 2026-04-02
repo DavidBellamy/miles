@@ -128,19 +128,24 @@ class RayTrainGroup:
 
         async def _fn():
             # NOTE: Need to allocate *new* witness ids for each retry
-            rollout_sample_indices = rollout_data_pack["sample_indices"]
-            witness_ids = witness_allocator.allocate()
-            log_event(WitnessAllocateIdEvent())
+            witness_ids = self._allocate_witness_ids(sample_indices=rollout_data_pack["sample_indices"])
 
             await self._refresh_cells()
             results = await self._execute_all_alive_and_catch(
                 "train",
                 rollout_id=rollout_id,
                 rollout_data_ref=rollout_data_pack["rollout_data_ref"],
+                witness_ids=witness_ids,
             )
             self._check_train_one_attempt(results)
 
         await retry(_fn)
+
+    @staticmethod
+    def _allocate_witness_ids(sample_indices: list[int]):
+        witness_ids = witness_allocator.allocate()
+        log_event(WitnessAllocateIdEvent())
+        return witness_ids
 
     @staticmethod
     def _check_train_one_attempt(results):
