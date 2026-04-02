@@ -54,7 +54,7 @@ EPS_CLIP_HIGH=0.28
 AGENT_SERVER_URL="${AGENT_SERVER_URL:-${SWE_AGENT_URL:-http://agent-env-svc:11000}}"
 HARBOR_TASKS_DIR="${HARBOR_TASKS_DIR:-/root/harbor_tasks}"
 ROUTER_EXTERNAL_HOST="${MILES_ROUTER_EXTERNAL_HOST:-}"
-SGLANG_ROUTER_PORT=30000
+SGLANG_ROUTER_PORT=31000
 SGLANG_TOOL_CALL_PARSER=""
 SGLANG_REASONING_PARSER=""
 SGLANG_MEM_FRACTION=0.5
@@ -270,4 +270,8 @@ ray job submit \
   --custom-rm-path generate.reward_func \
   --rollout-function-path generate.RolloutFn \
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted \
+  --tito-model glm47 \
+  --chat-template-path autofix \
+  --use-session-server \
+  --session-server-port 30000 \
   "${WANDB_ARGS[@]}"
