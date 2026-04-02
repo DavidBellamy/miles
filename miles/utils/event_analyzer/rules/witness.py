@@ -60,15 +60,13 @@ class _ParsedEvents:
 
 
 def _parse_events(events: list[Event]) -> _ParsedEvents:
+    """Events are assumed to arrive in chronological order."""
     parsed = _ParsedEvents()
-    max_attempt_by_rollout: dict[int, int] = {}
 
     for event in events:
         match event:
-            case WitnessAllocateIdEvent(rollout_id=rid, attempt=attempt, witness_id_to_sample_index=mapping):
-                if attempt > max_attempt_by_rollout.get(rid, -1):
-                    max_attempt_by_rollout[rid] = attempt
-                    parsed.allocations_by_rollout[rid] = mapping
+            case WitnessAllocateIdEvent(rollout_id=rid, witness_id_to_sample_index=mapping):
+                parsed.allocations_by_rollout[rid] = mapping
 
             case TrainGroupStepEndEvent():
                 parsed.step_end_events.append(event)
