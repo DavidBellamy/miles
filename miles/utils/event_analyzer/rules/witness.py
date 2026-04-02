@@ -22,13 +22,13 @@ def check(events: list[Event]) -> list[WitnessMismatch]:
     if not witness_events:
         return []
 
-    grouped: dict[tuple[int, int], list[WitnessEvent]] = defaultdict(list)
+    grouped: dict[tuple[int, int, str], list[WitnessEvent]] = defaultdict(list)
     for event in witness_events:
-        grouped[(event.quorum_id, event.step)].append(event)
+        grouped[(event.quorum_id, event.step, event.position)].append(event)
 
     mismatches: list[WitnessMismatch] = []
 
-    for (quorum_id, step), group in sorted(grouped.items()):
+    for (quorum_id, step, position), group in sorted(grouped.items()):
         reference = set(group[0].nonzero_ids)
         reference_rank = group[0].rank
 
@@ -42,7 +42,7 @@ def check(events: list[Event]) -> list[WitnessMismatch]:
                         step=step,
                         quorum_id=quorum_id,
                         description=(
-                            f"rank {reference_rank} vs rank {event.rank}: "
+                            f"{position}: rank {reference_rank} vs rank {event.rank}: "
                             f"only_in_{reference_rank}={sorted(only_in_ref)}, "
                             f"only_in_{event.rank}={sorted(only_in_cur)}"
                         ),

@@ -96,6 +96,7 @@ class WitnessEvent(EventBase):
     step: int
     quorum_id: int
     rank: int
+    position: str
     nonzero_ids: list[int]
 
 

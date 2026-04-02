@@ -19,14 +19,14 @@ from megatron.training.arguments import core_transformer_config_from_args
 
 from miles.utils.misc import load_function
 from miles.utils.replay_base import routing_replay_manager
-from miles.utils.witness import DataWitness, install_witness
+from miles.utils.witness import install_witness
 
 logger = logging.getLogger(__name__)
 
 
 def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
     if args.enable_witness:
-        install_witness(model, DataWitness(num_ids=args.witness_ring_buffer_size))
+        install_witness(model, num_ids=args.witness_ring_buffer_size)
 
 
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82

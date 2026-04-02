@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 def init_witness_allocator(*, model_chunks: Sequence[nn.Module], ring_buffer_size: int) -> None:
-    """Find the witness in model chunks and set up the global allocator."""
-    witness = _find_witness_in_model_chunks(model_chunks)
-    if witness is not None:
+    """Find all witnesses in model chunks and set up the global allocator."""
+    witnesses = _find_all_witnesses_in_model_chunks(model_chunks)
+    if witnesses:
         _set_witness_id_allocator(WitnessIdAllocator(
             ring_buffer_size=ring_buffer_size,
-            witness=witness,
+            witnesses=witnesses,
         ))
 
 
@@ -83,9 +83,9 @@ class DataWitness(nn.Module):
 
 
 class WitnessIdAllocator:
-    def __init__(self, *, ring_buffer_size: int, witness: DataWitness) -> None:
+    def __init__(self, *, ring_buffer_size: int, witnesses: list[DataWitness]) -> None:
         self._ring_buffer_size = ring_buffer_size
-        self._witness = witness
+        self._witnesses = witnesses
         self._counter: int = 0
 
     @property
@@ -112,24 +112,9 @@ class WitnessIdAllocator:
         if not stale_ids:
             return
 
-        idx = torch.tensor(stale_ids, dtype=torch.long, device=self._witness.witness.weight.device)
-
-        model_weight = self._witness.witness.weight
-        model_weight.data[idx] = 0.0
-
-        opt_weight: Tensor = getattr(model_weight, "main_param", model_weight)
-        if opt_weight is not model_weight:
-            opt_weight.data[idx] = 0.0
-
-        main_grad: Optional[Tensor] = getattr(model_weight, "main_grad", None)
-        if main_grad is not None:
-            main_grad.data[idx] = 0.0
-
-        if opt_weight in optimizer.state:
-            state = optimizer.state[opt_weight]
-            for key in ("exp_avg", "exp_avg_sq"):
-                if key in state:
-                    state[key][idx] = 0.0
+        for witness in self._witnesses:
+            idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
+            _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
 
     def _compute_stale_ids(self, *, keep_count: int) -> list[int]:
         if self._counter == 0:
@@ -162,12 +147,38 @@ def _set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
     _witness_id_allocator = allocator
 
 
-def _find_witness_in_model_chunks(model_chunks: Sequence[nn.Module]) -> Optional[DataWitness]:
+_WITNESS_ATTRS = ("head_witness", "tail_witness")
+
+
+def _find_all_witnesses_in_model_chunks(model_chunks: Sequence[nn.Module]) -> list[DataWitness]:
+    witnesses: list[DataWitness] = []
     for chunk in model_chunks:
-        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
-        if witness is not None:
-            return witness
-    return None
+        for attr in _WITNESS_ATTRS:
+            w: Optional[DataWitness] = getattr(chunk.module, attr, None)
+            if w is not None:
+                witnesses.append(w)
+        if witnesses:
+            break
+    return witnesses
+
+
+def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.optim.Optimizer) -> None:
+    model_weight = witness.witness.weight
+    model_weight.data[idx] = 0.0
+
+    opt_weight: Tensor = getattr(model_weight, "main_param", model_weight)
+    if opt_weight is not model_weight:
+        opt_weight.data[idx] = 0.0
+
+    main_grad: Optional[Tensor] = getattr(model_weight, "main_grad", None)
+    if main_grad is not None:
+        main_grad.data[idx] = 0.0
+
+    if opt_weight in optimizer.state:
+        state = optimizer.state[opt_weight]
+        for key in ("exp_avg", "exp_avg_sq"):
+            if key in state:
+                state[key][idx] = 0.0
 
 
 def _get_witness_grad(witness: DataWitness) -> Optional[Tensor]:
@@ -183,10 +194,11 @@ def _record_and_log_witness_grad(
     quorum_id: int,
     rank: int,
     witness: DataWitness,
+    position: str,
 ) -> None:
     grad = _get_witness_grad(witness)
     if grad is None:
-        logger.warning("No gradient found on witness at step %d rank %d", step, rank)
+        logger.warning("No gradient found on %s at step %d rank %d", position, step, rank)
         return
 
     nonzero_ids: list[int] = grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
@@ -196,6 +208,7 @@ def _record_and_log_witness_grad(
             step=step,
             quorum_id=quorum_id,
             rank=rank,
+            position=position,
             nonzero_ids=nonzero_ids,
         ),
         print_log=False,
