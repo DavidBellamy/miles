@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from miles.utils.event_logger.logger import EventLogger, get_event_logger, set_event_logger
-from miles.utils.event_logger.models import CellStateChangedEvent, GenericEvent
+from miles.utils.event_logger.models import RolloutGenerateCompletedEvent, WitnessAllocateIdEvent
 from miles.utils.process_identity import MainProcessIdentity, TrainProcessIdentity
 
 _TEST_SOURCE = MainProcessIdentity()
@@ -16,8 +16,8 @@ def _make_logger(log_dir: Path, file_name: str = "events.jsonl") -> EventLogger:
     return EventLogger(log_dir=log_dir, file_name=file_name, source=_TEST_SOURCE)
 
 
-_EVENT_CLS = CellStateChangedEvent
-_EVENT_PARTIAL: dict = dict(cell_index=0, old_state="pending", new_state="alive")
+_EVENT_CLS = RolloutGenerateCompletedEvent
+_EVENT_PARTIAL: dict = dict(rollout_id=0, sample_indices=[0, 1, 2])
 
 
 class TestEventLoggerWritesJsonl:
@@ -25,7 +25,7 @@ class TestEventLoggerWritesJsonl:
         logger = _make_logger(tmp_path, file_name="test.jsonl")
 
         logger.log(_EVENT_CLS, _EVENT_PARTIAL)
-        logger.log(GenericEvent, dict(message="hi", details={"x": 1}))
+        logger.log(WitnessAllocateIdEvent, dict(rollout_id=1, attempt=0, witness_id_to_sample_index={0: 0}))
         logger.close()
 
         lines = (tmp_path / "test.jsonl").read_text().strip().split("\n")
@@ -163,12 +163,12 @@ class TestReadEvents:
         from miles.utils.event_logger.logger import read_events
 
         logger_a = EventLogger(log_dir=tmp_path, file_name="a.jsonl", source=_TEST_SOURCE)
-        logger_a.log(_make_event())
+        logger_a.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger_a.close()
 
         logger_b = EventLogger(log_dir=tmp_path, file_name="b.jsonl", source=_TEST_SOURCE)
-        logger_b.log(_make_event())
-        logger_b.log(_make_event())
+        logger_b.log(_EVENT_CLS, _EVENT_PARTIAL)
+        logger_b.log(_EVENT_CLS, _EVENT_PARTIAL)
         logger_b.close()
 
         events = read_events(tmp_path)

@@ -3,11 +3,9 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
-    CellStateChangedEvent,
     Event,
-    GenericEvent,
-    QuorumChangedEvent,
     RolloutGenerateCompletedEvent,
     TrainGroupStepEndEvent,
     WitnessAllocateIdEvent,
@@ -19,27 +17,24 @@ _event_adapter = TypeAdapter(Event)
 
 _FIXED_TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _FIXED_SOURCE = MainProcessIdentity()
+_TRAIN_SOURCE = TrainProcessIdentity(component="actor", cell_index=0, rank_within_cell=0)
 
 
 class TestEventModelsDiscriminatedUnion:
     def test_roundtrip_via_discriminator(self) -> None:
-        event = CellStateChangedEvent(
-            timestamp=_FIXED_TS,
-            source=_FIXED_SOURCE,
-            cell_index=0,
-            old_state="pending",
-            new_state="alive",
+        event = RolloutGenerateCompletedEvent(
+            timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0, 1]
         )
         parsed = _event_adapter.validate_json(event.model_dump_json())
-        assert isinstance(parsed, CellStateChangedEvent)
-        assert parsed.cell_index == 0
+        assert isinstance(parsed, RolloutGenerateCompletedEvent)
+        assert parsed.sample_indices == [0, 1]
 
     def test_discriminator_distinguishes_types(self) -> None:
-        e1 = CellStateChangedEvent(
-            timestamp=_FIXED_TS, source=_FIXED_SOURCE, cell_index=0, old_state="a", new_state="b"
+        e1 = RolloutGenerateCompletedEvent(
+            timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0]
         )
-        e2 = QuorumChangedEvent(
-            timestamp=_FIXED_TS, source=_FIXED_SOURCE, quorum_id=1, alive_cell_indices=[0], num_cells=1
+        e2 = WitnessAllocateIdEvent(
+            timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, attempt=0, witness_id_to_sample_index={0: 0}
         )
         p1 = _event_adapter.validate_json(e1.model_dump_json())
         p2 = _event_adapter.validate_json(e2.model_dump_json())
@@ -49,27 +44,15 @@ class TestEventModelsDiscriminatedUnion:
 class TestEventModelsStrictRejectExtraFields:
     def test_extra_field_rejected(self) -> None:
         data = {
-            "type": "cell_state_changed",
+            "type": "rollout_generate_completed",
             "timestamp": "2026-01-01T00:00:00Z",
             "source": {"component": "main"},
-            "cell_index": 0,
-            "old_state": "a",
-            "new_state": "b",
+            "rollout_id": 0,
+            "sample_indices": [0],
             "bogus_field": 123,
         }
         with pytest.raises(ValidationError, match="bogus_field"):
-            CellStateChangedEvent.model_validate(data)
-
-
-class TestGenericEvent:
-    def test_roundtrip_via_discriminator(self) -> None:
-        event = GenericEvent(timestamp=_FIXED_TS, source=_FIXED_SOURCE, message="test", details={"k": 1})
-        parsed = _event_adapter.validate_json(event.model_dump_json())
-        assert isinstance(parsed, GenericEvent)
-        assert parsed.details["k"] == 1
-
-
-_TRAIN_SOURCE = TrainProcessIdentity(component="actor", cell_index=0, rank_within_cell=0)
+            RolloutGenerateCompletedEvent.model_validate(data)
 
 
 class TestRolloutGenerateCompletedEvent:
@@ -102,12 +85,16 @@ class TestWitnessAllocateIdEvent:
 class TestTrainGroupStepEndEvent:
     def test_json_roundtrip(self) -> None:
         event = TrainGroupStepEndEvent(
-            timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=3, cell_outcomes={0: "NORMAL", 1: "DISCARDED"}
+            timestamp=_FIXED_TS,
+            source=_FIXED_SOURCE,
+            rollout_id=3,
+            cell_outcomes={0: [TrainStepOutcome.NORMAL], 1: "error"},
         )
         parsed = _event_adapter.validate_json(event.model_dump_json())
         assert isinstance(parsed, TrainGroupStepEndEvent)
         assert parsed.rollout_id == 3
-        assert parsed.cell_outcomes == {0: "NORMAL", 1: "DISCARDED"}
+        assert parsed.cell_outcomes[0] == [TrainStepOutcome.NORMAL]
+        assert parsed.cell_outcomes[1] == "error"
 
 
 class TestWitnessSnapshotParamEventWithStaleIds:
@@ -126,8 +113,8 @@ class TestWitnessSnapshotParamEventWithStaleIds:
         assert parsed.nonzero_witness_ids == [10, 11, 12]
 
 
-class TestDiscriminatedUnionParsesNewEvents:
-    def test_all_new_event_types_parse(self) -> None:
+class TestDiscriminatedUnionParsesAllEvents:
+    def test_all_event_types_parse(self) -> None:
         events = [
             RolloutGenerateCompletedEvent(
                 timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0]
@@ -136,7 +123,8 @@ class TestDiscriminatedUnionParsesNewEvents:
                 timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, attempt=0, witness_id_to_sample_index={0: 0}
             ),
             TrainGroupStepEndEvent(
-                timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, cell_outcomes={0: "NORMAL"}
+                timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0,
+                cell_outcomes={0: [TrainStepOutcome.NORMAL]},
             ),
         ]
         for event in events:
