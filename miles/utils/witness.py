@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def init_witness_allocator(*, model: Sequence[nn.Module]) -> None:
+def init_witness_allocator(*, model: Sequence[nn.Module], optimizer: torch.optim.Optimizer) -> None:
     """Find all witnesses in model chunks and set up the global allocator."""
     witnesses = _find_all_witnesses_in_model_chunks(model)
     assert len(witnesses) > 0
     _set_witness_id_allocator(WitnessIdAllocator(
         witnesses=witnesses,
+        optimizer=optimizer,
     ))
 
 
@@ -64,15 +65,21 @@ class _DataWitness(nn.Module):
 
 
 class WitnessIdAllocator:
-    def __init__(self, *, witnesses: list[_DataWitness]) -> None:
+    def __init__(self, *, witnesses: list[_DataWitness], optimizer: torch.optim.Optimizer) -> None:
         buffer_sizes = [x.buffer_size for x in witnesses]
         assert all(buffer_sizes[0] == x for x in buffer_sizes)
         self._buffer_size = buffer_sizes[0]
 
         self._witnesses = witnesses
+        self._optimizer = optimizer
         self._counter: int = 0
+        self._prev_num_sequences: int = 0
 
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
+        if self._prev_num_sequences > 0:
+            self._clear_stale(keep_count=self._prev_num_sequences)
+        self._prev_num_sequences = num_sequences
+
         ids = [
             (self._counter + i) % self._buffer_size
             for i in range(num_sequences)
@@ -80,17 +87,14 @@ class WitnessIdAllocator:
         self._counter += num_sequences
         return ids
 
-    def clear_stale(self, *, optimizer: torch.optim.Optimizer, keep_count: int) -> None:
-        """Zero out witness rows (and their optimizer state) that are NOT among
-        the ``keep_count`` most recently allocated IDs.
-        """
+    def _clear_stale(self, *, keep_count: int) -> None:
         stale_ids = self._compute_stale_ids(keep_count=keep_count)
         if not stale_ids:
             return
 
         for witness in self._witnesses:
             idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
-            _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
+            _zero_witness_rows(witness=witness, idx=idx, optimizer=self._optimizer)
 
     def _compute_stale_ids(self, *, keep_count: int) -> list[int]:
         if self._counter == 0:
