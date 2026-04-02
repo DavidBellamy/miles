@@ -41,10 +41,7 @@ def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
     for chunk in model:
         for attr in _WITNESS_ATTRS:
             witness: DataWitness = getattr(chunk.module, attr)
-            _record_and_log_witness_param(
-                witness=witness,
-                position=attr,
-            )
+            _record_and_log_witness_param(witness=witness, position=attr.replace("_witness", ""))
 
 
 # ---------------------------------------------------------------------------
