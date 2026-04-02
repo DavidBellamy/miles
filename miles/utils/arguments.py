@@ -1387,7 +1387,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Enable forward/backward pass witness.",
             )
             parser.add_argument(
-                "--witness-ring-buffer-size",
+                "--witness-buffer-size",
                 type=int,
                 default=1048576,
                 help="Maximum number of unique witness IDs before recycling.",

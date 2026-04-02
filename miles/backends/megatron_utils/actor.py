@@ -140,7 +140,7 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         if args.enable_witness:
-            init_witness_allocator(model_chunks=self.model, ring_buffer_size=args.witness_ring_buffer_size)
+            init_witness_allocator(model=self.model)
 
         self.parallel_state = get_parallel_state()
         verify_megatron_parallel_state(self.parallel_state, self.model)

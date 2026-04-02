@@ -17,12 +17,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def init_witness_allocator(*, model_chunks: Sequence[nn.Module], ring_buffer_size: int) -> None:
+def init_witness_allocator(*, model: Sequence[nn.Module]) -> None:
     """Find all witnesses in model chunks and set up the global allocator."""
-    witnesses = _find_all_witnesses_in_model_chunks(model_chunks)
+    witnesses = _find_all_witnesses_in_model_chunks(model)
     if witnesses:
         _set_witness_id_allocator(WitnessIdAllocator(
-            ring_buffer_size=ring_buffer_size,
             witnesses=witnesses,
         ))
 
@@ -33,7 +32,7 @@ def get_witness_id_allocator() -> "WitnessIdAllocator":
     return _witness_id_allocator
 
 
-def install_witness(model: nn.Module, *, num_ids: int) -> None:
+def install_witness(model: nn.Module, *, buffer_size: int) -> None:
     """Attach head and tail DataWitness submodules to a GPTModel.
 
     Both participate in DDP, optimizer, and checkpointing automatically.
@@ -41,8 +40,8 @@ def install_witness(model: nn.Module, *, num_ids: int) -> None:
     head_witness probes gradients flowing into the decoder;
     tail_witness probes gradients flowing out of the decoder.
     """
-    model.head_witness = DataWitness(num_ids=num_ids)
-    model.tail_witness = DataWitness(num_ids=num_ids)
+    model.head_witness = DataWitness(buffer_size=buffer_size)
+    model.tail_witness = DataWitness(buffer_size=buffer_size)
 
 
 def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
@@ -63,9 +62,10 @@ def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
 
 
 class DataWitness(nn.Module):
-    def __init__(self, num_ids: int) -> None:
+    def __init__(self, buffer_size: int) -> None:
         super().__init__()
-        self.witness = nn.Embedding(num_embeddings=num_ids, embedding_dim=1)
+        self.buffer_size = buffer_size
+        self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
         nn.init.zeros_(self.witness.weight)
 
     def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
@@ -76,22 +76,14 @@ class DataWitness(nn.Module):
 
 
 class WitnessIdAllocator:
-    def __init__(self, *, ring_buffer_size: int, witnesses: list[DataWitness]) -> None:
-        self._ring_buffer_size = ring_buffer_size
+    def __init__(self, *, witnesses: list[DataWitness]) -> None:
+        self._buffer_size = witnesses[0].buffer_size
         self._witnesses = witnesses
         self._counter: int = 0
 
-    @property
-    def ring_buffer_size(self) -> int:
-        return self._ring_buffer_size
-
-    @property
-    def counter(self) -> int:
-        return self._counter
-
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
         ids = [
-            (self._counter + i) % self._ring_buffer_size
+            (self._counter + i) % self._buffer_size
             for i in range(num_sequences)
         ]
         self._counter += num_sequences
@@ -113,7 +105,7 @@ class WitnessIdAllocator:
         if self._counter == 0:
             return []
 
-        n = self._ring_buffer_size
+        n = self._buffer_size
         actual_keep = min(keep_count, self._counter, n)
         if actual_keep >= n:
             return []
