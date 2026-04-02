@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Literal, Type
+from typing import Literal, Type, Generator
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -51,11 +51,11 @@ def check(events: list[Event]) -> list[WitnessIssue]:
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
 
-    return _find_mismatches(
+    return list(_find_mismatches(
         all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
         all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
         expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(_filter_by_type(events, WitnessAllocateIdEvent)),
-    )
+    ))
 
 
 def _filter_by_type(arr: list, ty: Type) -> list:
@@ -78,9 +78,7 @@ def _find_mismatches(
     all_step_events: list[TrainGroupStepEndEvent],
     all_witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids_of_step: dict[int, set[int]],
-) -> list[WitnessIssue]:
-    issues: list[WitnessIssue] = []
-
+) -> Generator[WitnessIssue]:
     for step_event in all_step_events:
         rollout_id = step_event.rollout_id
 
@@ -94,11 +92,11 @@ def _find_mismatches(
             ]
 
             if not witness_events_of_cell:
-                issues.append(WitnessMissingSnapshotIssue(
+                yield WitnessMissingSnapshotIssue(
                     rollout_id=rollout_id,
                     cell_index=cell_index,
                     description=f"Cell {cell_index} reported NORMAL for rollout {rollout_id} but no WitnessSnapshotParamEvent was found",
-                ))
+                )
                 continue
 
             for event in witness_events_of_cell:
@@ -107,9 +105,7 @@ def _find_mismatches(
                     rollout_id=rollout_id, cell_index=cell_index,
                 )
                 if issue is not None:
-                    issues.append(issue)
-
-    return issues
+                    yield issue
 
 
 def _compare_snapshot(
