@@ -1,6 +1,5 @@
 import logging
-from dataclasses import dataclass, field
-from typing import Literal, Type, Generator
+from typing import Type, Generator
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -9,7 +8,6 @@ from miles.utils.event_logger.models import (
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
 )
-from miles.utils.process_identity import TrainProcessIdentity
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 logger = logging.getLogger(__name__)
