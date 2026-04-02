@@ -50,7 +50,6 @@ def dump_witness_params(
     model_chunks: Sequence[nn.Module],
     step: int,
     quorum_id: int,
-    rank: int,
 ) -> None:
     """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
     for chunk in model_chunks:
@@ -60,7 +59,6 @@ def dump_witness_params(
                 _record_and_log_witness_param(
                     step=step,
                     quorum_id=quorum_id,
-                    rank=rank,
                     witness=witness,
                     position=attr,
                 )
@@ -187,7 +185,6 @@ def _record_and_log_witness_param(
     *,
     step: int,
     quorum_id: int,
-    rank: int,
     witness: DataWitness,
     position: str,
 ) -> None:
@@ -198,7 +195,6 @@ def _record_and_log_witness_param(
         WitnessEvent(
             step=step,
             quorum_id=quorum_id,
-            rank=rank,
             position=position,
             nonzero_ids=nonzero_ids,
         ),
