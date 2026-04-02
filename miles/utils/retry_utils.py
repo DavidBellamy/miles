@@ -11,7 +11,7 @@ _DEFAULT_BACKOFF_FACTOR = 2.0
 
 
 async def retry(
-    fn: Callable[[], Awaitable[Any]],
+    fn: Callable[[int], Awaitable[Any]],
     *,
     initial_delay: float = _DEFAULT_INITIAL_DELAY,
     max_delay: float = _DEFAULT_MAX_DELAY,
@@ -23,7 +23,7 @@ async def retry(
     delay = initial_delay
     while True:
         try:
-            await fn()
+            await fn(attempt)
             return
         except Exception:
             attempt += 1

@@ -132,13 +132,8 @@ class RayTrainGroup:
     async def train(self, rollout_id: int, rollout_data_pack):
         """Do one rollout training"""
         run_analysis_from_args(self.args)
-        attempt_counter = 0
 
-        async def _fn():
-            nonlocal attempt_counter
-            current_attempt = attempt_counter
-            attempt_counter += 1
-
+        async def _fn(attempt_counter):
             # NOTE: Need to allocate *new* witness ids for each retry
             sample_indices = rollout_data_pack["sample_indices"]
 
@@ -197,13 +192,13 @@ class RayTrainGroup:
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
         # Catch with vanilla retry: cells w/ exceptions are auto marked errored, thus retry will find the next one
-        await retry(lambda: self._execute_first_alive("save_model", rollout_id, force_sync=force_sync))
+        await retry(lambda _: self._execute_first_alive("save_model", rollout_id, force_sync=force_sync))
 
     async def update_weights(self):
         """Broadcast weights to rollout engines."""
         # TODO: allow using all cells to update weights (instead of first alive cell)
         # Catch with vanilla retry: cells w/ exceptions are auto marked errored, thus retry will find the next one
-        await retry(lambda: self._execute_first_alive("update_weights"))
+        await retry(lambda _: self._execute_first_alive("update_weights"))
 
     async def onload(self):
         # Catch *without* retry: cells w/ exceptions are auto marked errored, and will not be used
