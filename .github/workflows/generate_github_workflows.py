@@ -10,6 +10,7 @@ def main():
     print(f"Scan dir: {workflows_dir}")
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(workflows_dir)),
+        extensions=["jinja2.ext.do"],
         block_start_string="<%",
         block_end_string="%>",
         variable_start_string="<<",
