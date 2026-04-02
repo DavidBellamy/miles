@@ -149,9 +149,9 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
 
 
 def _record_and_log_witness_param(
-    *,
-    witness: _DataWitness,
-    instance_id: str,
+        *,
+        witness: _DataWitness,
+        instance_id: str,
 ) -> None:
     weight = witness.witness.weight.data
     nonzero_witness_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
