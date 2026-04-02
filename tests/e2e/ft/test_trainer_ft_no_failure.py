@@ -19,12 +19,11 @@ from tests.e2e.ft.conftest_ft import (
     create_comparison_app,
     get_common_train_args,
     get_indep_dp_args,
-    get_normal_dp_args,
 )
 
 
 def _build_baseline_args(mode: FTTestMode, dump_dir: str) -> str:
-    return get_common_train_args(mode, dump_dir=dump_dir) + get_normal_dp_args(mode)
+    return get_common_train_args(mode, dump_dir=dump_dir)
 
 
 def _build_target_args(mode: FTTestMode, dump_dir: str) -> str:

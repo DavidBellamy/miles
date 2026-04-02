@@ -10,6 +10,7 @@
 # and final weights are loadable.
 
 import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +22,7 @@ import typer
 
 from tests.e2e.ft.conftest_ft import (
     FTTestMode,
+    assert_events_dir_exists,
     get_common_train_args,
     get_indep_dp_args,
     prepare,
@@ -46,8 +48,6 @@ def run(
     The mini FT controller handles automatic recovery. The test verifies
     that training completes without hanging and all assertions pass.
     """
-    import tempfile
-
     ft_mode: FTTestMode = resolve_mode(mode)
     dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_random_failure_")) / "dumps")
     print(f"Dump directory: {dump_dir}")
@@ -59,7 +59,6 @@ def run(
     base += get_indep_dp_args(ft_mode)
 
     base += "--mini-ft-controller-enable "
-    base += "--control-server-port 0 "
 
     base += f"--ci-ft-test-scenario random_failure "
     base += f"--ci-ft-random-seed {seed} "
@@ -70,12 +69,7 @@ def run(
 
     run_training(train_args=base, mode=ft_mode)
 
-    # Step: Verify events directory exists
-    events_dir: Path = Path(dump_dir) / "events"
-    assert events_dir.exists(), f"Events directory not found: {events_dir}"
-    jsonl_files = list(events_dir.glob("**/*.jsonl"))
-    assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
-
+    assert_events_dir_exists(dump_dir)
     print(f"Random failure soak test PASSED (seed={seed}, steps={num_steps})")
 
 

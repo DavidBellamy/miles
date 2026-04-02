@@ -21,7 +21,6 @@ from tests.e2e.ft.conftest_ft import (
     create_comparison_app,
     get_common_train_args,
     get_indep_dp_args,
-    get_normal_dp_args,
 )
 
 NUM_PHASE_A_STEPS: int = 1
@@ -30,7 +29,6 @@ NUM_PHASE_B_STEPS: int = 4
 
 def _build_baseline_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
     base = get_common_train_args(mode, dump_dir=dump_dir)
-    base += get_normal_dp_args(mode)
     base += f"--save {dump_dir}/ckpt --save-interval 1 "
     return base
 
@@ -45,7 +43,6 @@ def _build_target_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
 def _build_baseline_args_phase_b(mode: FTTestMode, dump_dir: str) -> str:
     phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
     base = get_common_train_args(mode, dump_dir=dump_dir)
-    base += get_normal_dp_args(mode)
     base += f"--load {phase_a_dir}/ckpt "
     return base
 

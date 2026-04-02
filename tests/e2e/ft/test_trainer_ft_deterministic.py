@@ -17,6 +17,7 @@ if str(_MILES_ROOT) not in sys.path:
 
 from tests.e2e.ft.conftest_ft import (
     FTTestMode,
+    assert_events_dir_exists,
     create_non_comparison_app,
     get_common_train_args,
     get_indep_dp_args,
@@ -38,14 +39,8 @@ def _verify(dump_dir: str, mode: FTTestMode) -> None:
     The event_analyzer cross_replica_weight_checksum rule asserts bitwise
     equality of LocalWeightChecksumEvent across all alive cells after healing.
     If the analyzer finds a mismatch, the training job exits non-zero.
-
-    Here we just confirm the events directory was written.
     """
-    events_dir: Path = Path(dump_dir) / "events"
-    assert events_dir.exists(), f"Events directory not found: {events_dir}"
-
-    jsonl_files = list(events_dir.glob("**/*.jsonl"))
-    assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
+    assert_events_dir_exists(dump_dir)
     print("Deterministic healing verification test PASSED (event analyzer checked in-job)")
 
 

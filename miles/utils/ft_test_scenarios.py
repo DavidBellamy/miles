@@ -11,7 +11,7 @@ The scenario is called as a *step callback* — it receives the current
 import logging
 import random
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from miles.ray.train.group import RayTrainGroup
@@ -35,7 +35,15 @@ class FTTestContext:
     group: "RayTrainGroup"
     num_cells: int
     current_step: int = 0
-    metadata: dict = field(default_factory=dict)
+    random_seed: int = 42
+    crash_probability: float = 0.1
+
+
+@dataclass(frozen=True)
+class _FaultEvent:
+    step: int
+    cell: int
+    action: Literal["crash", "restart"]
 
 
 class FTTestScenarioBase:
@@ -46,6 +54,7 @@ class FTTestScenarioBase:
 
     def __init__(self, ctx: FTTestContext) -> None:
         self.ctx = ctx
+        self._target_cell_index: int = ctx.num_cells - 1
 
     def before_step(self, step: int) -> None:
         """Called before each train() invocation."""
@@ -69,10 +78,6 @@ class WithFailureScenario(FTTestScenarioBase):
       train() #2: _refresh_cells() heals the cell, N cells run
       train() #3: N cells stable
     """
-
-    def __init__(self, ctx: FTTestContext) -> None:
-        super().__init__(ctx)
-        self._target_cell_index: int = ctx.num_cells - 1
 
     def after_step(self, step: int) -> None:
         if step == 0:
@@ -102,10 +107,6 @@ class DeterministicScenario(FTTestScenarioBase):
       after #1:       stop_cell(X) + start_cell(X)
       train() #2:     _refresh_cells() heals X from cell_0, all N cells run
     """
-
-    def __init__(self, ctx: FTTestContext) -> None:
-        super().__init__(ctx)
-        self._target_cell_index: int = ctx.num_cells - 1
 
     def after_step(self, step: int) -> None:
         if step == 1:
@@ -137,13 +138,12 @@ class RandomFailureScenario(FTTestScenarioBase):
 
     def __init__(self, ctx: FTTestContext) -> None:
         super().__init__(ctx)
-        seed: int = ctx.metadata.get("random_seed", 42)
-        self._crash_probability: float = ctx.metadata.get("crash_probability", 0.1)
-        self._rng: random.Random = random.Random(seed)
-        self._fault_log: list[dict] = []
+        self._crash_probability: float = ctx.crash_probability
+        self._rng: random.Random = random.Random(ctx.random_seed)
+        self._fault_log: list[_FaultEvent] = []
         logger.info(
             "RandomFailureScenario: seed=%d, crash_probability=%.3f",
-            seed, self._crash_probability,
+            ctx.random_seed, self._crash_probability,
         )
 
     def after_step(self, step: int) -> None:
@@ -165,15 +165,16 @@ class RandomFailureScenario(FTTestScenarioBase):
                 target, step,
             )
             self.ctx.group.stop_cell(target)
-            self._fault_log.append({"step": step, "cell": target, "action": "crash"})
+            self._fault_log.append(_FaultEvent(step=step, cell=target, action="crash"))
 
             self.ctx.group.start_cell(target)
-            self._fault_log.append({"step": step, "cell": target, "action": "restart"})
+            self._fault_log.append(_FaultEvent(step=step, cell=target, action="restart"))
 
     def on_complete(self) -> None:
+        crash_count = sum(1 for e in self._fault_log if e.action == "crash")
         logger.info(
             "RandomFailureScenario: completed. Total faults injected: %d",
-            len([e for e in self._fault_log if e["action"] == "crash"]),
+            crash_count,
         )
         for entry in self._fault_log:
             logger.info("  Fault event: %s", entry)

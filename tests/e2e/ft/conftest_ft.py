@@ -3,7 +3,7 @@
 import sys
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -93,10 +93,7 @@ def prepare(mode: FTTestMode) -> None:
         megatron_model_type=mode.megatron_model_type,
         num_gpus_per_node=mode.num_gpus_total,
     )
-    U.exec_command(
-        f"hf download --repo-type dataset {DEBUG_ROLLOUT_DATA_HF_REPO} "
-        f"--local-dir /root/datasets/ft-test-debug-rollout-data"
-    )
+    U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
 
 
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str) -> str:
@@ -169,11 +166,6 @@ def get_indep_dp_args(mode: FTTestMode) -> str:
     )
 
 
-def get_normal_dp_args(mode: FTTestMode) -> str:
-    """Args for normal DP baseline training (no fault tolerance)."""
-    return ""
-
-
 def run_training(train_args: str, mode: FTTestMode) -> None:
     """Wrapper around execute_train for FT tests."""
     U.execute_train(
@@ -236,12 +228,12 @@ def compare_metrics(
     print(f"MetricEvent comparison passed: {len(baseline_metrics)} steps compared")
 
 
-@dataclass
-class _ComparisonAppConfig:
-    build_baseline_args: Callable[[FTTestMode, str], str]
-    build_target_args: Callable[[FTTestMode, str], str]
-    compare_fn: Callable[[str, FTTestMode], None]
-    phases: list[str] = field(default_factory=lambda: [])
+def assert_events_dir_exists(dump_dir: str) -> None:
+    """Assert that the events directory exists and contains jsonl files."""
+    events_dir: Path = Path(dump_dir) / "events"
+    assert events_dir.exists(), f"Events directory not found: {events_dir}"
+    jsonl_files = list(events_dir.glob("**/*.jsonl"))
+    assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
 
 
 def create_comparison_app(
@@ -264,6 +256,22 @@ def create_comparison_app(
             return f"{side}/{phase}"
         return side
 
+    def _run_side(
+        side: str,
+        build_fn: Callable[[FTTestMode, str], str],
+        mode: str,
+        dump_dir: str,
+        phase: str,
+    ) -> None:
+        ft_mode = resolve_mode(mode)
+        if not dump_dir:
+            dump_dir = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
+        sub = _get_dump_subdir(side, phase)
+        full_dump_dir = f"{dump_dir}/{sub}"
+        args = build_fn(ft_mode, full_dump_dir)
+        prepare(ft_mode)
+        run_training(train_args=args, mode=ft_mode)
+
     @app.command()
     def baseline(
         mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
@@ -271,14 +279,7 @@ def create_comparison_app(
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
     ) -> None:
         """Run baseline (normal DP) training."""
-        ft_mode = resolve_mode(mode)
-        if not dump_dir:
-            dump_dir = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
-        sub = _get_dump_subdir("baseline", phase)
-        full_dump_dir = f"{dump_dir}/{sub}"
-        args = build_baseline_args(ft_mode, full_dump_dir)
-        prepare(ft_mode)
-        run_training(train_args=args, mode=ft_mode)
+        _run_side("baseline", build_baseline_args, mode, dump_dir, phase)
 
     @app.command()
     def target(
@@ -287,14 +288,7 @@ def create_comparison_app(
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
     ) -> None:
         """Run target (indep_dp) training."""
-        ft_mode = resolve_mode(mode)
-        if not dump_dir:
-            dump_dir = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
-        sub = _get_dump_subdir("target", phase)
-        full_dump_dir = f"{dump_dir}/{sub}"
-        args = build_target_args(ft_mode, full_dump_dir)
-        prepare(ft_mode)
-        run_training(train_args=args, mode=ft_mode)
+        _run_side("target", build_target_args, mode, dump_dir, phase)
 
     @app.command()
     def compare(
