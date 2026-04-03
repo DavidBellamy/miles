@@ -3,7 +3,6 @@ from argparse import Namespace
 from collections.abc import Sequence
 
 import torch
-import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_model_config
@@ -49,7 +48,7 @@ def create_megatron_parallel_state() -> ParallelState:
             group=mpu.get_expert_model_parallel_group(),
         ),
         etp=GroupInfo(
-            rank=dist.get_rank(mpu.get_expert_tensor_parallel_group()),
+            rank=mpu.get_expert_tensor_parallel_rank(),
             size=mpu.get_expert_tensor_parallel_world_size(),
             group=mpu.get_expert_tensor_parallel_group(),
         ),
