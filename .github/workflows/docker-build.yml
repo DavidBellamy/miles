@@ -202,7 +202,7 @@ jobs:
   build-and-push-dev-glm:
     needs: [build-and-push]
     # Only rebuild dev-glm when the dev image was built (schedule, push to main, or dispatch with image_tag=dev)
-    if: needs.build-and-push.result == 'success' && github.event_name == 'schedule'
+    if: needs.build-and-push.result == 'success' && (github.event_name == 'schedule' || inputs.simulate_schedule == true)
     runs-on: self-hosted
     steps:
       - name: Checkout repository
