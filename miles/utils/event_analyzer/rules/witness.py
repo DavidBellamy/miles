@@ -93,10 +93,15 @@ def _find_mismatches(
             if not all(r == TrainStepOutcome.NORMAL for r in cell_outcome):
                 continue
 
-            witness_events_of_cell = [
+            matching_events = [
                 e for e in all_witness_events
                 if e.rollout_id == rollout_id and e.source.cell_index == cell_index
             ]
+            if matching_events:
+                latest_attempt = max(e.attempt for e in matching_events)
+                witness_events_of_cell = [e for e in matching_events if e.attempt == latest_attempt]
+            else:
+                witness_events_of_cell = []
 
             if not witness_events_of_cell:
                 yield WitnessMissingSnapshotIssue(
