@@ -36,7 +36,7 @@ class OpenAIEndpointTracer:
         session_url = f"http://{session_ip}:{session_port}"
         session_server_instance_id = None
         try:
-            health = await post(f"{session_url}/health", {}, action="get", timeout=_SESSION_REQUEST_TIMEOUT)
+            health = await post(f"{session_url}/health", {}, action="get")
             if isinstance(health, dict):
                 session_server_instance_id = health.get("session_server_instance_id")
                 if session_server_instance_id is not None:
