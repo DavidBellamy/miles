@@ -297,7 +297,9 @@ class TestZeroWitnessRows:
 
         # Step 3: Build optimizer keyed on main_param (as Megatron does)
         optimizer = torch.optim.Adam([main_param], lr=0.01)
+        main_param.grad = torch.ones_like(main_param)
         optimizer.step()  # initialize optimizer state
+        optimizer.zero_grad()
 
         # Step 4: Call _zero_witness_rows
         idx = torch.tensor([3])

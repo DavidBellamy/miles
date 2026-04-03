@@ -27,6 +27,8 @@ class WitnessIdAllocator:
 
 
 def _compute_stale_ids(*, keep_count: int, counter: int, buffer_size: int) -> list[int]:
+    if counter == 0:
+        return []
     num_stale = buffer_size - min(keep_count, counter, buffer_size)
     if num_stale == 0:
         return []
