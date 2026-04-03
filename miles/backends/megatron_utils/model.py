@@ -516,9 +516,8 @@ def train_one_step(
         model_chunk.zero_grad_buffer()
     optimizer.zero_grad()
 
-    dumper_phase_util.finalize(model)
-
     if outcome == TrainStepOutcome.NORMAL:
+        dumper_phase_util.finalize(model)
         dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
         if args.enable_witness:
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
