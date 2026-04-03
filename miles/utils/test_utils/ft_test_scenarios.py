@@ -53,9 +53,6 @@ class _WithFailureScenario(FTTestScenarioBase):
             )
             self.ctx.group.start_cell(self._target_cell_index)
 
-    def on_complete(self) -> None:
-        logger.info("WithFailureScenario: completed successfully")
-
 
 @_register_scenario("deterministic")
 class _DeterministicScenario(FTTestScenarioBase):
@@ -81,9 +78,6 @@ class _DeterministicScenario(FTTestScenarioBase):
                 self._target_cell_index, step,
             )
             self.ctx.group.start_cell(self._target_cell_index)
-
-    def on_complete(self) -> None:
-        logger.info("DeterministicScenario: completed successfully")
 
 
 def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:

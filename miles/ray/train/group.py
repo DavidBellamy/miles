@@ -16,6 +16,7 @@ from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerCon
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
+from miles.utils.test_utils.ft_test_scenarios import FTTestContext, FTTestScenarioBase, get_scenario
 from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo
 
 if TYPE_CHECKING:
@@ -110,6 +111,14 @@ class RayTrainGroup:
             WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
         )
 
+        self._ft_scenario: FTTestScenarioBase | None = None
+        if scenario_name := getattr(args, "ci_ft_test_scenario", None):
+            ctx = FTTestContext(group=self, num_cells=num_cells)
+            self._ft_scenario = get_scenario(scenario_name, ctx)
+            logger.info("FT test scenario '%s' activated", scenario_name)
+
+        self._rollout_step: int = 0
+
     # ------------------------ API :: train ------------------------
 
     async def train(self, rollout_id: int, rollout_data_pack):
@@ -117,8 +126,11 @@ class RayTrainGroup:
 
         run_analysis_from_args(self.args)
 
+        step = self._rollout_step
+        if self._ft_scenario is not None:
+            self._ft_scenario.before_step(step)
+
         async def _fn(attempt: int):
-            # NOTE: Need to allocate *new* witness ids for each retry
             witness_info = self._allocate_witness_info(
                 rollout_id=rollout_id,
                 attempt=attempt,
@@ -139,6 +151,10 @@ class RayTrainGroup:
             )
 
         await retry(_fn)
+
+        if self._ft_scenario is not None:
+            self._ft_scenario.after_step(step)
+        self._rollout_step += 1
 
     def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
         if self._witness_allocator is None:
