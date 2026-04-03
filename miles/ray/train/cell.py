@@ -57,7 +57,7 @@ class RayTrainCell:
         recv_ckpt_src_rank: int | None = None,
     ):
         self._mark_as_alive(indep_dp_info=indep_dp_info)
-        await self.execute(
+        results = await self.execute(
             "init",
             args=self.args,
             role=self.role,
@@ -66,6 +66,7 @@ class RayTrainCell:
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
         await self.health_checker.start()
+        return results
 
     async def connect_actor_critic(self, critic_cell: "RayTrainCell") -> list:
         critic_handles = critic_cell._get_actor_handles()

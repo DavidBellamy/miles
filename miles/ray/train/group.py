@@ -194,7 +194,7 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        await asyncio.gather(
+        cell_results = await asyncio.gather(
             *[
                 cell.init(
                     indep_dp_info=self._compute_indep_dp_info(
@@ -206,6 +206,7 @@ class RayTrainGroup:
                 for cell in self._cells
             ]
         )
+        return [item for sublist in cell_results for item in sublist]
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
