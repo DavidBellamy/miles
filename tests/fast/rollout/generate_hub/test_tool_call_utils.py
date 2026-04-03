@@ -25,6 +25,8 @@ SINGLE_TOOL_CALL_ONLY_MODELS = [
 # Models where tokenize->decode produces extra whitespace vs direct string diff
 TOKENIZE_DECODE_WHITESPACE_DIFF_MODELS = [
     "THUDM/glm-4-9b-chat",
+    "deepseek-ai/DeepSeek-V3",
+    "stepfun-ai/step3",
 ]
 
 SAMPLE_TOOL_RESPONSES = [

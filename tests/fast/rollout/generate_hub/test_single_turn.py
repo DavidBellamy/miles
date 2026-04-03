@@ -398,7 +398,7 @@ class TestMultimodal:
         processor = AutoProcessor.from_pretrained(VLM_MODEL_NAME, trust_remote_code=True)
         expected_mti = {
             k: v
-            for k, v in processor(text=PROMPT, **multimodal_inputs).items()
+            for k, v in processor(text=PROMPT, return_tensors="pt", **multimodal_inputs).items()
             if k not in ["input_ids", "attention_mask"]
         }
 
