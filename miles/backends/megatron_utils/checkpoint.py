@@ -103,10 +103,7 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
 
     load_path = args.load
 
-    has_local_checkpoint_manager = (
-        checkpointing_context is not None and "local_checkpoint_manager" in checkpointing_context
-    )
-
+    has_local_checkpoint_manager = "local_checkpoint_manager" in (checkpointing_context or {})
     if has_local_checkpoint_manager:
         logger.info("Skipping disk path validation: using in-memory checkpoint via local_checkpoint_manager")
     else:
