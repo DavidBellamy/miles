@@ -5,7 +5,7 @@ from pathlib import Path
 
 import miles.utils.external_utils.command_utils as U
 from tests.e2e.conftest_dumper import MEGATRON_PATCHER_YAMLS
-from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, MODEL_HF_REPO, FTTestMode
+from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, FTTestMode
 
 _RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
 _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
@@ -13,7 +13,7 @@ _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher
 
 def prepare(mode: FTTestMode) -> None:
     U.exec_command("mkdir -p /root/models /root/datasets")
-    U.exec_command(f"hf download {MODEL_HF_REPO} --local-dir /root/models/{mode.model_name}")
+    U.exec_command(f"hf download {mode.model_hf_repo} --local-dir /root/models/{mode.model_name}")
     U.convert_checkpoint(
         model_name=mode.model_name,
         megatron_model_type=mode.megatron_model_type,

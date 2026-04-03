@@ -9,10 +9,14 @@ MODEL_HF_REPO: str = f"fzyzcjy/{MODEL_NAME}"
 MODEL_TYPE: str = "qwen3-30B-A3B"
 DEBUG_ROLLOUT_DATA_HF_REPO: str = "fzyzcjy/miles-ft-test-debug-rollout-data"
 
+FULL_MODEL_NAME: str = "Qwen3-30B-A3B"
+FULL_MODEL_HF_REPO: str = f"Qwen/{FULL_MODEL_NAME}"
+
 
 @dataclass(frozen=True)
 class FTTestMode:
     model_name: str
+    model_hf_repo: str
     megatron_model_type: str
     num_cells: int
     parallel_args: str
@@ -36,6 +40,7 @@ MODES: dict[str, FTTestMode] = {
     # --- 1-node (8 GPUs) variants ---
     "dp2_cp2_tp2_ep2": FTTestMode(
         model_name=MODEL_NAME,
+        model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
         global_batch_size=3,
@@ -48,6 +53,7 @@ MODES: dict[str, FTTestMode] = {
     ),
     "dp2_cp2_pp2": FTTestMode(
         model_name=MODEL_NAME,
+        model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
         global_batch_size=3,
@@ -58,12 +64,14 @@ MODES: dict[str, FTTestMode] = {
     ),
     "dp4_cp2": FTTestMode(
         model_name=MODEL_NAME,
+        model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=4,
         parallel_args="--context-parallel-size 2",
     ),
     "dp2_cp2_real_rollout": FTTestMode(
         model_name=MODEL_NAME,
+        model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
         train_gpus_per_node=4,
@@ -74,7 +82,8 @@ MODES: dict[str, FTTestMode] = {
     ),
     # --- 6-node (48 GPUs) disaggregated: 4 train nodes + 2 rollout nodes ---
     "6node_dp4_cp2_tp2_pp2_ep2_etp2": FTTestMode(
-        model_name=MODEL_NAME,
+        model_name=FULL_MODEL_NAME,
+        model_hf_repo=FULL_MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=4,
         train_num_nodes=4,
