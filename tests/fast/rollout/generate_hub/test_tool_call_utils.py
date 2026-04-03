@@ -94,8 +94,8 @@ class TestTokenizeToolResponses:
         if model_name in TOKENIZE_DECODE_WHITESPACE_DIFF_MODELS:
             import re
 
-            actual_str = re.sub(r"\s+", "", actual_str)
-            expected_str = re.sub(r"\s+", "", expected_str)
+            actual_str = re.sub(r"[\s\u2581]+", "", actual_str)
+            expected_str = re.sub(r"[\s\u2581]+", "", expected_str)
 
         assert actual_str == expected_str, f"{model_name=}"
 
