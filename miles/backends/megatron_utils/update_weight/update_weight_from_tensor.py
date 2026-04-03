@@ -205,12 +205,13 @@ class UpdateWeightFromTensor:
 
         dist.barrier(group=get_gloo_group())
 
-        # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales).
+        # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales), nvfp4 post-process (pad + shuffle).
         if rank == 0:
-            if self.quantization_config and self.quantization_config["quant_method"] in [
-                "compressed-tensors",
-                "mxfp8",
-            ]:
+            _needs_post_process = self.quantization_config and (
+                self.quantization_config.get("quant_method") in ["compressed-tensors", "mxfp8"]
+                or self.quantization_config.get("quant_algo") == "NVFP4"
+            )
+            if _needs_post_process:
                 post_process_weights(
                     rollout_engines=self.rollout_engines,
                     restore_weights_before_load=False,
