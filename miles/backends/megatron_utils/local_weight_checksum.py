@@ -17,8 +17,6 @@ from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
-from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState, OptimizerStateInfo
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +39,11 @@ def dump_local_weight_checksums(
     if not args.save_local_weight_checksum:
         return
 
+    # Local imports to break circular dependency:
+    # logger.py → models.py → model.py → local_weight_checksum.py → logger.py
+    from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+    from miles.utils.event_logger.models import LocalWeightChecksumEvent
+
     assert is_event_logger_initialized(), "save_local_weight_checksum is enabled but EventLogger is not initialized"
 
     event_logger = get_event_logger()
@@ -58,7 +61,9 @@ def dump_local_weight_checksums(
 def _compute_weight_checksum_state(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
-) -> LocalWeightChecksumState:
+) -> "LocalWeightChecksumState":
+    from miles.utils.event_logger.models import LocalWeightChecksumState
+
     param_hashes = _hash_named_tensors(model, accessor="named_parameters")
     assert param_hashes, "No parameters found in model"
     buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
@@ -86,8 +91,10 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
 def _collect_optimizer_hashes(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
-) -> list[OptimizerStateInfo]:
+) -> list["OptimizerStateInfo"]:
     """Collect optimizer state snapshots with tensors replaced by hashes."""
+    from miles.utils.event_logger.models import OptimizerStateInfo
+
     name_by_tensor_id = _build_name_by_tensor_id(model)
     result: list[OptimizerStateInfo] = []
 
