@@ -25,6 +25,108 @@ All modes are **disaggregated** (training and rollout on separate nodes). Modes 
 
 Batch sizes are deliberately **not** divisible by num_cells to test uneven sample distribution across replicas (e.g. DP4 + batch 5 → 2,1,1,1).
 
+## Test Definitions
+
+### `test_trainer_ft_no_failure.py`
+
+Comparison test. Verifies indep_dp produces the same results as normal DP when no faults occur.
+
+```
+Type: comparison (baseline=normal DP, target=indep_dp)
+Steps: 10 (default from mode.num_steps)
+
+1. Baseline: run normal DP training with debug rollout data
+2. Target: run indep_dp training with the same data
+3. Compare:
+   - Tensor-level: compare_dumps (weights, grads via dumper & sglang comparator)
+   - Metric-level: compare_metrics (MetricEvent, requires train/grad_norm and train/loss)
+
+Note: results are roughly equal, not bitwise — allreduce kernel ordering differs.
+```
+
+### `test_trainer_ft_with_failure.py`
+
+Multi-phase comparison test. Verifies indep_dp matches normal DP after fault + checkpoint resume.
+
+```
+Type: comparison, multi-phase (phase_a + phase_b)
+Phase A steps: 1, Phase B steps: 4, rtol: 5e-2
+
+Phase A (both baseline and target):
+  1. Run 1 step of training
+  2. Save checkpoint (--save-interval 1)
+
+Phase B — baseline:
+  1. Resume from phase_a checkpoint
+  2. Run 4 normal steps
+
+Phase B — target:
+  1. Resume from phase_a checkpoint
+  2. After rollout 1: stop_cell(last) — kill one replica
+  3. Rollout 2: N-1 cells → allreduce fails → should_commit=false → retry with N-1 cells
+  4. After rollout 2: start_cell(last) — mark pending for healing
+  5. Rollout 3: _refresh_cells() heals the cell, N cells run
+  6. Rollout 4: all cells stable
+
+Compare: phase_b dumps and metrics (baseline vs target, rtol=5e-2 for accumulated error).
+
+Fault injection via --ci-ft-test-actions JSON (data-driven, executed by RayTrainGroup).
+```
+
+### `test_trainer_ft_deterministic.py`
+
+Multi-phase comparison test. Verifies healing state transfer + degraded retry.
+
+```
+Type: comparison, multi-phase (phase_a + phase_b)
+Phase A steps: 1, Phase B steps: 5, rtol: 1e-2
+
+Phase A: same as with_failure (1 step + save ckpt).
+
+Phase B — target timeline:
+  1. Rollout 1, 2: all N cells normal (2 good steps, accumulate meaningful state)
+  2. After rollout 2: stop_cell(last) + start_cell(last) — trigger healing at next step
+  3. Rollout 3: healing at start (recv_ckpt from cell_0), then normal execution
+  4. After rollout 3: stop_cell(last) — create degraded state
+  5. Rollout 4: N-1 cells → should_commit=false → DISCARDED_SHOULD_RETRY → retry
+  6. After rollout 4: start_cell(last) — restore for healing
+  7. Rollout 5: healing + normal execution
+
+Bitwise verification: --use-fault-tolerance --ft-components train auto-enables
+--save-local-weight-checksum and --enable-event-analyzer. The event_analyzer
+cross_replica_weight_checksum rule checks cell-to-cell bitwise equality after healing.
+
+Dumper note: dumper_phase_util.finalize() only runs on NORMAL outcome, so
+the discarded retry attempt in rollout 4 does not produce a dump file.
+```
+
+### `test_ft_random.py`
+
+Non-comparison soak test. Verifies the system survives random crashes without hanging.
+
+```
+Type: non-comparison (no baseline, no compare)
+Steps: 30 (default), configurable via --num-steps
+
+Architecture (external fault injection, not inside training loop):
+  1. Start training with indep_dp + control server (port 18080) + mini FT controller
+  2. Start a background daemon thread that:
+     a. Sleeps a random interval (exponential distribution, mean ~15s / crash_probability)
+     b. GET /api/v1/cells — discover alive cells
+     c. Pick a random alive cell (skip if <=1 alive)
+     d. POST /api/v1/cells/{name}/inject-fault with random failure mode
+     e. Repeat until training finishes
+  3. The actor's inject_fault() runs in a dedicated ray concurrency group thread
+     and kills the process immediately (SIGKILL, os._exit, or segfault)
+  4. Health checker detects dead actor via heartbeat timeout
+  5. Mini FT controller auto-recovers (suspend → resume)
+  6. Verify: training completes, no hangs, prod assertions pass
+
+CLI options: --seed (default 42), --num-steps (default 30), --crash-probability (default 0.1)
+```
+
+---
+
 ## Running
 
 ### Comparison tests (`test_trainer_ft_no_failure.py`, `test_trainer_ft_with_failure.py`, `test_trainer_ft_deterministic.py`)
