@@ -281,7 +281,7 @@ class TestCheckWait:
         work = MagicMock()
         work.wait.return_value = False
 
-        with pytest.raises(RuntimeError, match="torchft allreduce failed"):
+        with pytest.raises(RuntimeError, match="distributed operation allreduce failed"):
             _check_wait(work, "allreduce")
 
     def test_passes_on_true(self) -> None:
