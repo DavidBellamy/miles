@@ -94,7 +94,6 @@ class MegatronTrainRayActor(TrainRayActor):
                 torch_memory_saver.memory_margin_bytes = x
 
         if self.args.debug_rollout_only:
-            self.parallel_state = get_parallel_state()
             return 0
 
         if role == "critic":
@@ -111,7 +110,6 @@ class MegatronTrainRayActor(TrainRayActor):
             args, role
         )
 
-        self.parallel_state = get_parallel_state()
         verify_megatron_parallel_state(self.model)
 
         if role == "critic":
@@ -234,8 +232,9 @@ class MegatronTrainRayActor(TrainRayActor):
         for iterator in data_iterator:
             iterator.reset()
 
-        tp_rank = self.parallel_state.tp.rank
-        tp_size = self.parallel_state.tp.size
+        parallel_state = get_parallel_state()
+        tp_rank = parallel_state.tp.rank
+        tp_size = parallel_state.tp.size
         qkv_format = self.args.qkv_format
 
         def pad_func(data, pad):
@@ -270,7 +269,7 @@ class MegatronTrainRayActor(TrainRayActor):
             else:
                 replay_data = [slice_with_cp(r, pad_func, qkv_format) for r in replay_data]
                 replay_data = torch.cat(replay_data, dim=0)
-                pad_size = self.parallel_state.tp.size * self.args.data_pad_size_multiplier
+                pad_size = parallel_state.tp.size * self.args.data_pad_size_multiplier
                 pad = (pad_size - replay_data.size(0) % pad_size) % pad_size
                 if pad != 0:
                     replay_data = pad_func(replay_data, pad)
