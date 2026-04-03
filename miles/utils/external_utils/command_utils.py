@@ -166,6 +166,8 @@ def execute_train(
                     }
                 ),
                 "NCCL_NVLS_ENABLE": os.environ.get("NCCL_NVLS_ENABLE", str(int(check_has_nvlink()))),
+                **({"LD_LIBRARY_PATH": os.environ["LD_LIBRARY_PATH"]} if "LD_LIBRARY_PATH" in os.environ else {}),
+                "DEPRECATED_MEGATRON_COMPATIBLE": os.environ.get("DEPRECATED_MEGATRON_COMPATIBLE", "1"),
                 **{k: os.environ[k] for k in ("NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME") if k in os.environ},
                 "no_proxy": f"127.0.0.1,{master_addr}",
                 # This is needed by megatron / torch distributed in multi-node setup
