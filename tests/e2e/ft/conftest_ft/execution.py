@@ -1,5 +1,6 @@
 # NOTE: You MUST read tests/e2e/ft/README.md as source-of-truth and documentations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -11,13 +12,23 @@ _RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
 _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
 
 
+def _get_hf_num_layers(model_path: str) -> int:
+    with open(f"{model_path}/config.json") as f:
+        return json.load(f)["num_hidden_layers"]
+
+
 def prepare(mode: FTTestMode) -> None:
     U.exec_command("mkdir -p /root/models /root/datasets")
     U.exec_command(f"hf download {mode.model_hf_repo} --local-dir /root/models/{mode.model_name}")
+
+    hf_model_path = f"/root/models/{mode.model_name}"
+    num_layers = _get_hf_num_layers(hf_model_path)
+    convert_gpus = min(mode.train_gpus_per_node, num_layers)
+
     U.convert_checkpoint(
         model_name=mode.model_name,
         megatron_model_type=mode.megatron_model_type,
-        num_gpus_per_node=mode.train_gpus_per_node,
+        num_gpus_per_node=convert_gpus,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
     if mode.has_rollout:
