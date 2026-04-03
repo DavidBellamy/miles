@@ -1859,17 +1859,17 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-_FT_DEFAULT_COMPONENTS: frozenset[str] = frozenset({"rollout"})
+_FT_DEFAULT_COMPONENTS: tuple[str, ...] = ("rollout",)
 
 
-def _resolve_ft_components(args: argparse.Namespace) -> frozenset[str]:
+def _resolve_ft_components(args: argparse.Namespace) -> tuple[str, ...]:
     if not args.use_fault_tolerance:
         if args.ft_components is not None:
             logger.warning("--ft-components is ignored without --use-fault-tolerance")
-        return frozenset()
+        return ()
     if args.ft_components is None:
         return _FT_DEFAULT_COMPONENTS
-    return frozenset(args.ft_components)
+    return tuple(args.ft_components)
 
 
 def miles_validate_args(args):

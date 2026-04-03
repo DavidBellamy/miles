@@ -25,7 +25,7 @@ def start_control_server(
     actor_model: RayTrainGroup,
     rollout_manager: object,
     port: int,
-    ft_components: frozenset[str],
+    ft_components: tuple[str, ...],
 ) -> None:
     registry = _CellRegistry()
 
