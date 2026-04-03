@@ -42,7 +42,7 @@ def gather_log_data(
     dist.gather_object(
         log_dict,
         gathered_log_dict if pg.rank == 0 else None,
-        dst=pg.src_rank,
+        dst=dist.get_global_rank(pg.gloo_group, 0),
         group=pg.gloo_group,
     )
 
