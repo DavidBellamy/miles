@@ -12,7 +12,7 @@ _SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
 def _register_scenario(name: str):
     """Decorator to register a scenario class by name."""
-    def _decorator(cls: type) -> type:
+    def _decorator(cls: "type[FTTestScenarioBase]") -> type:
         _SCENARIOS[name] = cls
         return cls
     return _decorator
