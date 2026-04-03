@@ -145,6 +145,8 @@ class MilesRouter:
         """Core proxy logic. Returns dict with request_body, response_body, status_code, headers."""
         worker_url = self._use_url()
         url = f"{worker_url}/{path}"
+        if request.url.query:
+            url = f"{url}?{request.url.query}"
 
         if body is None:
             body = await request.body()
