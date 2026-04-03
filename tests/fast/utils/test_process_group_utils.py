@@ -46,11 +46,10 @@ class TestGroupsInfo:
         assert result.gloo_groups_inner_to_outer == [None]
 
     def test_from_single_with_gloo(self) -> None:
-        sentinel_gloo = object()
-        info = GroupInfo(rank=0, size=2, group=None, gloo_group=sentinel_gloo)
+        info = GroupInfo(rank=0, size=2, group=None, gloo_group=None)
         result = GroupsInfo.from_single(info)
         assert result.groups_inner_to_outer == [None]
-        assert result.gloo_groups_inner_to_outer == [sentinel_gloo]
+        assert result.gloo_groups_inner_to_outer == [None]
 
     def test_from_pair(self) -> None:
         inner = GroupInfo(rank=1, size=3, group=None)
@@ -61,12 +60,10 @@ class TestGroupsInfo:
         assert result.gloo_groups_inner_to_outer == [None, None]
 
     def test_from_pair_with_gloo(self) -> None:
-        inner_gloo = object()
-        outer_gloo = object()
-        inner = GroupInfo(rank=0, size=2, group=None, gloo_group=inner_gloo)
-        outer = GroupInfo(rank=0, size=3, group=None, gloo_group=outer_gloo)
+        inner = GroupInfo(rank=0, size=2, group=None, gloo_group=None)
+        outer = GroupInfo(rank=0, size=3, group=None, gloo_group=None)
         result = GroupsInfo.from_pair(inner=inner, outer=outer)
-        assert result.gloo_groups_inner_to_outer == [inner_gloo, outer_gloo]
+        assert result.gloo_groups_inner_to_outer == [None, None]
 
     def test_from_pair_rank_zero_only_when_both_zero(self) -> None:
         result = GroupsInfo.from_pair(
@@ -293,31 +290,34 @@ class TestCheckWait:
             _check_wait(work, "allreduce")
 
 
+def _worker_bool_and_all_true(rank: int, world_size: int, port: int) -> None:
+    _worker_bool_and(rank, world_size, port, value_by_rank={0: True, 1: True}, expected=True)
+
+
+def _worker_bool_and_all_false(rank: int, world_size: int, port: int) -> None:
+    _worker_bool_and(rank, world_size, port, value_by_rank={0: False, 1: False}, expected=False)
+
+
+def _worker_bool_and_mixed(rank: int, world_size: int, port: int) -> None:
+    _worker_bool_and(rank, world_size, port, value_by_rank={0: True, 1: False}, expected=False)
+
+
+def _worker_bool_and(rank: int, world_size: int, port: int, *, value_by_rank: dict[int, bool], expected: bool) -> None:
+    init_gloo(rank, world_size, port=port)
+    try:
+        group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
+        result = collective_bool_and(value=value_by_rank[rank], group=group)
+        assert result is expected, f"rank {rank}: expected {expected}, got {result}"
+    finally:
+        dist.destroy_process_group()
+
+
 class TestCollectiveBoolAnd:
-    @staticmethod
-    def _worker(rank: int, world_size: int, port: int, *, value_by_rank: dict[int, bool], expected: bool) -> None:
-        init_gloo(rank, world_size, port=port)
-        try:
-            group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
-            result = collective_bool_and(value=value_by_rank[rank], group=group)
-            assert result is expected, f"rank {rank}: expected {expected}, got {result}"
-        finally:
-            dist.destroy_process_group()
-
     def test_all_true(self) -> None:
-        def _w(rank: int, world_size: int, port: int) -> None:
-            TestCollectiveBoolAnd._worker(rank, world_size, port, value_by_rank={0: True, 1: True}, expected=True)
-
-        run_multiprocess(_w)
+        run_multiprocess(_worker_bool_and_all_true)
 
     def test_all_false(self) -> None:
-        def _w(rank: int, world_size: int, port: int) -> None:
-            TestCollectiveBoolAnd._worker(rank, world_size, port, value_by_rank={0: False, 1: False}, expected=False)
-
-        run_multiprocess(_w)
+        run_multiprocess(_worker_bool_and_all_false)
 
     def test_mixed_returns_false(self) -> None:
-        def _w(rank: int, world_size: int, port: int) -> None:
-            TestCollectiveBoolAnd._worker(rank, world_size, port, value_by_rank={0: True, 1: False}, expected=False)
-
-        run_multiprocess(_w)
+        run_multiprocess(_worker_bool_and_mixed)

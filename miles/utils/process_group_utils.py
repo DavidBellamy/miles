@@ -113,10 +113,10 @@ class _NativePGUtil(GeneralPGUtil):
         dist.all_reduce(tensor, op=op, group=group)
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        dist.reduce(tensor, dst=0, op=op, group=group)
+        dist.reduce(tensor, dst=dist.get_global_rank(group, 0), op=op, group=group)
 
     def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        dist.broadcast(tensor, src=0, group=group)
+        dist.broadcast(tensor, src=dist.get_global_rank(group, 0), group=group)
 
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
