@@ -96,8 +96,6 @@ def run(
             + get_ft_args(ft_mode)
             + f"--control-server-port {_CONTROL_SERVER_PORT} "
             + "--mini-ft-controller-enable "
-            + "--save-local-weight-checksum "
-            + "--enable-event-analyzer "
     )
 
     base_url = f"http://localhost:{_CONTROL_SERVER_PORT}"

@@ -40,11 +40,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
         phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
         base += f"--load {phase_a_dir}/ckpt "
         if is_target:
-            base += (
-                f"--ci-ft-test-actions '{json.dumps(_DETERMINISTIC_ACTIONS)}' "
-                "--save-local-weight-checksum "
-                "--enable-event-analyzer "
-            )
+            base += f"--ci-ft-test-actions '{json.dumps(_DETERMINISTIC_ACTIONS)}' "
 
     return base
 
