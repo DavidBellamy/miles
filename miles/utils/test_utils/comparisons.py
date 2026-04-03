@@ -25,12 +25,8 @@ def compare_dumps(
     baseline_path = Path(baseline_dir) / "dumps"
     target_path = Path(target_dir) / "dumps"
 
-    if not baseline_path.exists():
-        logger.warning("Baseline dump dir %s does not exist, skipping dump comparison", baseline_path)
-        return
-    if not target_path.exists():
-        logger.warning("Target dump dir %s does not exist, skipping dump comparison", target_path)
-        return
+    assert baseline_path.exists(), f"Baseline dump dir does not exist: {baseline_path}"
+    assert target_path.exists(), f"Target dump dir does not exist: {target_path}"
 
     cmd: list[str] = [
         sys.executable,
@@ -113,6 +109,15 @@ def compare_metrics(
                 f"Step {step_idx}, metric '{key}': baseline={b_val}, target={t_val}, "
                 f"rel_diff={rel_diff:.6f} > rtol={rtol}"
             )
+
+    all_baseline_keys: set[str] = set()
+    for event in baseline_metrics:
+        all_baseline_keys.update(event.metrics.keys())
+    for required in ["train/grad_norm", "train/loss"]:
+        assert required in all_baseline_keys, (
+            f"Required metric '{required}' not found in any baseline MetricEvent. "
+            f"Available keys: {sorted(all_baseline_keys)}"
+        )
 
     print(f"MetricEvent comparison passed: {len(baseline_metrics)} steps compared")
 
