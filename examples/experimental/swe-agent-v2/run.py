@@ -81,6 +81,7 @@ def execute(args: ScriptArgs):
         "--rollout-max-response-len 8192 "
         "--global-batch-size 64 "
         "--balance-data "
+        "--max-seq-len 16384 "
     )
 
     perf_args = (
@@ -125,7 +126,8 @@ def execute(args: ScriptArgs):
         "--sglang-tool-call-parser glm47 "
         "--sglang-reasoning-parser glm45 "
         "--use-miles-router "
-        "--sglang-router-port 30000 "
+        "--sglang-router-port 31000 "
+        "--session-server-port 30000 "
         # TODO: speculative decoding has issue, need to fix later
     )
 
