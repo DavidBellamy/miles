@@ -19,6 +19,9 @@ class FTTestAction(FrozenStrictBaseModel):
     rank: int = 0  # for actor-level actions: which rank within the cell
     attempt: int = 0  # for actor-level actions: which attempt (0 = first try)
 
+    def resolve_cell_index(self, num_cells: int) -> int:
+        return self.cell_index if self.cell_index >= 0 else num_cells - 1
+
 
 _ACTION_LIST_ADAPTER: TypeAdapter[list[FTTestAction]] = TypeAdapter(list[FTTestAction])
 
@@ -52,7 +55,7 @@ class FTTestActionGroupExecutor:
     def run_after_step(self, rollout_id: int) -> None:
         for action in self._actions:
             if action.at_rollout == rollout_id:
-                cell_index = action.cell_index if action.cell_index >= 0 else self._group.num_cells - 1
+                cell_index = action.resolve_cell_index(self._group.num_cells)
                 logger.info("FT test action: %s cell %d after rollout %d", action.action, cell_index, rollout_id)
 
                 if action.action == "stop_cell_at_end":
@@ -85,7 +88,7 @@ class FTTestActionActorExecutor:
 
     def maybe_crash(self, *, rollout_id: int, attempt: int) -> None:
         for action in self._actions:
-            resolved_cell = action.cell_index if action.cell_index >= 0 else self._num_cells - 1
+            resolved_cell = action.resolve_cell_index(self._num_cells)
             if (
                 action.at_rollout == rollout_id
                 and action.attempt == attempt
