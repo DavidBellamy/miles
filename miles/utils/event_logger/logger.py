@@ -65,7 +65,8 @@ class EventLogger:
             logger.info("Event logged: %s", getattr(event, "type", type(event).__name__))
 
     def close(self) -> None:
-        self._file.close()
+        with self._lock:
+            self._file.close()
 
 
 _event_logger: EventLogger | None = None
