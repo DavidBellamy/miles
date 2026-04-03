@@ -49,6 +49,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     nvfp4_keep_first_n: int = 0
     nvfp4_keep_last_n: int = 0
     optimizer_cpu_offload: bool = False
+    skip_prepare: bool = False
     # Megatron parallelism overrides (0 = auto-select based on model/GPU count)
     train_tp: int = 0
     train_pp: int = 0
@@ -187,13 +188,15 @@ def _execute_train(args: ScriptArgs):
             f"--rollout-refresh-keep-last-n {args.nvfp4_keep_last_n} "
         )
 
+    num_rollout = 64 if args.mode == "debug_minimal" else 3000
+    rollout_batch_size = 16 if args.mode == "debug_minimal" else 128
     rollout_args = (
         "--label-key label "
         "--apply-chat-template "
         "--rollout-shuffle "
         "--rm-type math "
-        "--num-rollout 3000 "
-        "--rollout-batch-size 128 "
+        f"--num-rollout {num_rollout} "
+        f"--rollout-batch-size {rollout_batch_size} "
         "--n-samples-per-prompt 8 "
         "--rollout-temperature 1 "
         # ------------
@@ -341,7 +344,7 @@ def _execute_train(args: ScriptArgs):
             "--main-grads-dtype bf16 "
         )
 
-    sglang_decode_max_bs = 256
+    sglang_decode_max_bs = 32 if args.mode == "debug_minimal" else 256
     sglang_world_size = 4 if args.num_nodes <= 4 else 64
     sglang_attn_dp_size = 1 if args.num_nodes <= 4 else 8
     sglang_attn_tp_size = sglang_world_size // sglang_attn_dp_size
@@ -357,7 +360,7 @@ def _execute_train(args: ScriptArgs):
         "--sglang-moe-dense-tp-size 1 "
         "--sglang-enable-dp-lm-head "
         # make every dp rank has 128 concurrency
-        "--sglang-server-concurrency 1024 "
+        f"--sglang-server-concurrency {128 if args.mode == 'debug_minimal' else 1024} "
         f"--sglang-max-running-requests {sglang_world_size * sglang_decode_max_bs // sglang_attn_tp_size} "
         f"--sglang-chunked-prefill-size {sglang_world_size * sglang_decode_max_bs} "
         f"--sglang-cuda-graph-max-bs {sglang_decode_max_bs} "
@@ -375,6 +378,8 @@ def _execute_train(args: ScriptArgs):
             "--sglang-moe-runner-backend flashinfer_trtllm "
             "--sglang-kv-cache-dtype fp8_e4m3 "
             "--sglang-model-loader-extra-config '{\"enable_multithread_load\": true, \"num_threads\": 64}' "
+            "--sglang-enable-nan-detection "
+            "--sglang-enable-fp32-lm-head "
         )
 
     misc_args = (
@@ -436,11 +441,12 @@ def _execute_train(args: ScriptArgs):
 @app.command()
 @U.dataclass_cli
 def train(args: ScriptArgs):
-    _prepare_download(args)
-    _prepare_bf16_ckpt(args)
-    _prepare_nvfp4_ckpt(args)
-    _prepare_megatron_ckpt(args)
-    _prepare_cp(args)
+    if not args.skip_prepare:
+        _prepare_download(args)
+        _prepare_bf16_ckpt(args)
+        _prepare_nvfp4_ckpt(args)
+        _prepare_megatron_ckpt(args)
+        _prepare_cp(args)
     _execute_train(args)
 
 
