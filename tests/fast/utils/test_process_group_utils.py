@@ -196,6 +196,7 @@ class TestRawPGUtilUnit:
         group.size.return_value = 8
         assert _RawPGUtil().get_size(group) == 8
 
+    @patch("miles.utils.process_group_utils.dist.AllreduceOptions", MagicMock)
     def test_all_reduce_calls_group_allreduce(self) -> None:
         group = MagicMock()
         work = MagicMock()
@@ -205,6 +206,7 @@ class TestRawPGUtilUnit:
         _RawPGUtil().all_reduce(tensor, group, op=dist.ReduceOp.SUM)
         group.allreduce.assert_called_once()
 
+    @patch("miles.utils.process_group_utils.dist.ReduceOptions", MagicMock)
     def test_reduce_calls_group_reduce(self) -> None:
         group = MagicMock()
         work = MagicMock()
@@ -214,6 +216,7 @@ class TestRawPGUtilUnit:
         _RawPGUtil().reduce(tensor, group, op=dist.ReduceOp.SUM)
         group.reduce.assert_called_once()
 
+    @patch("miles.utils.process_group_utils.dist.BroadcastOptions", MagicMock)
     def test_broadcast_calls_group_broadcast(self) -> None:
         group = MagicMock()
         work = MagicMock()

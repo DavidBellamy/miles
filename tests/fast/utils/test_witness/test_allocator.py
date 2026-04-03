@@ -73,6 +73,12 @@ class TestComputeStaleIds:
     def test_counter_zero_returns_empty(self) -> None:
         assert _compute_stale_ids(keep_count=5, counter=0, buffer_size=10) == []
 
+    def test_counter_zero_keep_zero_returns_empty(self) -> None:
+        assert _compute_stale_ids(keep_count=0, counter=0, buffer_size=10) == []
+
+    def test_counter_zero_large_buffer_returns_empty(self) -> None:
+        assert _compute_stale_ids(keep_count=100, counter=0, buffer_size=1000) == []
+
     def test_counter_less_than_keep_count_returns_all_unused(self) -> None:
         # counter=3, buffer=10, keep=7 → active=min(7,3,10)=3 → stale=7 slots
         result = _compute_stale_ids(keep_count=7, counter=3, buffer_size=10)
