@@ -1,5 +1,6 @@
 import logging
-from typing import Type, Generator
+from collections.abc import Iterator
+from typing import Type
 
 from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -83,7 +84,7 @@ def _find_mismatches(
     all_step_events: list[TrainGroupStepEndEvent],
     all_witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids_of_step: dict[int, set[int]],
-) -> Generator[WitnessIssue]:
+) -> Iterator[WitnessIssue]:
     for step_event in all_step_events:
         rollout_id = step_event.rollout_id
 
