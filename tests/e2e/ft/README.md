@@ -90,7 +90,7 @@ Comparison test. Verifies indep_dp produces the same results as normal DP when n
 
 ```
 Type: comparison (baseline=normal DP, target=indep_dp)
-Steps: 10 (default from mode.num_steps)
+Steps: 2
 
 1. Baseline: run normal DP training with debug rollout data
 2. Target: run indep_dp training with the same data
@@ -119,15 +119,19 @@ Phase B — baseline:
 
 Phase B — target:
   1. Resume from phase_a checkpoint
-  2. After rollout 1: stop_cell(last) — kill one replica
-  3. Rollout 2: N-1 cells → allreduce fails → should_commit=false → retry with N-1 cells
-  4. After rollout 2: start_cell(last) — mark pending for healing
-  5. Rollout 3: _refresh_cells() heals the cell, N cells run
-  6. Rollout 4: all cells stable
+  2. Rollout 1: N cells normal
+  3. Rollout 2, attempt 0: crash_before_allreduce on last cell rank 0
+     → os._exit(1) → allreduce timeout → should_commit=false → retry
+  4. Rollout 2, attempt 1: _refresh_cells() reconfigure → N-1 cells → commit
+  5. After rollout 2: stop_cell_at_end(last) + start_cell_at_end(last)
+  6. Rollout 3: _refresh_cells() healing → N cells
+  7. Rollout 4: N cells stable
 
 Compare: phase_b dumps and metrics (baseline vs target, rtol=5e-2 for accumulated error).
 
 Fault injection via --ci-ft-test-actions JSON (data-driven, executed by RayTrainGroup).
+The JSON `at_rollout` field specifies which rollout_id triggers the action (replaces old `after_step`).
+The `attempt` field (for actor-level actions like `crash_before_allreduce`) specifies which retry attempt to match.
 ```
 
 ### `test_trainer_ft_deterministic.py`
