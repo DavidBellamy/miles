@@ -136,10 +136,10 @@ def _worker_pg_util_ops(rank: int, world_size: int, port: int) -> None:
             input_t = torch.tensor([float(rank)])
             if rank == 0:
                 gather_list = [torch.zeros(1) for _ in range(world_size)]
-                util.gather(input_t, gather_list=gather_list, dst=0, group=group)
+                util.gather(input_t, gather_list=gather_list, group=group)
                 assert [t.item() for t in gather_list] == [0.0, 1.0, 2.0, 3.0]
             else:
-                util.gather(input_t, gather_list=None, dst=0, group=group)
+                util.gather(input_t, gather_list=None, group=group)
 
         # GroupInfo verification
         GroupInfo(rank=rank, size=world_size, group=group)
@@ -171,10 +171,10 @@ def _worker_gather_object(rank: int, world_size: int, port: int) -> None:
         for obj in test_objects:
             if rank == 0:
                 result: list[Any] = [None] * world_size
-                util.gather_object(obj, result, dst=0, group=group)
+                util.gather_object(obj, result, group=group)
                 assert all(r is not None for r in result), f"Incomplete gather for obj type={type(obj)}"
             else:
-                util.gather_object(obj, None, dst=0, group=group)
+                util.gather_object(obj, None, group=group)
     finally:
         dist.destroy_process_group()
 

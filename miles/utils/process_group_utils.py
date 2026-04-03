@@ -91,13 +91,12 @@ class GeneralPGUtil:
         self,
         input_tensor: torch.Tensor,
         gather_list: list[torch.Tensor] | None,
-        dst: int,
         group: dist.ProcessGroup,
     ) -> None:
         raise NotImplementedError
 
     def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
     ) -> None:
         raise NotImplementedError
 
@@ -127,15 +126,14 @@ class _NativePGUtil(GeneralPGUtil):
         self,
         input_tensor: torch.Tensor,
         gather_list: list[torch.Tensor] | None,
-        dst: int,
         group: dist.ProcessGroup,
     ) -> None:
-        dist.gather(input_tensor, gather_list=gather_list, dst=dist.get_global_rank(group, dst), group=group)
+        dist.gather(input_tensor, gather_list=gather_list, dst=dist.get_global_rank(group, 0), group=group)
 
     def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
     ) -> None:
-        dist.gather_object(obj, object_gather_list, dst=dist.get_global_rank(group, dst), group=group)
+        dist.gather_object(obj, object_gather_list, dst=dist.get_global_rank(group, 0), group=group)
 
 
 def _check_wait(work: dist._Work, op_name: str) -> None:
@@ -177,16 +175,15 @@ class _RawPGUtil(GeneralPGUtil):
         self,
         input_tensor: torch.Tensor,
         gather_list: list[torch.Tensor] | None,
-        dst: int,
         group: dist.ProcessGroup,
     ) -> None:
         output = [gather_list] if gather_list is not None else []
-        _check_wait(group.gather(output, [input_tensor], dist.GatherOptions(rootRank=dst)), "gather")
+        _check_wait(group.gather(output, [input_tensor], dist.GatherOptions(rootRank=0)), "gather")
 
     def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
+        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
     ) -> None:
-        _gather_object_via_util(self, obj, object_gather_list, dst=dst, group=group)
+        _gather_object_via_util(self, obj, object_gather_list, group=group)
 
 
 class MultiPGUtil:
@@ -224,10 +221,10 @@ class MultiPGUtil:
             size = util.get_size(group)
             if rank == 0:
                 gathered: list[Any] = [None] * size
-                util.gather_object(objects, gathered, dst=0, group=group)
+                util.gather_object(objects, gathered, group=group)
                 objects = [item for sublist in gathered for item in sublist]
             else:
-                util.gather_object(objects, None, dst=0, group=group)
+                util.gather_object(objects, None, group=group)
                 return None
 
         return objects
@@ -237,10 +234,11 @@ def _gather_object_via_util(
     util: GeneralPGUtil,
     obj: Any,
     object_gather_list: list[Any] | None,
-    dst: int,
     group: dist.ProcessGroup,
 ) -> None:
     """gather_object implemented using GeneralPGUtil primitives.
+
+    Always gathers to group-local rank 0.
 
     Copied from torch.distributed.distributed_c10d.gather_object (PyTorch v2.11.0)
     (https://github.com/pytorch/pytorch/blob/v2.11.0/torch/distributed/distributed_c10d.py)
@@ -248,6 +246,7 @@ def _gather_object_via_util(
     - Replaced dist.get_rank()/get_world_size() with util.get_rank()/get_size()
     - Replaced dist.all_gather()/dist.gather() with util.all_gather()/util.gather()
     - Removed _rank_not_in_group check, group_dst parameter
+    - Hardcoded dst=0 (always gather to first rank)
     - Hardcoded cpu device (was: _get_object_coll_device)
     - Inlined _validate_output_list_for_rank as simple assert
     - Dropped group arg from _object_to_tensor/_tensor_to_object (only used for NCCL debug logging, irrelevant on cpu)
@@ -256,7 +255,7 @@ def _gather_object_via_util(
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
 
     my_group_rank = util.get_rank(group)  # was: group.rank()
-    if my_group_rank == dst:
+    if my_group_rank == 0:
         assert object_gather_list is not None
     else:
         assert object_gather_list is None
@@ -277,21 +276,19 @@ def _gather_object_via_util(
     # Resize tensor to max size across all ranks.
     input_tensor.resize_(max_object_size)
     # Avoid populating output tensors if the result won't be gathered on this rank.
-    if my_group_rank == dst:
+    if my_group_rank == 0:
         coalesced_output_tensor = torch.empty(max_object_size * group_size, dtype=torch.uint8, device=current_device)
         # Output tensors are nonoverlapping views of coalesced_output_tensor
         output_tensors = [
             coalesced_output_tensor[max_object_size * i : max_object_size * (i + 1)] for i in range(group_size)
         ]
     # All ranks call gather with equal-sized tensors.
-    # was: gather(input_tensor, gather_list=..., group_dst=dst, group=group)
     util.gather(
         input_tensor,
-        gather_list=output_tensors if my_group_rank == dst else None,
-        dst=dst,
+        gather_list=output_tensors if my_group_rank == 0 else None,
         group=group,
     )
-    if my_group_rank != dst:
+    if my_group_rank != 0:
         return
 
     for i, tensor in enumerate(output_tensors):
