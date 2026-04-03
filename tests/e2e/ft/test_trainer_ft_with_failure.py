@@ -1,6 +1,7 @@
 # NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +16,11 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 4
+
+_WITH_FAILURE_ACTIONS: list[dict] = [
+    {"after_step": 0, "action": "stop_cell", "cell_index": -1},
+    {"after_step": 1, "action": "start_cell", "cell_index": -1},
+]
 
 
 def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> str:
@@ -31,7 +37,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
         phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
         base += f"--load {phase_a_dir}/ckpt "
         if is_target:
-            base += "--ci-ft-test-scenario with_failure "
+            base += f"--ci-ft-test-actions '{json.dumps(_WITH_FAILURE_ACTIONS)}' "
 
     return base
 

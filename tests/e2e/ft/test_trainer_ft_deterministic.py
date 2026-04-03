@@ -1,6 +1,7 @@
 # NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
 
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +16,13 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 5
+
+_DETERMINISTIC_ACTIONS: list[dict] = [
+    {"after_step": 1, "action": "stop_cell", "cell_index": -1},
+    {"after_step": 1, "action": "start_cell", "cell_index": -1},
+    {"after_step": 2, "action": "stop_cell", "cell_index": -1},
+    {"after_step": 3, "action": "start_cell", "cell_index": -1},
+]
 
 
 def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> str:
@@ -32,7 +40,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
         base += f"--load {phase_a_dir}/ckpt "
         if is_target:
             base += (
-                "--ci-ft-test-scenario deterministic "
+                f"--ci-ft-test-actions '{json.dumps(_DETERMINISTIC_ACTIONS)}' "
                 "--save-local-weight-checksum "
                 "--enable-event-analyzer "
             )
