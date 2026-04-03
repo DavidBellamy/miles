@@ -179,12 +179,15 @@ class RayTrainGroup:
 
     @staticmethod
     def _check_train_one_attempt(results):
+        non_error_results = [r for r in results if not isinstance(r, BaseException)]
+        if not non_error_results:
+            raise RuntimeError("All cells failed in this training attempt")
+
         # NOTE: If some cells errors + all other cells claim normal, we do *not* retry
         #       This may happen when some cells fails *after* exchanging gradients w/ others
         if any(
             any(r == TrainStepOutcome.DISCARDED_SHOULD_RETRY for r in cell_results)
-            for cell_results in results
-            if not isinstance(cell_results, BaseException)
+            for cell_results in non_error_results
         ):
             raise ValueError("Exists DISCARDED_SHOULD_RETRY, thus need retry")
 
