@@ -11,7 +11,6 @@ _SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
 
 def _register_scenario(name: str):
-    """Decorator to register a scenario class by name."""
     def _decorator(cls: "type[FTTestScenarioBase]") -> type:
         _SCENARIOS[name] = cls
         return cls
@@ -20,18 +19,12 @@ def _register_scenario(name: str):
 
 @dataclass
 class FTTestContext:
-    """Runtime context shared across scenario callbacks."""
     group: "RayTrainGroup"
     num_cells: int
     current_step: int = 0
 
 
 class FTTestScenarioBase:
-    """Base class for FT test scenarios.
-
-    Subclasses override ``before_step`` and ``after_step`` to inject faults.
-    """
-
     def __init__(self, ctx: FTTestContext) -> None:
         self.ctx = ctx
         self._target_cell_index: int = ctx.num_cells - 1
@@ -42,23 +35,9 @@ class FTTestScenarioBase:
     def after_step(self, step: int) -> None:
         """Called after each train() invocation."""
 
-    def on_complete(self) -> None:
-        """Called after all steps are done."""
-
 
 @_register_scenario("with_failure")
 class _WithFailureScenario(FTTestScenarioBase):
-    """Coordinated stop/start sequence.
-
-    Timeline (phase_b, resuming from ckpt):
-      train() #0: normal (N cells)
-      after #0:   stop_cell(target_cell_index)
-      train() #1: N-1 cells (retry on DISCARDED_SHOULD_RETRY)
-      after #1:   start_cell(target_cell_index)
-      train() #2: _refresh_cells() heals the cell, N cells run
-      train() #3: N cells stable
-    """
-
     def after_step(self, step: int) -> None:
         if step == 0:
             logger.info(
@@ -80,19 +59,6 @@ class _WithFailureScenario(FTTestScenarioBase):
 
 @_register_scenario("deterministic")
 class _DeterministicScenario(FTTestScenarioBase):
-    """Deterministic healing + degraded retry + checkpoint resume verification.
-
-    Timeline (phase_b, resuming from ckpt):
-      train() #0, #1: all N cells normal (2 good steps)
-      after #1:       stop_cell(X) + start_cell(X) (marks pending, healing at next step)
-      train() #2:     healing happens at start, then normal execution.
-                      after #2: stop_cell(X) again (create degraded state)
-      train() #3:     N-1 cells, allreduce fails -> should_commit=false ->
-                      DISCARDED_SHOULD_RETRY -> retry succeeds with N-1 cells.
-                      after #3: start_cell(X) to restore
-      train() #4:     healing + normal execution
-    """
-
     def after_step(self, step: int) -> None:
         if step == 1:
             logger.info(
@@ -121,7 +87,6 @@ class _DeterministicScenario(FTTestScenarioBase):
 
 
 def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:
-    """Look up and instantiate a scenario by name."""
     if name not in _SCENARIOS:
         raise ValueError(
             f"Unknown FT test scenario: {name!r}. Available: {list(_SCENARIOS.keys())}"
