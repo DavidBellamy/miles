@@ -6,11 +6,12 @@ import typer
 
 MODEL_NAME: str = "Qwen3-30B-A3B-5layer"
 MODEL_HF_REPO: str = f"fzyzcjy/{MODEL_NAME}"
-MODEL_TYPE: str = "qwen3-30B-A3B"
+MODEL_TYPE: str = "qwen3-30B-A3B-5layer"
 DEBUG_ROLLOUT_DATA_HF_REPO: str = "fzyzcjy/miles-ft-test-debug-rollout-data"
 
 FULL_MODEL_NAME: str = "Qwen3-30B-A3B"
 FULL_MODEL_HF_REPO: str = f"Qwen/{FULL_MODEL_NAME}"
+FULL_MODEL_TYPE: str = "qwen3-30B-A3B"
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,7 @@ MODES: dict[str, FTTestMode] = {
     "6node_dp4_cp2_tp2_pp2_ep2_etp2": FTTestMode(
         model_name=FULL_MODEL_NAME,
         model_hf_repo=FULL_MODEL_HF_REPO,
-        megatron_model_type=MODEL_TYPE,
+        megatron_model_type=FULL_MODEL_TYPE,
         num_cells=4,
         train_num_nodes=4,
         train_gpus_per_node=8,
