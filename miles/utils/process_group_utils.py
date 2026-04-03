@@ -130,12 +130,12 @@ class _NativePGUtil(GeneralPGUtil):
         dst: int,
         group: dist.ProcessGroup,
     ) -> None:
-        dist.gather(input_tensor, gather_list=gather_list, dst=dst, group=group)
+        dist.gather(input_tensor, gather_list=gather_list, dst=dist.get_global_rank(group, dst), group=group)
 
     def gather_object(
         self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
     ) -> None:
-        dist.gather_object(obj, object_gather_list, dst=dst, group=group)
+        dist.gather_object(obj, object_gather_list, dst=dist.get_global_rank(group, dst), group=group)
 
 
 def _check_wait(work: dist._Work, op_name: str) -> None:
