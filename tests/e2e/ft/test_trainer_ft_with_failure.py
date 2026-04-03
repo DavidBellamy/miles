@@ -19,8 +19,9 @@ NUM_PHASE_B_STEPS: int = 4
 
 # rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _WITH_FAILURE_ACTIONS: list[dict] = [
-    {"after_step": NUM_PHASE_A_STEPS + 0, "action": "stop_cell", "cell_index": -1},
-    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "start_cell", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "crash_before_allreduce", "cell_index": -1, "rank": 0, "attempt": 0},
+    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "stop_cell_at_end", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "start_cell_at_end", "cell_index": -1},
 ]
 
 

@@ -19,10 +19,10 @@ NUM_PHASE_B_STEPS: int = 5
 
 # rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _DETERMINISTIC_ACTIONS: list[dict] = [
-    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "stop_cell", "cell_index": -1},
-    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "start_cell", "cell_index": -1},
-    {"after_step": NUM_PHASE_A_STEPS + 2, "action": "stop_cell", "cell_index": -1},
-    {"after_step": NUM_PHASE_A_STEPS + 3, "action": "start_cell", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "stop_cell_at_end", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "start_cell_at_end", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 2, "action": "stop_cell_at_end", "cell_index": -1},
+    {"at_rollout": NUM_PHASE_A_STEPS + 3, "action": "start_cell_at_end", "cell_index": -1},
 ]
 
 
