@@ -1,17 +1,3 @@
-"""Fault tolerance test scenarios executed inside the training job.
-
-Each scenario function is invoked at step boundaries by the training loop
-when ``--ci-ft-test-scenario`` is set. Scenarios perform coordinated fault
-injection (stop/start cells) and are deterministic.
-
-The scenario is called as a *step callback* — it receives the current
-``FTTestContext`` and decides what to do before/after each ``train()`` call.
-
-NOTE: RandomFailureScenario is NOT here — it runs externally via
-``test_ft_random.py`` calling the control server HTTP API, completely
-decoupled from the training loop.
-"""
-
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -21,13 +7,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
+_SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
 
 def register_scenario(name: str):
     """Decorator to register a scenario class by name."""
     def _decorator(cls: type) -> type:
-        SCENARIOS[name] = cls
+        _SCENARIOS[name] = cls
         return cls
     return _decorator
 
@@ -136,8 +122,8 @@ class DeterministicScenario(FTTestScenarioBase):
 
 def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:
     """Look up and instantiate a scenario by name."""
-    if name not in SCENARIOS:
+    if name not in _SCENARIOS:
         raise ValueError(
-            f"Unknown FT test scenario: {name!r}. Available: {list(SCENARIOS.keys())}"
+            f"Unknown FT test scenario: {name!r}. Available: {list(_SCENARIOS.keys())}"
         )
-    return SCENARIOS[name](ctx)
+    return _SCENARIOS[name](ctx)
