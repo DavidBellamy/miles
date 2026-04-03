@@ -1,4 +1,4 @@
-# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
+# NOTE: You MUST read tests/e2e/ft/README.md as source-of-truth and documentations
 
 import tempfile
 from collections.abc import Callable
