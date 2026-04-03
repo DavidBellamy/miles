@@ -38,6 +38,7 @@ class OpenAIEndpointTracer:
         return OpenAIEndpointTracer(router_url=session_url, session_id=session_id)
 
     async def collect_records(self) -> tuple[list[SessionRecord], dict]:
+        url = f"{self.router_url}/sessions/{self.session_id}"
         try:
             response = await asyncio.wait_for(
                 post(self.base_url, {}, action="get"),
