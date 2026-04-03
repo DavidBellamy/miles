@@ -108,9 +108,15 @@ def get_ft_args(mode: FTTestMode) -> str:
     )
 
 
-def run_training(train_args: str, mode: FTTestMode) -> None:
+def run_training(
+    train_args: str,
+    mode: FTTestMode,
+    *,
+    extra_env_vars: dict[str, str] | None = None,
+) -> None:
     U.execute_train(
         train_args=train_args,
         num_gpus_per_node=mode.train_gpus_per_node,
         megatron_model_type=mode.megatron_model_type,
+        extra_env_vars=extra_env_vars or {},
     )

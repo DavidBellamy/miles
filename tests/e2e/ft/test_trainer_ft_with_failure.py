@@ -67,6 +67,7 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
 
 
 app = create_comparison_app(
+    test_name=Path(__file__).stem,
     build_baseline_args=_build_baseline_args,
     build_target_args=_build_target_args,
     compare_fn=_compare,

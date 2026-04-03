@@ -17,6 +17,12 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 5
 
+_DETERMINISTIC_ENV_VARS: str = (
+    '--train-env-vars \'{"NCCL_ALGO": "Ring", '
+    '"NVTE_ALLOW_NONDETERMINISTIC_ALGO": "0", '
+    '"CUBLAS_WORKSPACE_CONFIG": ":4096:8"}\' '
+)
+
 # rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _DETERMINISTIC_ACTIONS: list[dict] = [
     {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "stop_cell_at_end", "cell_index": -1},
@@ -30,6 +36,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
     is_phase_a: bool = dump_dir.endswith("phase_a")
     num_steps = NUM_PHASE_A_STEPS if is_phase_a else NUM_PHASE_B_STEPS
     base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=num_steps)
+    base += "--deterministic-mode " + _DETERMINISTIC_ENV_VARS
 
     if is_target:
         base += get_ft_args(mode)
@@ -68,6 +75,7 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
 
 
 app = create_comparison_app(
+    test_name=Path(__file__).stem,
     build_baseline_args=_build_baseline_args,
     build_target_args=_build_target_args,
     compare_fn=_compare,

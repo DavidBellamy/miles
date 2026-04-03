@@ -1,6 +1,6 @@
 # NOTE: You MUST read tests/e2e/ft/README.md as source-of-truth and documentations
 
-import tempfile
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -11,8 +11,21 @@ from tests.e2e.ft.conftest_ft.execution import prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
+def _resolve_dump_dir(test_name: str) -> str:
+    output_dir = os.environ.get("MILES_SCRIPT_OUTPUT_DIR")
+    if output_dir is None:
+        raise RuntimeError(
+            "MILES_SCRIPT_OUTPUT_DIR environment variable is required but not set. "
+            "Set it to the output directory for this test run."
+        )
+    dump_dir = str(Path(output_dir) / "dumps" / test_name)
+    os.makedirs(dump_dir, exist_ok=True)
+    return dump_dir
+
+
 def create_comparison_app(
     *,
+    test_name: str,
     build_baseline_args: Callable[[FTTestMode, str], str],
     build_target_args: Callable[[FTTestMode, str], str],
     compare_fn: Callable[[str, FTTestMode], None],
@@ -40,7 +53,7 @@ def create_comparison_app(
     ) -> None:
         ft_mode = resolve_mode(mode)
         if dump_dir is None:
-            dump_dir = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
+            dump_dir = _resolve_dump_dir(test_name)
         sub = _get_dump_subdir(side, phase)
         full_dump_dir = f"{dump_dir}/{sub}"
         args = build_fn(ft_mode, full_dump_dir)
@@ -80,7 +93,7 @@ def create_comparison_app(
     ) -> None:
         """Full pipeline: prepare + all phases + compare."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
+        dump_dir: str = _resolve_dump_dir(test_name)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)
@@ -102,6 +115,7 @@ def create_comparison_app(
 
 def create_non_comparison_app(
     *,
+    test_name: str,
     build_args: Callable[[FTTestMode, str], str],
     verify_fn: Callable[[str, FTTestMode], None] | None = None,
 ) -> typer.Typer:
@@ -114,7 +128,7 @@ def create_non_comparison_app(
     ) -> None:
         """Full pipeline: prepare + execute + verify."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
+        dump_dir: str = _resolve_dump_dir(test_name)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)
