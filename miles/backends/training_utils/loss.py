@@ -26,7 +26,7 @@ from .cp_utils import (
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
 )
-from .parallel import get_parallel_state
+from .parallel import ParallelState, get_parallel_state
 
 
 def get_responses(
