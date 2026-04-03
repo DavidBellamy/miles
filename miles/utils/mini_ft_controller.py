@@ -193,8 +193,8 @@ class _MiniFTController:
             await self._resume_cell(cell_name)
 
             backoff.consecutive_failures = 0
-            backoff.next_attempt_at = 0.0
-            logger.info("Successfully healed cell %s", cell_name)
+            backoff.next_attempt_at = self._clock() + self._resume_delay
+            logger.info("Successfully healed cell %s, cooldown until %.0f", cell_name, backoff.next_attempt_at)
         except Exception:
             backoff.consecutive_failures += 1
             delay = min(5 * (2**backoff.consecutive_failures), 300)
