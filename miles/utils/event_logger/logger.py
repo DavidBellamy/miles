@@ -23,6 +23,7 @@ class EventLogger:
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._closed = False
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
         self._context_var: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
@@ -59,6 +60,9 @@ class EventLogger:
         )
         line = event.model_dump_json() + "\n"
         with self._lock:
+            if self._closed:
+                logger.debug("EventLogger already closed, dropping event")
+                return
             self._file.write(line)
             self._file.flush()
         if print_log:
@@ -66,6 +70,7 @@ class EventLogger:
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             self._file.close()
 
 
