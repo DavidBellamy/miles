@@ -396,9 +396,12 @@ class TestMultimodal:
         test_image = Image.new("RGB", (64, 64), color="red")
         multimodal_inputs = {"images": [test_image]}
         processor = AutoProcessor.from_pretrained(VLM_MODEL_NAME, trust_remote_code=True)
+        from miles.utils.processing_utils import build_processor_kwargs
+
+        processor_kwargs = build_processor_kwargs(multimodal_inputs)
         expected_mti = {
             k: v
-            for k, v in processor(text=PROMPT, return_tensors="pt", **multimodal_inputs).items()
+            for k, v in processor(text=PROMPT, **processor_kwargs).items()
             if k not in ["input_ids", "attention_mask"]
         }
 

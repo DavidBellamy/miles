@@ -28,15 +28,9 @@ def load_tokenizer(name_or_path: str, chat_template_path: str = None, **kwargs):
 
 def build_processor_kwargs(multimodal_inputs: dict | None = None) -> dict:
 
-    forced = {
-        # force return_tensors to None for input_ids
-        "return_tensors": None,
-    }
     modality_forced = {"return_tensors": "pt"}
 
     result = dict(multimodal_inputs) if multimodal_inputs else {}
-
-    result.update(forced)
 
     # set return_tensors="pt" for modality-specific outputs
     for key in ("audio_kwargs", "images_kwargs", "videos_kwargs"):
