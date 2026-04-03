@@ -28,6 +28,7 @@ from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_repli
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
+from miles.utils.test_utils.ft_test_actions import FTTestActionActorExecutor
 from miles.utils.witness.allocator import WitnessInfo
 from miles.utils.witness.module import witness_dump_and_clear_stale
 
@@ -343,6 +344,7 @@ def train_one_step(
     num_microbatches: int,
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
+    attempt: int = 0,
 ) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
 
@@ -479,6 +481,14 @@ def train_one_step(
 
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"
+
+        FTTestActionActorExecutor.from_args(args).maybe_crash(
+            rollout_id=rollout_id,
+            attempt=attempt,
+            cell_index=getattr(args, "ci_ft_cell_index", -999),
+            rank=getattr(args, "ci_ft_rank", -999),
+        )
+
         ok = _allreduce_grads_across_replicas(args, model, parallel_state)
         if not ok:
             outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
@@ -546,6 +556,7 @@ def train(
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
+    attempt: int = 0,
 ) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
 
@@ -641,6 +652,7 @@ def train(
             num_microbatches[step_id],
             parallel_state,
             witness_info=witness_info,
+            attempt=attempt,
         )
 
         if step_id == 0:

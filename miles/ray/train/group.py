@@ -16,7 +16,7 @@ from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerCon
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
-from miles.utils.test_utils.ft_test_actions import FTTestActionExecutor
+from miles.utils.test_utils.ft_test_actions import FTTestActionGroupExecutor
 from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ class RayTrainGroup:
             WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
         )
 
-        self._test_action_executor = FTTestActionExecutor.from_args(args, group=self)
+        self._test_action_executor = FTTestActionGroupExecutor.from_args(args, group=self)
 
     # ------------------------ API :: train ------------------------
 
@@ -133,6 +133,7 @@ class RayTrainGroup:
                 rollout_id=rollout_id,
                 rollout_data_ref=rollout_data_pack["data_ref"],
                 witness_info=witness_info,
+                attempt=attempt,
             )
             self._check_train_one_attempt(results)
 

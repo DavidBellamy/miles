@@ -83,6 +83,9 @@ class MegatronTrainRayActor(TrainRayActor):
             indep_dp_info=indep_dp_info,
         )
 
+        args.ci_ft_cell_index = indep_dp_info.cell_index
+        args.ci_ft_rank = self._rank
+
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
 
@@ -330,12 +333,13 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info: dict(rollout_id=rollout_id))
+    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info, attempt=0: dict(rollout_id=rollout_id))
     def train(
         self,
         rollout_id: int,
         rollout_data_ref: Box,
         witness_info: WitnessInfo | None,
+        attempt: int = 0,
     ) -> TrainStepOutcome:
         self._heartbeat.bump()
         self._last_rollout_id = rollout_id
@@ -353,7 +357,7 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.role == "critic":
             return self.train_critic(rollout_id, rollout_data)
         else:
-            return self.train_actor(rollout_id, rollout_data, witness_info=witness_info)
+            return self.train_actor(rollout_id, rollout_data, witness_info=witness_info, attempt=attempt)
 
     def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> TrainStepOutcome:
         # Create data iterator for log_probs and train.
@@ -392,7 +396,7 @@ class MegatronTrainRayActor(TrainRayActor):
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
     def train_actor(
-        self, rollout_id: int, rollout_data: RolloutBatch, *, witness_info: WitnessInfo | None
+        self, rollout_id: int, rollout_data: RolloutBatch, *, witness_info: WitnessInfo | None, attempt: int = 0
     ) -> TrainStepOutcome:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
@@ -470,6 +474,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     num_microbatches,
                     self.parallel_state,
                     witness_info=witness_info,
+                    attempt=attempt,
                 )
 
             self.prof.step(rollout_id=rollout_id)
