@@ -56,6 +56,7 @@ class FakeClock(Clock):
         future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._counter += 1
         heapq.heappush(self._waiters, _Waiter(target=target, seq=self._counter, future=future))
+        self._resolve_ready()
         await future
 
     async def elapse(self, seconds: float) -> None:
