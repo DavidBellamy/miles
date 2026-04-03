@@ -12,6 +12,10 @@ class WitnessIdAllocator:
         self._counter: int = 0
 
     def allocate(self, num_ids: int) -> WitnessInfo:
+        assert num_ids <= self._buffer_size, (
+            f"num_ids ({num_ids}) exceeds buffer_size ({self._buffer_size}). "
+            f"Increase --witness-buffer-size."
+        )
         ids = [(self._counter + i) % self._buffer_size for i in range(num_ids)]
         stale_ids = _compute_stale_ids(
             keep_count=int(self._buffer_size * 0.7),

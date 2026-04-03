@@ -1,5 +1,7 @@
 """Tests for miles.utils.witness.allocator: WitnessIdAllocator, _compute_stale_ids."""
 
+import pytest
+
 from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo, _compute_stale_ids
 
 
@@ -40,12 +42,11 @@ class TestWitnessIdAllocator:
         assert info.witness_ids == []
         assert isinstance(info.stale_ids, list)
 
-    def test_allocate_more_than_buffer_size(self) -> None:
-        """num_ids > buffer_size causes the ring buffer to wrap, producing duplicate IDs."""
-        allocator = WitnessIdAllocator(buffer_size=4)
-        info = allocator.allocate(6)
-        assert len(info.witness_ids) == 6
-        assert len(set(info.witness_ids)) < len(info.witness_ids)
+    def test_allocate_exceeds_buffer_size_raises(self) -> None:
+        """num_ids > buffer_size raises AssertionError."""
+        allocator = WitnessIdAllocator(buffer_size=5)
+        with pytest.raises(AssertionError, match="exceeds buffer_size"):
+            allocator.allocate(num_ids=10)
 
     def test_consecutive_allocations_stale_ids_evolve(self) -> None:
         """Consecutive allocate calls should produce evolving stale_ids as counter grows."""
