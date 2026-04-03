@@ -34,12 +34,13 @@ def _run_fault_injection_loop(
     *,
     base_url: str,
     seed: int,
+    mean_interval_seconds: float,
     stop_event: threading.Event,
 ) -> None:
     rng = random.Random(seed)
 
     while not stop_event.is_set():
-        delay = rng.expovariate(1.0 / _MEAN_INTERVAL_SECONDS)
+        delay = rng.expovariate(1.0 / mean_interval_seconds)
         if stop_event.wait(timeout=delay):
             break
 
@@ -60,11 +61,12 @@ def _run_fault_injection_loop(
         mode = rng.choice(_FAILURE_MODES)
 
         try:
-            requests.post(
+            resp = requests.post(
                 f"{base_url}/api/v1/cells/{cell_name}/inject-fault",
                 json={"mode": mode.value, "sub_index": 0},
                 timeout=5,
             )
+            resp.raise_for_status()
         except Exception:
             logger.info("Failed to inject fault into %s", cell_name, exc_info=True)
 
@@ -84,7 +86,8 @@ def run(
     ft_mode: FTTestMode = resolve_mode(mode)
     dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_random_failure_")) / "dumps")
     print(f"Dump directory: {dump_dir}")
-    print(f"Seed: {seed}, Steps: {num_steps}")
+    mean_interval: float = _MEAN_INTERVAL_SECONDS / max(crash_probability, 0.01)
+    print(f"Seed: {seed}, Steps: {num_steps}, Mean injection interval: {mean_interval:.1f}s")
 
     prepare(ft_mode)
 
@@ -101,7 +104,7 @@ def run(
     stop_event = threading.Event()
     injector_thread = threading.Thread(
         target=_run_fault_injection_loop,
-        kwargs={"base_url": base_url, "seed": seed, "stop_event": stop_event},
+        kwargs={"base_url": base_url, "seed": seed, "mean_interval_seconds": mean_interval, "stop_event": stop_event},
         daemon=True,
         name="ft-random-fault-injector",
     )
