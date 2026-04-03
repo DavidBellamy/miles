@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 _SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
 
-def register_scenario(name: str):
+def _register_scenario(name: str):
     """Decorator to register a scenario class by name."""
     def _decorator(cls: type) -> type:
         _SCENARIOS[name] = cls
@@ -46,9 +46,9 @@ class FTTestScenarioBase:
         """Called after all steps are done."""
 
 
-@register_scenario("with_failure")
-class WithFailureScenario(FTTestScenarioBase):
-    """Task 2: Coordinated stop/start sequence.
+@_register_scenario("with_failure")
+class _WithFailureScenario(FTTestScenarioBase):
+    """Coordinated stop/start sequence.
 
     Timeline (phase_b, resuming from ckpt):
       train() #0: normal (N cells)
@@ -78,9 +78,9 @@ class WithFailureScenario(FTTestScenarioBase):
         logger.info("WithFailureScenario: completed successfully")
 
 
-@register_scenario("deterministic")
-class DeterministicScenario(FTTestScenarioBase):
-    """Task 3: Deterministic healing + degraded retry + checkpoint resume verification.
+@_register_scenario("deterministic")
+class _DeterministicScenario(FTTestScenarioBase):
+    """Deterministic healing + degraded retry + checkpoint resume verification.
 
     Timeline (phase_b, resuming from ckpt):
       train() #0, #1: all N cells normal (2 good steps)
