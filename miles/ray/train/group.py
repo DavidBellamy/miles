@@ -113,10 +113,6 @@ class RayTrainGroup:
 
         self._test_action_executor = FTTestActionExecutor.from_args(args, group=self)
 
-    @property
-    def num_cells(self) -> int:
-        return len(self._cells)
-
     # ------------------------ API :: train ------------------------
 
     async def train(self, rollout_id: int, rollout_data_pack):
@@ -342,6 +338,11 @@ class RayTrainGroup:
             alive_cell_indices=alive_cell_indices,
         )
 
+    # ------------------------ misc states and utils ------------------------
+
+    @property
+    def num_cells(self) -> int:
+        return len(self._cells)
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
 
