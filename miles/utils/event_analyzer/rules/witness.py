@@ -1,7 +1,7 @@
 import logging
 from typing import Type, Generator
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
     TrainGroupStepEndEvent,

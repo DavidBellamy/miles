@@ -6,7 +6,6 @@ import logging
 import math
 from argparse import Namespace
 from collections.abc import Callable, Sequence
-from enum import StrEnum, auto
 from functools import partial
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from megatron.training.training import get_model
 
 from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_replicas
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
 from miles.utils.test_utils.ft_test_actions import FTTestActionActorExecutor
@@ -326,11 +326,6 @@ def forward_only(
         for key, value in aggregated.items():
             rollout_data[f"{store_prefix}{key}"] = value
     return rollout_data
-
-
-class TrainStepOutcome(StrEnum):
-    NORMAL = auto()
-    DISCARDED_SHOULD_RETRY = auto()
 
 
 def train_one_step(

@@ -5,7 +5,7 @@ import pytest
 import ray
 from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.witness.allocator import WitnessIdAllocator
 

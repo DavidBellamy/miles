@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
     RolloutGenerateCompletedEvent,

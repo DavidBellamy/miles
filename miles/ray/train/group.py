@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import ray
 from ray.util.placement_group import PlacementGroup
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.ray.train.actor_factory import allocate_gpus_for_actor
 from miles.ray.train.cell import RayTrainCell
 from miles.ray.train.cell_monitor import create_trainer_cell_health_checker

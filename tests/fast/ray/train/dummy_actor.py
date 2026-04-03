@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.heartbeat_utils import HeartbeatStatus, SimpleHeartbeat
 
 

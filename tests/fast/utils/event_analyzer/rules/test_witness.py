@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from pydantic import TypeAdapter
 
-from miles.backends.megatron_utils.model import TrainStepOutcome
+from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_analyzer.rules.witness import WitnessDataMismatchIssue, WitnessMissingSnapshotIssue, check
 from miles.utils.event_logger.models import (
     Event,
