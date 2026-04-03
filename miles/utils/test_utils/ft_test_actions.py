@@ -25,32 +25,29 @@ class FTTestAction(FrozenStrictBaseModel):
 
 _ACTION_LIST_ADAPTER: TypeAdapter[list[FTTestAction]] = TypeAdapter(list[FTTestAction])
 
-
-def _parse_ft_test_actions(raw: str | None) -> list[FTTestAction]:
-    if not raw:
-        return []
-    return _ACTION_LIST_ADAPTER.validate_json(raw)
-
-
 _GROUP_ACTIONS = {"stop_cell_at_end", "start_cell_at_end"}
 _ACTOR_ACTIONS = {"crash_before_allreduce"}
 
 
-class FTTestActionGroupExecutor:
-    """Runs in RayTrainGroup.train() after each step. Handles stop_cell_at_end / start_cell_at_end."""
+def _load_actions(args: object, action_filter: set[str]) -> list[FTTestAction]:
+    raw: str | None = getattr(args, "ci_ft_test_actions", None)
+    if not raw:
+        return []
+    all_actions = _ACTION_LIST_ADAPTER.validate_json(raw)
+    actions = [a for a in all_actions if a.action in action_filter]
+    if actions:
+        logger.info("FT test actions activated: %d actions (%s)", len(actions), action_filter)
+    return actions
 
+
+class FTTestActionGroupExecutor:
     def __init__(self, *, actions: list[FTTestAction], group: "RayTrainGroup") -> None:
         self._actions = actions
         self._group = group
 
     @staticmethod
     def from_args(args: object, *, group: "RayTrainGroup") -> "FTTestActionGroupExecutor":
-        raw: str | None = getattr(args, "ci_ft_test_actions", None)
-        all_actions = _parse_ft_test_actions(raw)
-        actions = [a for a in all_actions if a.action in _GROUP_ACTIONS]
-        if actions:
-            logger.info("FT test group actions activated: %d actions", len(actions))
-        return FTTestActionGroupExecutor(actions=actions, group=group)
+        return FTTestActionGroupExecutor(actions=_load_actions(args, _GROUP_ACTIONS), group=group)
 
     def run_after_step(self, rollout_id: int) -> None:
         for action in self._actions:
@@ -65,8 +62,6 @@ class FTTestActionGroupExecutor:
 
 
 class FTTestActionActorExecutor:
-    """Runs in train_one_step() before allreduce. Handles crash_before_allreduce."""
-
     def __init__(self, *, actions: list[FTTestAction], cell_index: int, num_cells: int, rank: int) -> None:
         self._actions = actions
         self._cell_index = cell_index
@@ -77,29 +72,21 @@ class FTTestActionActorExecutor:
     def from_args(
         args: object, *, cell_index: int, num_cells: int, rank: int,
     ) -> "FTTestActionActorExecutor":
-        raw: str | None = getattr(args, "ci_ft_test_actions", None)
-        all_actions = _parse_ft_test_actions(raw)
-        actions = [a for a in all_actions if a.action in _ACTOR_ACTIONS]
-        if actions:
-            logger.info("FT test actor actions activated: %d actions", len(actions))
         return FTTestActionActorExecutor(
-            actions=actions, cell_index=cell_index, num_cells=num_cells, rank=rank,
+            actions=_load_actions(args, _ACTOR_ACTIONS),
+            cell_index=cell_index, num_cells=num_cells, rank=rank,
         )
 
     def maybe_crash(self, *, rollout_id: int, attempt: int) -> None:
         for action in self._actions:
-            resolved_cell = action.resolve_cell_index(self._num_cells)
             if (
                 action.at_rollout == rollout_id
                 and action.attempt == attempt
-                and resolved_cell == self._cell_index
+                and action.resolve_cell_index(self._num_cells) == self._cell_index
                 and action.rank == self._rank
             ):
                 logger.warning(
                     "FT test action: crash_before_allreduce at rollout %d attempt %d cell %d rank %d — calling os._exit(1)",
-                    rollout_id,
-                    attempt,
-                    self._cell_index,
-                    self._rank,
+                    rollout_id, attempt, self._cell_index, self._rank,
                 )
                 os._exit(1)
