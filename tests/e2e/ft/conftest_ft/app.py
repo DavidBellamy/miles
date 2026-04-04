@@ -11,6 +11,24 @@ from tests.e2e.ft.conftest_ft.execution import get_common_train_args, prepare, r
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
+def _strip_dumper_args(args: str) -> str:
+    """Remove --dumper-* arguments and their values from a training args string."""
+    tokens = args.split()
+    result: list[str] = []
+    skip_values = False
+    for token in tokens:
+        if token.startswith("--dumper-"):
+            skip_values = True
+            continue
+        if skip_values:
+            if token.startswith("--"):
+                skip_values = False
+                result.append(token)
+            continue
+        result.append(token)
+    return " ".join(result)
+
+
 def resolve_dump_dir(test_name: str) -> str:
     output_dir = os.environ.get("MILES_SCRIPT_OUTPUT_DIR")
     if output_dir is None:
@@ -50,6 +68,8 @@ def create_comparison_app(
         mode: str,
         dump_dir: str | None,
         phase: str,
+        *,
+        no_dump: bool = False,
     ) -> None:
         ft_mode = resolve_mode(mode)
         if dump_dir is None:
@@ -57,6 +77,8 @@ def create_comparison_app(
         sub = _get_dump_subdir(side, phase)
         full_dump_dir = f"{dump_dir}/{sub}"
         args = build_fn(ft_mode, full_dump_dir)
+        if no_dump:
+            args = _strip_dumper_args(args)
         prepare(ft_mode)
         run_training(train_args=args, mode=ft_mode, dump_dir=full_dump_dir)
 
@@ -65,18 +87,20 @@ def create_comparison_app(
         mode: Annotated[str, typer.Option(help="Test mode variant")],
         dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
+        no_dump: Annotated[bool, typer.Option(help="Disable dumper output")] = False,
     ) -> None:
         """Run baseline (normal DP) training."""
-        _run_side("baseline", build_baseline_args, mode, dump_dir, phase)
+        _run_side("baseline", build_baseline_args, mode, dump_dir, phase, no_dump=no_dump)
 
     @app.command()
     def target(
         mode: Annotated[str, typer.Option(help="Test mode variant")],
         dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
+        no_dump: Annotated[bool, typer.Option(help="Disable dumper output")] = False,
     ) -> None:
         """Run target (indep_dp) training."""
-        _run_side("target", build_target_args, mode, dump_dir, phase)
+        _run_side("target", build_target_args, mode, dump_dir, phase, no_dump=no_dump)
 
     @app.command()
     def compare(
@@ -90,6 +114,7 @@ def create_comparison_app(
     @app.command()
     def run(
         mode: Annotated[str, typer.Option(help="Test mode variant")],
+        no_dump: Annotated[bool, typer.Option(help="Disable dumper output")] = False,
     ) -> None:
         """Full pipeline: prepare + all phases + compare."""
         ft_mode = resolve_mode(mode)
@@ -104,13 +129,18 @@ def create_comparison_app(
 
             baseline_dump = f"{dump_dir}/{sub_baseline}"
             baseline_args = build_baseline_args(ft_mode, baseline_dump)
+            if no_dump:
+                baseline_args = _strip_dumper_args(baseline_args)
             run_training(train_args=baseline_args, mode=ft_mode, dump_dir=baseline_dump)
 
             target_dump = f"{dump_dir}/{sub_target}"
             target_args = build_target_args(ft_mode, target_dump)
+            if no_dump:
+                target_args = _strip_dumper_args(target_args)
             run_training(train_args=target_args, mode=ft_mode, dump_dir=target_dump)
 
-        compare_fn(dump_dir, ft_mode)
+        if not no_dump:
+            compare_fn(dump_dir, ft_mode)
 
     @app.command()
     def generate_data(
