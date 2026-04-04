@@ -54,6 +54,11 @@ async def run(
         "base_url": session_url,
         "model": f"openai/{model_name}",
         "sampling_params": request_kwargs,
+        "agent_kwargs": {
+            "parser_name": "xml",
+            "interleaved_thinking": True,
+            "abort_on_response_length_exceeded": True,
+        },
     }
 
     max_seq_len = metadata.get("max_seq_len")
