@@ -489,12 +489,10 @@ class RolloutManager:
             self._metric_checker.on_eval(metrics)
 
     def save(self, rollout_id):
-        if self.data_source is not None:
-            self.data_source.save(rollout_id)
+        self.data_source.save(rollout_id)
 
     def load(self, rollout_id=None):
-        if self.data_source is not None:
-            self.data_source.load(rollout_id)
+        self.data_source.load(rollout_id)
 
     def offload(self, tags: list[str] | None = None):
         self.health_monitoring_pause()
