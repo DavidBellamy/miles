@@ -1894,12 +1894,7 @@ def miles_validate_args(args):
             f"indep_dp requires train_backend='megatron', got '{args.train_backend}'"
         )
         per_replica_size = compute_megatron_world_size_except_dp(args)
-        original_world_size = args.world_size
-        assert original_world_size % per_replica_size == 0, (
-            f"world_size ({original_world_size}) must be divisible by per_replica_size ({per_replica_size})"
-        )
-        args.indep_dp_num_cells = original_world_size // per_replica_size
-        logger.info(f"indep_dp: adjusting args.world_size from {original_world_size} to {per_replica_size} (per-cell, num_cells={args.indep_dp_num_cells})")
+        logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica_size} (per-cell)")
         args.world_size = per_replica_size
 
     # Normalize --tito-allowed-append-roles: lowercase + deduplicate.
@@ -2106,15 +2101,6 @@ def miles_validate_args(args):
                 f"// num_steps_per_rollout {args.num_steps_per_rollout}"
             )
         args.global_batch_size = global_batch_size
-
-    if args.indep_dp:
-        num_cells = args.indep_dp_num_cells
-        assert args.global_batch_size % num_cells == 0, (
-            f"global_batch_size ({args.global_batch_size}) must be divisible by num_cells ({num_cells})"
-        )
-        per_cell_batch_size = args.global_batch_size // num_cells
-        logger.info(f"indep_dp: adjusting global_batch_size from {args.global_batch_size} to {per_cell_batch_size} (per-cell)")
-        args.global_batch_size = per_cell_batch_size
 
     if args.n_samples_per_prompt == 1:
         args.grpo_std_normalization = False
