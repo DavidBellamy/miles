@@ -3,7 +3,11 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 import torch
-from torchft.checkpointing.pg_transport import PGTransport
+
+try:
+    from torchft.checkpointing.pg_transport import PGTransport
+except ImportError:
+    PGTransport = None
 
 from miles.backends.megatron_utils.in_memory_checkpoint import InMemoryCheckpointManager, save_to_memory
 from miles.utils.process_group_utils import GroupInfo

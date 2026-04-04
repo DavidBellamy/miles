@@ -25,7 +25,10 @@ def create_indep_dp_group(
     if indep_dp_info.alive_size <= 1:
         return GroupInfo(rank=0, size=1, group=None)
 
-    from torchft.process_group import ProcessGroupGloo, ProcessGroupNCCL
+    try:
+        from torchft.process_group import ProcessGroupGloo, ProcessGroupNCCL
+    except ImportError as e:
+        raise ImportError("torchft is required for indep_dp. Install with: pip install torchft") from e
 
     def _create(pg_cls: type, backend_name: str) -> dist.ProcessGroup:
         pg = pg_cls(timeout=timedelta(seconds=60))
