@@ -56,10 +56,6 @@ def execute():
     ckpt_args = (
         f"--hf-checkpoint {MODEL_DIR}/{MODEL_NAME}-NVFP4-current "
         f"--ref-load {MODEL_DIR}/{MODEL_NAME}_torch_dist "
-        "--rollout-nvfp4-restart-sync "
-        f"--bridge-hf-checkpoint {MODEL_DIR}/{MODEL_NAME}-bf16 "
-        "--rollout-refresh-keep-first-n 0 "
-        "--rollout-refresh-keep-last-n 0 "
     )
 
     rollout_args = (

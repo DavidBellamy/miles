@@ -64,17 +64,7 @@ def convert_checkpoint(
 
 
 def rsync_simple(path_src: str, path_dst: str):
-    src = Path(path_src).resolve()
-    dst = Path(path_dst).resolve()
-    if src == dst:
-        print(f"rsync skip {path_src} -> {path_dst} since source and destination are identical")
-        return
-    cmd = f"mkdir -p {path_dst} && rsync -a --info=progress2 {path_src}/ {path_dst}"
-    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", "1"))
-    if num_nodes <= 1:
-        exec_command(cmd)
-        return
-    exec_command_all_ray_node(cmd, num_nodes=num_nodes)
+    exec_command_all_ray_node(f"mkdir -p {path_dst} && rsync -a --info=progress2 {path_src}/ {path_dst}")
 
 
 def hf_download_dataset(full_name: str, data_dir: str = "/root/datasets"):
@@ -166,8 +156,6 @@ def execute_train(
                     }
                 ),
                 "NCCL_NVLS_ENABLE": os.environ.get("NCCL_NVLS_ENABLE", str(int(check_has_nvlink()))),
-                **({"LD_LIBRARY_PATH": os.environ["LD_LIBRARY_PATH"]} if "LD_LIBRARY_PATH" in os.environ else {}),
-                "DEPRECATED_MEGATRON_COMPATIBLE": os.environ.get("DEPRECATED_MEGATRON_COMPATIBLE", "1"),
                 **{k: os.environ[k] for k in ("NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME") if k in os.environ},
                 "no_proxy": f"127.0.0.1,{master_addr}",
                 # This is needed by megatron / torch distributed in multi-node setup

@@ -45,9 +45,6 @@ class ScriptArgs(U.ExecuteTrainConfig):
     model_local_dir: str = "/shared/zhichen/models"
     megatron_path: str = "/root/Megatron-LM"
     rollout_nvfp4: bool = False
-    rollout_nvfp4_restart_sync: bool = False
-    nvfp4_keep_first_n: int = 0
-    nvfp4_keep_last_n: int = 0
     optimizer_cpu_offload: bool = False
     skip_prepare: bool = False
     # Megatron parallelism overrides (0 = auto-select based on model/GPU count)
@@ -89,12 +86,10 @@ def _prepare_nvfp4_ckpt(args: ScriptArgs):
         print(f"nvfp4 conversion skip {path_dst} since model.safetensors.index.json exists")
         return
 
-    keep_first_arg = f" --keep-first-n {args.nvfp4_keep_first_n}" if args.nvfp4_keep_first_n > 0 else ""
-    keep_last_arg = f" --keep-last-n {args.nvfp4_keep_last_n}" if args.nvfp4_keep_last_n > 0 else ""
     U.exec_command(
         f"python tools/convert_hf_to_nvfp4.py "
         f"--model-dir {args.model_dir}/{args.model_name}-bf16 "
-        f"--save-dir {path_dst}{keep_first_arg}{keep_last_arg}"
+        f"--save-dir {path_dst}"
     )
 
 
@@ -179,15 +174,6 @@ def _execute_train(args: ScriptArgs):
         "--save-interval 20 "
         "--save-retain-interval 20 "
     )
-    if args.rollout_nvfp4 and args.rollout_nvfp4_restart_sync:
-        ckpt_args += (
-            "--rollout-nvfp4-restart-sync "
-            f"--bridge-hf-checkpoint {args.model_dir}/{args.model_name}-bf16 "
-            f"--rollout-refresh-parent-dir {args.output_dir}/{args.run_id}/rollout_sync "
-            f"--rollout-refresh-keep-first-n {args.nvfp4_keep_first_n} "
-            f"--rollout-refresh-keep-last-n {args.nvfp4_keep_last_n} "
-        )
-
     num_rollout = 64 if args.mode == "debug_minimal" else 3000
     rollout_batch_size = 16 if args.mode == "debug_minimal" else 128
     rollout_args = (
