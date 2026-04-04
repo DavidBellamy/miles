@@ -218,7 +218,6 @@ class MegatronTrainRayActor(TrainRayActor):
 
         clear_memory(clear_host_memory=True)
         print_memory("before offload model")
-
         should_log_cpu_memory = is_first_replica_megatron_main_rank() and hasattr(self, "_last_rollout_id")
 
         destroy_process_groups()
