@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from tests.e2e.ft.conftest_ft.execution import prepare, run_training
+from tests.e2e.ft.conftest_ft.execution import get_common_train_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
@@ -111,6 +111,19 @@ def create_comparison_app(
             run_training(train_args=target_args, mode=ft_mode, dump_dir=target_dump)
 
         compare_fn(dump_dir, ft_mode)
+
+    @app.command()
+    def generate_data(
+        mode: Annotated[str, typer.Option(help="Test mode variant (must have real rollout)")],
+        num_steps: Annotated[int, typer.Option(help="Number of rollout steps to generate")] = 12,
+        output_dir: Annotated[str, typer.Option(help="Output directory for rollout data")] = "/tmp/generated_rollout_data",
+    ) -> None:
+        """Generate debug rollout data using real rollout (no dumper)."""
+        ft_mode = resolve_mode(mode)
+        assert ft_mode.has_real_rollout, f"Mode {mode} does not have real rollout engines"
+        prepare(ft_mode)
+        args = get_common_train_args(ft_mode, dump_dir=output_dir, num_steps=num_steps, enable_dumper=False)
+        run_training(train_args=args, mode=ft_mode)
 
     return app
 

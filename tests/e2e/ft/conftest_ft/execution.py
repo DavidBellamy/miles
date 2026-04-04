@@ -42,7 +42,7 @@ def prepare(mode: FTTestMode) -> None:
     _MEGATRON_SOURCE_PATCHER_CONFIG_PATH.write_text(megatron_yaml)
 
 
-def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
+def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None, enable_dumper: bool = True) -> str:
     ckpt_args = (
         f"--hf-checkpoint /root/models/{mode.model_name} "
         f"--ref-load /root/{mode.model_name}_torch_dist "
@@ -105,11 +105,13 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"--num-rollout {num_steps if num_steps is not None else mode.num_steps} "
     )
 
-    dumper_args = (
-        f"--dumper-dir {dump_dir}/dumps "
-        f"--dumper-fwd-bwd enable=1 enable_model_value=1 enable_model_grad=1 "
-        f"--dumper-source-patcher-config-train {_MEGATRON_SOURCE_PATCHER_CONFIG_PATH} "
-    )
+    dumper_args = ""
+    if enable_dumper:
+        dumper_args = (
+            f"--dumper-dir {dump_dir}/dumps "
+            f"--dumper-fwd-bwd enable=1 enable_model_value=1 enable_model_grad=1 "
+            f"--dumper-source-patcher-config-train {_MEGATRON_SOURCE_PATCHER_CONFIG_PATH} "
+        )
 
     train_args = (
         f"{ckpt_args} "

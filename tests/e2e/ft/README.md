@@ -74,16 +74,16 @@ Using the full model produces `rollout_log_probs` incompatible with the 5-layer 
 causing NaN gradients in GRPO training.
 
 ```bash
-# Step 1: Run the dp2_cp2_real_rollout mode (uses 5-layer model + real sglang rollout)
-# This generates rollout data with matching log_probs and random rewards.
-# Wait for at least 10 steps to get enough data.
-python tests/e2e/ft/test_trainer_ft_no_failure.py baseline --mode dp2_cp2_real_rollout
+# Step 1: Generate rollout data (5-layer model + real sglang rollout, no dumper)
+python tests/e2e/ft/test_trainer_ft_no_failure.py generate-data \
+    --mode dp2_cp2_real_rollout --num-steps 12 --output-dir /tmp/gen_rollout
 
-# Step 2: Locate the dumped rollout data
-ls $MILES_SCRIPT_OUTPUT_DIR/dumps/test_trainer_ft_no_failure/baseline/dump_details/rollout_data/
+# Step 2: Locate the generated rollout data
+ls /tmp/gen_rollout/rollout_data/
 
 # Step 3: Upload to HF
-huggingface-cli upload --repo-type dataset fzyzcjy/miles-test-rollout-Qwen3-30B-A3B-5layer <path>
+huggingface-cli upload --repo-type dataset fzyzcjy/miles-test-rollout-Qwen3-30B-A3B-5layer \
+    /tmp/gen_rollout/rollout_data/
 ```
 
 ---
