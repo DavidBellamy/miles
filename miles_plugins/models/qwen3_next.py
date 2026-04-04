@@ -18,6 +18,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from fla.ops.cp import FLACPContext, build_cp_context
+except ImportError:
+    FLACPContext = None
+    build_cp_context = None
+
 from .hf_attention import HuggingfaceAttention
 
 
@@ -74,6 +80,19 @@ class Qwen3NextGatedDeltaNet(nn.Module):
 
         self.out_proj = nn.Linear(self.value_dim, self.hidden_size, bias=False)
 
+    def _build_cp_context(self, local_seq_len: int, device: torch.device):
+        """Build fla CP context from the local (sharded) sequence length."""
+        cp_group = getattr(self, "cp_group", None)
+        if cp_group is None or build_cp_context is None:
+            return None
+        global_seq_len = local_seq_len * self.cp_world_size
+        global_cu_seqlens = torch.tensor([0, global_seq_len], dtype=torch.int32, device=device)
+        return build_cp_context(
+            cu_seqlens=global_cu_seqlens,
+            group=cp_group,
+            conv1d_kernel_size=self.conv_kernel_size,
+        )
+
     def fix_query_key_value_ordering(self, mixed_qkvz, mixed_ba):
         """
         Derives `query`, `key` and `value` tensors from `mixed_qkvz` and `mixed_ba`.
@@ -108,6 +127,8 @@ class Qwen3NextGatedDeltaNet(nn.Module):
         hidden_states: torch.Tensor,
         cu_seqlens: torch.Tensor = None,
     ):
+        cp_context = self._build_cp_context(hidden_states.shape[1], hidden_states.device)
+
         projected_states_qkvz = self.in_proj_qkvz(hidden_states)
         projected_states_ba = self.in_proj_ba(hidden_states)
         query, key, value, z, b, a = self.fix_query_key_value_ordering(projected_states_qkvz, projected_states_ba)
@@ -115,9 +136,11 @@ class Qwen3NextGatedDeltaNet(nn.Module):
 
         mixed_qkv = torch.cat((query, key, value), dim=-1)
 
+        conv_cu_seqlens = cp_context.cu_seqlens if cp_context is not None else cu_seqlens
         mixed_qkv, _ = self.conv1d(
             x=mixed_qkv,
-            cu_seqlens=cu_seqlens,
+            cu_seqlens=conv_cu_seqlens,
+            cp_context=cp_context,
         )
 
         query, key, value = torch.split(
@@ -140,17 +163,29 @@ class Qwen3NextGatedDeltaNet(nn.Module):
             query = query.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
             key = key.repeat_interleave(self.num_v_heads // self.num_k_heads, dim=2)
 
-        core_attn_out, last_recurrent_state = chunk_gated_delta_rule(
-            query,
-            key,
-            value,
-            g=g,
-            beta=beta,
-            initial_state=None,
-            output_final_state=False,
-            use_qk_l2norm_in_kernel=True,
-            cu_seqlens=cu_seqlens,
-        )
+        if cp_context is not None:
+            core_attn_out, _ = chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                use_qk_l2norm_in_kernel=True,
+                cu_seqlens=cp_context.cu_seqlens,
+                cp_context=cp_context,
+            )
+        else:
+            core_attn_out, _ = chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=True,
+                cu_seqlens=cu_seqlens,
+            )
 
         z_shape_og = z.shape
         # reshape input data into 2D tensor

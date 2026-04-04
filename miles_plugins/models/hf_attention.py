@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from megatron.core import mpu, tensor_parallel
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
@@ -68,6 +69,10 @@ class HuggingfaceAttention(MegatronModule, ABC):
     "cross attn" specializations.
     """
 
+    # Subclasses set this to True when the underlying module handles CP natively
+    # (e.g. via fla's state-passing CP for DeltaNet), bypassing the all-gather.
+    use_native_cp: bool = False
+
     def __init__(
         self,
         args,
@@ -115,7 +120,7 @@ class HuggingfaceAttention(MegatronModule, ABC):
                 group=mpu.get_tensor_model_parallel_group(),
             )
 
-        if mpu.get_context_parallel_world_size() > 1:
+        if mpu.get_context_parallel_world_size() > 1 and not self.use_native_cp:
             cp_size = mpu.get_context_parallel_world_size()
             # Use custom all-gather whose backward returns local gradient
             # instead of reduce-scatter, since the computation is duplicated.
@@ -150,7 +155,7 @@ class HuggingfaceAttention(MegatronModule, ABC):
 
         output = output.permute(1, 0, 2)  # [seq_len, bsz, hidden_dim]
 
-        if mpu.get_context_parallel_world_size() > 1:
+        if mpu.get_context_parallel_world_size() > 1 and not self.use_native_cp:
             cp_rank = mpu.get_context_parallel_rank()
             output_list = []
             for i in range(len(cu_seqlens) - 1):
@@ -172,3 +177,29 @@ class HuggingfaceAttention(MegatronModule, ABC):
     @abstractmethod
     def hf_forward(self, hidden_states, packed_seq_params):
         """Huggingface forward function"""
+
+
+def setup_hybrid_cp(model: nn.Module, cp_group: dist.ProcessGroup, cp_rank: int, cp_world_size: int) -> None:
+    """Configure GatedDeltaNet modules for native fla CP instead of all-gather duplication.
+
+    Walks the model tree looking for HuggingfaceAttention submodules that have a
+    ``linear_attn`` child (i.e. DeltaNet layers). For each one it sets the CP
+    metadata so that ``_build_cp_context`` produces a valid context, and flips
+    ``use_native_cp`` so the parent skips the all-gather path.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    count = 0
+    for module in model.modules():
+        if isinstance(module, HuggingfaceAttention):
+            linear_attn = getattr(module, "linear_attn", None)
+            if linear_attn is not None:
+                linear_attn.cp_group = cp_group
+                linear_attn.cp_rank = cp_rank
+                linear_attn.cp_world_size = cp_world_size
+                module.use_native_cp = True
+                count += 1
+
+    if count > 0:
+        logger.info(f"Configured hybrid CP on {count} DeltaNet modules (fla native state passing)")
