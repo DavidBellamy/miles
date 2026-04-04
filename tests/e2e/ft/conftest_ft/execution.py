@@ -60,6 +60,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         rollout_args = (
             "--load-debug-rollout-data /root/datasets/miles-test-rollout-Qwen3-30B-A3B/{rollout_id}.pt "
             "--debug-train-only "
+            f"--rollout-batch-size {mode.global_batch_size} "
         )
     else:
         rollout_args = (
