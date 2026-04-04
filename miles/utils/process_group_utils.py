@@ -158,13 +158,20 @@ class _RawPGUtil(GeneralPGUtil):
         return group.size()
 
     def all_reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        _check_wait(group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)), "allreduce")
+        opts = dist.AllreduceOptions()
+        opts.reduceOp = op
+        _check_wait(group.allreduce([tensor], opts), "allreduce")
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        _check_wait(group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)), "reduce")
+        opts = dist.ReduceOptions()
+        opts.reduceOp = op
+        opts.rootRank = 0
+        _check_wait(group.reduce([tensor], opts), "reduce")
 
     def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        _check_wait(group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)), "broadcast")
+        opts = dist.BroadcastOptions()
+        opts.rootRank = 0
+        _check_wait(group.broadcast([tensor], opts), "broadcast")
 
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
