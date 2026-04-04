@@ -34,8 +34,7 @@ def prepare(mode: FTTestMode) -> None:
         megatron_path=_MEGATRON_PATH,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
-    if mode.has_rollout:
-        U.hf_download_dataset("zhuzilin/gsm8k")
+    U.hf_download_dataset("zhuzilin/gsm8k")
 
     megatron_yaml: str = MEGATRON_PATCHER_YAMLS["thd"]
     _MEGATRON_SOURCE_PATCHER_CONFIG_PATH.write_text(megatron_yaml)
@@ -56,11 +55,12 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     )
 
     rollout_args: str
-    if not mode.has_rollout:
+    if not mode.has_real_rollout:
         rollout_args = (
             "--load-debug-rollout-data /root/datasets/miles-test-rollout-Qwen3-30B-A3B/{rollout_id}.pt "
             "--debug-train-only "
-            f"--rollout-batch-size {mode.global_batch_size} "
+            "--rollout-batch-size 32 "
+            "--n-samples-per-prompt 8 "
         )
     else:
         rollout_args = (
@@ -72,8 +72,8 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
             "--rm-type math "
             "--rollout-max-response-len 3 "
             "--rollout-temperature 0.8 "
-            "--rollout-batch-size 1 "
-            "--n-samples-per-prompt 1 "
+            "--rollout-batch-size 32 "
+            "--n-samples-per-prompt 8 "
             "--sglang-disable-cuda-graph "
             f"--rollout-num-gpus {mode.total_rollout_gpus} "
             f"--rollout-num-gpus-per-engine {mode.rollout_gpus_per_engine} "
@@ -88,7 +88,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--attention-backend flash "
         f"--actor-num-nodes {mode.train_num_nodes} "
         f"--actor-num-gpus-per-node {mode.train_gpus_per_node} "
-        f"--global-batch-size {mode.global_batch_size} "
+        f"--global-batch-size 256 "
         "--delay-split-train-data-by-dp "
         "--use-dynamic-batch-size "
         "--max-tokens-per-gpu 32768 "

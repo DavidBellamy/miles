@@ -26,10 +26,9 @@ class FTTestMode:
     rollout_num_engines: int = 0
     rollout_gpus_per_engine: int = 0
     num_steps: int = 10
-    global_batch_size: int = 5
 
     @property
-    def has_rollout(self) -> bool:
+    def has_real_rollout(self) -> bool:
         return self.rollout_num_engines > 0
 
     @property
@@ -44,7 +43,6 @@ MODES: dict[str, FTTestMode] = {
         model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
-        global_batch_size=3,
         parallel_args=(
             "--tensor-model-parallel-size 2 "
             "--context-parallel-size 2 "
@@ -57,7 +55,6 @@ MODES: dict[str, FTTestMode] = {
         model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
-        global_batch_size=3,
         parallel_args=(
             "--pipeline-model-parallel-size 2 "
             "--context-parallel-size 2"
@@ -76,7 +73,6 @@ MODES: dict[str, FTTestMode] = {
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
         train_gpus_per_node=4,
-        global_batch_size=3,
         rollout_num_engines=4,
         rollout_gpus_per_engine=1,
         parallel_args="--context-parallel-size 2",
