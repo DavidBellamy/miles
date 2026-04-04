@@ -49,8 +49,11 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
 
     optimizer_args = (
         "--optimizer adam "
-        # NOTE: deliberately use huge lr and small adam to make weight change vivid
-        "--lr 1e-3 --lr-decay-style constant --adam-beta1 0.1 --adam-beta2 0.9 "
+        "--lr 1e-6 "
+        "--lr-decay-style constant "
+        "--weight-decay 0.1 "
+        "--adam-beta1 0.9 "
+        "--adam-beta2 0.98 "
         "--lr-warmup-fraction 0.0 "
         "--accumulate-allreduce-grads-in-fp32 "
     )
