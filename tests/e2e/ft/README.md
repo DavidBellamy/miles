@@ -74,13 +74,14 @@ Any `run_*.py` script with `--dump-details` (enabled by default) saves rollout d
 ```bash
 # Step 1: Run training (dump_details automatically saves rollout data)
 # NOTE: We use most realistic mode to capture realistic data. Do *NOT* use anything like --debug-minimal.
+# NOTE: Please wait for at least *10 steps* to get enough data for current and future experiments.
 python scripts/run_qwen3_30b_a3b.py
 
 # Step 2: Locate the dumped rollout data
 ls <output_dir>/<run_id>/dump_details/rollout_data/
 
 # Step 3: Upload to HF
-huggingface-cli upload --repo-type dataset fzyzcjy/miles-ft-test-debug-rollout-data <path>
+huggingface-cli upload --repo-type dataset fzyzcjy/miles-test-rollout-Qwen3-30B-A3B <path>
 ```
 
 ---
