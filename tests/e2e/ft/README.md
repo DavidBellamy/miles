@@ -83,7 +83,7 @@ python tests/e2e/ft/test_trainer_ft_no_failure.py baseline --mode dp2_cp2_real_r
 ls $MILES_SCRIPT_OUTPUT_DIR/dumps/test_trainer_ft_no_failure/baseline/dump_details/rollout_data/
 
 # Step 3: Upload to HF
-huggingface-cli upload --repo-type dataset fzyzcjy/miles-test-rollout-Qwen3-30B-A3B <path>
+huggingface-cli upload --repo-type dataset fzyzcjy/miles-test-rollout-Qwen3-30B-A3B-5layer <path>
 ```
 
 ---

@@ -59,7 +59,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     if not mode.has_real_rollout:
         rollout_args = (
             "--prompt-data /root/datasets/gsm8k/train.parquet "
-            "--load-debug-rollout-data /root/datasets/miles-test-rollout-Qwen3-30B-A3B/{rollout_id}.pt "
+            "--load-debug-rollout-data /root/datasets/miles-test-rollout-Qwen3-30B-A3B-5layer/{rollout_id}.pt "
             "--debug-train-only "
             "--rollout-batch-size 32 "
             "--n-samples-per-prompt 8 "
