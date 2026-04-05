@@ -48,23 +48,35 @@ def compare_metrics(
     if key_prefixes is None:
         key_prefixes = ["train/"]
 
-    baseline_events = _read_metric_events(Path(baseline_dir))
-    target_events = _read_metric_events(Path(target_dir))
-    print(f"Metrics: {baseline_events=} {target_events=}")
+    baseline_by_cell = _read_metric_events_by_cell(Path(baseline_dir))
+    target_by_cell = _read_metric_events_by_cell(Path(target_dir))
+
+    # Use cell 0 from baseline as reference (baseline always has cell 0)
+    assert 0 in baseline_by_cell, f"No cell_index=0 events in baseline: {baseline_dir}"
+    baseline_events = baseline_by_cell[0]
 
     issues: list[str] = []
-    issues += _check_event_counts(baseline_events, target_events, baseline_dir, target_dir)
-
-    if not issues:
-        for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
-            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, exclude_keys=exclude_keys)
-
     issues += _check_required_keys_exist(baseline_events)
+
+    # Compare every target cell against the baseline
+    for cell_index in sorted(target_by_cell.keys()):
+        target_events = target_by_cell[cell_index]
+        cell_issues: list[str] = []
+        cell_issues += _check_event_counts(baseline_events, target_events, baseline_dir, target_dir)
+
+        if not cell_issues:
+            for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
+                cell_issues += _check_step_metrics(
+                    step_idx, b_event, t_event, key_prefixes, rtol, exclude_keys=exclude_keys
+                )
+
+        issues += [f"[cell {cell_index}] {i}" for i in cell_issues]
 
     assert not issues, f"MetricEvent comparison found {len(issues)} issue(s):\n" + "\n".join(
         f"  - {i}" for i in issues
     )
-    print(f"MetricEvent comparison passed: {len(baseline_events)} steps compared")
+    total_cells = len(target_by_cell)
+    print(f"MetricEvent comparison passed: {len(baseline_events)} steps × {total_cells} cell(s) compared")
 
 
 def _check_event_counts(
@@ -190,15 +202,15 @@ def _run_comparator(
     return result
 
 
-def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
+def _read_metric_events_by_cell(dump_dir: Path) -> dict[int, list[MetricEvent]]:
     events_dir: Path = dump_dir / "events"
     if not events_dir.exists():
-        return []
+        return {}
     all_events = read_events(events_dir)
     from miles.utils.process_identity import TrainProcessIdentity
 
-    return [
-        e
-        for e in all_events
-        if isinstance(e, MetricEvent) and isinstance(e.source, TrainProcessIdentity) and e.source.cell_index == 0
-    ]
+    by_cell: dict[int, list[MetricEvent]] = {}
+    for e in all_events:
+        if isinstance(e, MetricEvent) and isinstance(e.source, TrainProcessIdentity):
+            by_cell.setdefault(e.source.cell_index, []).append(e)
+    return by_cell
