@@ -67,7 +67,9 @@ def setup_session_routes(app, backend, args):
 
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
-        session = registry.get_or_create_session(session_id)
+        session = registry.sessions.get(session_id)
+        if session is None:
+            return GetSessionResponse(session_id=session_id, records=[], metadata={})
         metadata = {}
         try:
             mismatch = registry.compute_session_mismatch(session)
