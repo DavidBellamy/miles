@@ -83,7 +83,7 @@ def get_model_provider_func(
                 model.output_layer = LinearForLastLayer(
                     input_size=model.config.hidden_size, output_size=1, config=model.config
                 )
-            _maybe_install_witness(args, model)
+            _maybe_install_witness(args, model, pre_process=pre_process, post_process=post_process)
             return model
 
         return wrapped_model_provider
@@ -249,13 +249,24 @@ def get_model_provider_func(
         if post_process and role == "critic":
             model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
 
-        _maybe_install_witness(args, model)
+        _maybe_install_witness(args, model, pre_process=pre_process, post_process=post_process)
 
         return model
 
     return model_provider
 
 
-def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
+def _maybe_install_witness(
+    args: argparse.Namespace,
+    model: GPTModel,
+    *,
+    pre_process: bool = True,
+    post_process: bool = True,
+) -> None:
     if getattr(args, "enable_witness", False):
-        install_witness(model, buffer_size=args.witness_buffer_size)
+        install_witness(
+            model,
+            buffer_size=args.witness_buffer_size,
+            pre_process=pre_process,
+            post_process=post_process,
+        )

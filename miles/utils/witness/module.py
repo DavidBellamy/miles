@@ -17,9 +17,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def install_witness(model: nn.Module, *, buffer_size: int) -> None:
-    model.head_witness = _DataWitness(buffer_size=buffer_size)
-    model.tail_witness = _DataWitness(buffer_size=buffer_size)
+def install_witness(
+    model: nn.Module,
+    *,
+    buffer_size: int,
+    pre_process: bool = True,
+    post_process: bool = True,
+) -> None:
+    if pre_process:
+        model.head_witness = _DataWitness(buffer_size=buffer_size)
+    if post_process:
+        model.tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
 def witness_dump_and_clear_stale(
@@ -32,6 +40,8 @@ def witness_dump_and_clear_stale(
     for chunk_index, chunk in enumerate(model):
         inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
+            if not hasattr(inner, attr):
+                continue
             witness: _DataWitness = getattr(inner, attr)
             _record_and_log_witness_param(
                 witness=witness,
@@ -69,10 +79,14 @@ class _DataWitness(nn.Module):
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
+def _has_any_witness(module: nn.Module) -> bool:
+    return any(hasattr(module, attr) for attr in _WITNESS_ATTRS)
+
+
 def _unwrap_to_witness_owner(chunk: nn.Module) -> nn.Module:
     """Navigate through wrapping layers (DDP → Float16Module → GPTModel) to find the module with witness attrs."""
     inner = chunk.module
-    while not hasattr(inner, "head_witness") and hasattr(inner, "module"):
+    while not _has_any_witness(inner) and hasattr(inner, "module"):
         inner = inner.module
     return inner
 
@@ -97,7 +111,8 @@ def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> list[_Data
     for chunk in model_chunks:
         inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
-            witnesses.append(getattr(inner, attr))
+            if hasattr(inner, attr):
+                witnesses.append(getattr(inner, attr))
     return witnesses
 
 
