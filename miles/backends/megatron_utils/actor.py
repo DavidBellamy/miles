@@ -39,7 +39,6 @@ from .parallel import verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed.broadcast import UpdateWeightFromDistributed
-from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
 from .update_weight.update_weight_from_tensor import UpdateWeightFromTensor
 
 logging.getLogger("megatron").setLevel(logging.WARNING)
@@ -155,6 +154,7 @@ class MegatronTrainRayActor(TrainRayActor):
             if self.args.update_weight_transfer_mode == "broadcast":
                 update_weight_cls = UpdateWeightFromDistributed
             else:
+                from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
                 update_weight_cls = UpdateWeightP2P
         self.weight_updater = update_weight_cls(
             self.args,

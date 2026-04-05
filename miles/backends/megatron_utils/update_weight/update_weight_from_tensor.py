@@ -206,8 +206,10 @@ class UpdateWeightFromTensor:
         dist.barrier(group=get_gloo_group())
 
         # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales).
+        # Note: NVFP4 post-process (pad/shuffle) is handled automatically inside sglang's
+        # update_weights_from_tensor, so no explicit call needed here.
         if rank == 0:
-            if self.quantization_config and self.quantization_config["quant_method"] in [
+            if self.quantization_config and self.quantization_config.get("quant_method") in [
                 "compressed-tensors",
                 "mxfp8",
             ]:
