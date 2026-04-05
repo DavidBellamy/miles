@@ -112,7 +112,7 @@ def _check_single_metric(
     baseline_val: object,
     target_val: object,
     rtol: float,
-    atol: float = 1e-7,
+    atol: float = 5e-9,
 ) -> list[str]:
     if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
         return []
