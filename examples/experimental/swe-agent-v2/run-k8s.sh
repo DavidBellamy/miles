@@ -274,4 +274,6 @@ ray job submit \
   --chat-template-path autofix \
   --use-session-server \
   --session-server-port 30000 \
+  --tensor-model-parallel-size 4 \
+  --sequence-parallel \
   "${WANDB_ARGS[@]}"
