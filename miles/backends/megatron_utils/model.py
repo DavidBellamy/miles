@@ -261,6 +261,12 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
+
+        _debug_shapes = {k: (v.shape, v.dtype) if hasattr(v, 'shape') else type(v).__name__ for k, v in batch.items() if v is not None}
+        logger.info(f"[DEBUG_COMPARE] compute_log_prob batch shapes: {_debug_shapes}")
+        if packed_seq_params is not None:
+            logger.info(f"[DEBUG_COMPARE] packed_seq_params: {packed_seq_params}")
+
         output_tensor = model(
             input_ids=tokens,
             position_ids=None,
@@ -418,10 +424,12 @@ def train_one_step(
         for m in all_replay_managers:
             m.stage = "replay_forward"
 
+        _debug_shapes = {k: (v.shape, v.dtype) if hasattr(v, 'shape') else type(v).__name__ for k, v in batch.items() if v is not None}
         logger.info(
             f"[DEBUG_COMPARE] forward_step: "
             f"tokens_shape={batch['tokens'].shape}, "
-            f"return_schedule_plan={return_schedule_plan}"
+            f"return_schedule_plan={return_schedule_plan}, "
+            f"batch_shapes={_debug_shapes}"
         )
 
         if return_schedule_plan:
