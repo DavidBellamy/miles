@@ -154,7 +154,7 @@ def _run_comparator(
     cmd: list[str] = [
         sys.executable,
         "-m",
-        "sglang.srt.debug_utils.dump_comparator",
+        "sglang.srt.debug_utils.comparator",
         "--baseline-path",
         str(baseline_path),
         "--target-path",
