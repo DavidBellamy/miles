@@ -40,6 +40,9 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
     compare_dumps(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
+        # FT target has multiple cells dumping to the same directory.
+        # Filter to rank 0 to compare a single TP/CP shard.
+        extra_args=["--filter", "rank=0___"],
     )
     print("No-failure comparison test PASSED")
 
