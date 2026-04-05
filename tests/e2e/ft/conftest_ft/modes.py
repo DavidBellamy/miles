@@ -55,7 +55,12 @@ MODES: dict[str, FTTestMode] = {
         model_hf_repo=MODEL_HF_REPO,
         megatron_model_type=MODEL_TYPE,
         num_cells=2,
-        parallel_args=("--pipeline-model-parallel-size 2 " "--context-parallel-size 2"),
+        parallel_args=(
+            "--pipeline-model-parallel-size 2 "
+            "--context-parallel-size 2 "
+            "--decoder-first-pipeline-num-layers 3 "
+            "--decoder-last-pipeline-num-layers 2"
+        ),
     ),
     "dp4_cp2": FTTestMode(
         model_name=MODEL_NAME,
