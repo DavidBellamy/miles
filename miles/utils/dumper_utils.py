@@ -101,18 +101,20 @@ class DumperMegatronUtil:
         if not overrides.get("enable"):
             return False
 
-        # Only dump on effective DP rank 0 (covers both intra-DP and indep-DP).
-        # Other DP ranks are verified via cross-replica weight checksum.
-        from miles.backends.training_utils.parallel import get_parallel_state
-
-        if get_parallel_state().effective_dp.rank != 0:
-            return False
-
         merged = {
             "dir": str(_get_dir(args)),
             "exp_name": phase.value,
             **overrides,
         }
+
+        # Only write dump files on effective DP rank 0 (covers both intra-DP
+        # and indep-DP). Other DP ranks still participate in dumper collectives
+        # (barrier, broadcast, allgather) but don't produce output files.
+        from miles.backends.training_utils.parallel import get_parallel_state
+
+        if get_parallel_state().effective_dp.rank != 0:
+            merged["enable_output_file"] = False
+            merged["enable_output_console"] = False
 
         full_config = DumperConfig(**merged)
         dumper.reset()
