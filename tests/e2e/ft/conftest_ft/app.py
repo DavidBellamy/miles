@@ -15,12 +15,8 @@ BuildArgsFn = Callable[[FTTestMode, str, bool], str]
 
 
 def resolve_dump_dir(test_name: str) -> str:
-    output_dir = os.environ.get("MILES_SCRIPT_OUTPUT_DIR")
-    if output_dir is None:
-        raise RuntimeError(
-            "MILES_SCRIPT_OUTPUT_DIR environment variable is required but not set. "
-            "Set it to the output directory for this test run."
-        )
+    # TODO make it configurable, but on local disk instead of remote disk
+    output_dir = "/node_public"
     dump_dir = str(Path(output_dir) / "dumps" / test_name)
     os.makedirs(dump_dir, exist_ok=True)
     return dump_dir
