@@ -28,15 +28,19 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
-    compare_metrics(
-        baseline_dir=f"{dump_dir}/baseline",
-        target_dir=f"{dump_dir}/target",
-        rtol=5e-2,
-        key_prefixes=["train/"],
-        # grad_norm includes witness embedding gradients in target (FT mode),
-        # which legitimately increases the norm vs baseline (no witness).
-        exclude_keys=["train/grad_norm"],
-    )
+    if not mode.has_real_rollout:
+        compare_metrics(
+            baseline_dir=f"{dump_dir}/baseline",
+            target_dir=f"{dump_dir}/target",
+            rtol=5e-2,
+            key_prefixes=["train/"],
+            # grad_norm includes witness embedding gradients in target (FT mode),
+            # which legitimately increases the norm vs baseline (no witness).
+            exclude_keys=["train/grad_norm"],
+        )
+    else:
+        print("Skipping metric comparison for real rollout mode (non-deterministic data)")
+
     # TODO: compare_dumps doesn't support multi-DP dumps yet
     #  (baseline has DP=2, comparator asserts exactly 1 non-empty dp_rank).
     #  Re-enable once the comparator supports DP>1.
