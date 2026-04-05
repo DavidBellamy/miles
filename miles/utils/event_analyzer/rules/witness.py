@@ -146,8 +146,8 @@ def _compare_snapshot(
     # Tolerate a small fraction of missing witness IDs: with bf16 training and
     # near-zero PG loss (e.g. GRPO with random rewards), some sequences' gradients
     # may underflow to zero, leaving their witness embedding row unupdated.
-    max_missing = max(1, int(len(filtered_expected) * missing_tolerance_ratio))
-    if len(missing) <= max_missing and not extra:
+    max_missing = int(len(filtered_expected) * missing_tolerance_ratio)
+    if max_missing > 0 and len(missing) <= max_missing and not extra:
         logger.warning(
             f"Witness {event.instance_id}: {len(missing)} missing IDs within tolerance "
             f"({max_missing}): {sorted(missing)}"
