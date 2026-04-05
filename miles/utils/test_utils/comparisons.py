@@ -113,13 +113,18 @@ def _check_single_metric(
     baseline_val: object,
     target_val: object,
     rtol: float,
+    atol: float = 1e-7,
 ) -> list[str]:
     if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
         return []
     if baseline_val == 0.0 and target_val == 0.0:
         return []
 
-    rel_diff = abs(baseline_val - target_val) / max(abs(baseline_val), abs(target_val), 1e-12)
+    abs_diff = abs(baseline_val - target_val)
+    if abs_diff <= atol:
+        return []
+
+    rel_diff = abs_diff / max(abs(baseline_val), abs(target_val), 1e-12)
     if rel_diff > rtol:
         return [
             f"Step {step_idx}, metric '{key}': baseline={baseline_val}, target={target_val}, "
