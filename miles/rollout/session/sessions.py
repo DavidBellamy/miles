@@ -67,7 +67,7 @@ def setup_session_routes(app, backend, args):
 
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
-        session = registry.get_session(session_id)
+        session = registry.get_or_create_session(session_id)
         metadata = {}
         try:
             mismatch = registry.compute_session_mismatch(session)
@@ -114,7 +114,7 @@ def setup_session_routes(app, backend, args):
         """
         _inflight_chat["count"] += 1
         try:
-            session = registry.get_session(session_id)
+            session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 

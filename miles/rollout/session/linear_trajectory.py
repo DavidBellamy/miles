@@ -268,6 +268,14 @@ class SessionRegistry:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
         return session
 
+    def get_or_create_session(self, session_id: str) -> LinearTrajectory:
+        session = self.sessions.get(session_id)
+        if session is None:
+            logger.warning("Auto-creating session %s (not found, likely router restart)", session_id)
+            session = LinearTrajectory()
+            self.sessions[session_id] = session
+        return session
+
     def remove_session(self, session_id: str) -> None:
         if self.sessions.pop(session_id, None) is None:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
