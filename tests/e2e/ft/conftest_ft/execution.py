@@ -87,6 +87,7 @@ def get_common_train_args(
             "--rollout-batch-size 32 "
             "--n-samples-per-prompt 8 "
             "--sglang-disable-cuda-graph "
+            "--sglang-enable-deterministic-inference "
             f"--save-debug-rollout-data {dump_dir}/rollout_data/{{rollout_id}}.pt "
             f"--rollout-num-gpus {mode.total_rollout_gpus} "
             f"--rollout-num-gpus-per-engine {mode.rollout_gpus_per_engine} "

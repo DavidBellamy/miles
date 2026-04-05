@@ -355,6 +355,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
 
+            parser.add_argument(
+                "--sglang-enable-deterministic-inference",
+                action="store_true",
+                default=False,
+                help="Use per-sample deterministic seeds for sglang inference (reproducible rollout).",
+            )
+
             # sampling
             parser.add_argument(
                 "--over-sampling-batch-size",
