@@ -105,12 +105,13 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
     model_weight = witness.witness.weight
     model_weight.data[idx] = 0.0
 
-    opt_weight: Tensor = getattr(model_weight, "main_param", model_weight)
-    if opt_weight is not model_weight:
+    opt_weight: Tensor | None = getattr(model_weight, "main_param", model_weight)
+    if opt_weight is not None and opt_weight is not model_weight:
         opt_weight.data[idx] = 0.0
 
-    if opt_weight in optimizer.state:
-        state = optimizer.state[opt_weight]
+    lookup_weight = opt_weight if opt_weight is not None else model_weight
+    if lookup_weight in optimizer.state:
+        state = optimizer.state[lookup_weight]
         for key in ("exp_avg", "exp_avg_sq"):
             if key in state:
                 state[key][idx] = 0.0
