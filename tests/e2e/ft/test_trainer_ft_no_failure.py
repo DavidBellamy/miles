@@ -38,13 +38,10 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         exclude_keys=["train/grad_norm"],
     )
 
-    # TODO: compare_dumps doesn't support multi-DP dumps yet
-    #  (baseline has DP=2, comparator asserts exactly 1 non-empty dp_rank).
-    #  Re-enable once the comparator supports DP>1.
-    # compare_dumps(
-    #     baseline_dir=f"{dump_dir}/baseline",
-    #     target_dir=f"{dump_dir}/target",
-    # )
+    compare_dumps(
+        baseline_dir=f"{dump_dir}/baseline",
+        target_dir=f"{dump_dir}/target",
+    )
     print("No-failure comparison test PASSED")
 
 

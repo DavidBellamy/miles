@@ -101,6 +101,13 @@ class DumperMegatronUtil:
         if not overrides.get("enable"):
             return False
 
+        # Only dump on effective DP rank 0 (covers both intra-DP and indep-DP).
+        # Other DP ranks are verified via cross-replica weight checksum.
+        from miles.backends.training_utils.parallel import get_parallel_state
+
+        if get_parallel_state().effective_dp.rank != 0:
+            return False
+
         merged = {
             "dir": str(_get_dir(args)),
             "exp_name": phase.value,
