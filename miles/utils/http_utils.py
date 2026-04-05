@@ -297,12 +297,9 @@ async def post(url, payload, max_retries=60, action="post"):
     # If distributed mode is enabled and actors exist, dispatch via Ray.
     if _distributed_post_enabled and _post_actors:
         try:
-            import ray
-
             actor = _next_actor()
             if actor is not None:
-                obj_ref = actor.do_post.remote(url, payload, max_retries, action=action)
-                return await obj_ref
+                return await actor.do_post.remote(url, payload, max_retries, action=action)
         except Exception as e:
             logger.info(f"[http_utils] Distributed POST failed, falling back to local: {e} (url={url})")
             # fall through to local
