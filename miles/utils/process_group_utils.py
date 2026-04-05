@@ -265,9 +265,9 @@ def _gather_object_via_util(
     else:
         assert object_gather_list is None
 
-    # torchft's ProcessGroupWrapper only supports CUDA tensors, so we must use
-    # the current CUDA device instead of CPU when the group wraps a torchft PG.
-    if torch.cuda.is_available() and not isinstance(group, dist.ProcessGroup):
+    # torchft's ProcessGroupWrapper only supports CUDA tensors.
+    # Always use CUDA when available since this runs in GPU training context.
+    if torch.cuda.is_available():
         current_device = torch.device("cuda", torch.cuda.current_device())
     else:
         current_device = torch.device("cpu")
