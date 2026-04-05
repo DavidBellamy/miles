@@ -159,12 +159,15 @@ class _RawPGUtil(GeneralPGUtil):
         _check_wait(group.allreduce([tensor], opts), "allreduce")
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        # torchft PGs don't support reduce/broadcast properly, use allreduce instead.
+        # torchft doesn't implement reduce (no wrapper in ProcessGroupWrapper).
+        # Use allreduce as a substitute — all ranks get the result instead of just root,
+        # which is a superset of reduce semantics.
         self.all_reduce(tensor, group, op)
 
     def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        # No-op when paired with allreduce-based reduce: all ranks already have the result.
-        pass
+        opts = dist.BroadcastOptions()
+        opts.rootRank = 0
+        _check_wait(group.broadcast([tensor], opts), "broadcast")
 
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
