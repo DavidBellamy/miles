@@ -183,7 +183,9 @@ class _RawPGUtil(GeneralPGUtil):
         group: dist.ProcessGroup,
     ) -> None:
         output = [gather_list] if gather_list is not None else []
-        _check_wait(group.gather(output, [input_tensor], dist.GatherOptions(rootRank=0)), "gather")
+        opts = dist.GatherOptions()
+        opts.rootRank = 0
+        _check_wait(group.gather(output, [input_tensor], opts), "gather")
 
     def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
         _gather_object_via_util(self, obj, object_gather_list, group=group)
