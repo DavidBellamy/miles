@@ -265,7 +265,12 @@ def _gather_object_via_util(
     else:
         assert object_gather_list is None
 
-    current_device = torch.device("cpu")  # was: _get_object_coll_device(group)
+    # torchft's ProcessGroupWrapper only supports CUDA tensors, so we must use
+    # the current CUDA device instead of CPU when the group wraps a torchft PG.
+    if torch.cuda.is_available() and not isinstance(group, dist.ProcessGroup):
+        current_device = torch.device("cuda", torch.cuda.current_device())
+    else:
+        current_device = torch.device("cpu")
     input_tensor, local_size = _object_to_tensor(obj, current_device, group)
 
     # Gather all local sizes. This is so that we can find the max size, and index
