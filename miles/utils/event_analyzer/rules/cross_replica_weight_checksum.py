@@ -36,15 +36,29 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 
 
 def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
-    event_a = events[0]
-    for i in range(1, len(events)):
-        event_b = events[i]
-        yield from _compare_flat_dicts(
-            a=_flatten_event(event_a),
-            b=_flatten_event(event_b),
-            label_a=_compute_label(event_a),
-            label_b=_compute_label(event_b),
-        )
+    # Group events by rank_within_cell so we only compare across replicas (cell_index),
+    # not across TP/PP/EP ranks within the same cell (which have different param shards).
+    from miles.utils.process_identity import TrainProcessIdentity
+
+    by_rank: dict[int, list[LocalWeightChecksumEvent]] = {}
+    for event in events:
+        if isinstance(event.source, TrainProcessIdentity):
+            by_rank.setdefault(event.source.rank_within_cell, []).append(event)
+        else:
+            by_rank.setdefault(-1, []).append(event)
+
+    for rank_events in by_rank.values():
+        if len(rank_events) < 2:
+            continue
+        event_a = rank_events[0]
+        for i in range(1, len(rank_events)):
+            event_b = rank_events[i]
+            yield from _compare_flat_dicts(
+                a=_flatten_event(event_a),
+                b=_flatten_event(event_b),
+                label_a=_compute_label(event_a),
+                label_b=_compute_label(event_b),
+            )
 
 
 def _compute_label(event: LocalWeightChecksumEvent) -> str:
