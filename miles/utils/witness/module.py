@@ -30,8 +30,9 @@ def witness_dump_and_clear_stale(
 ) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
     for chunk_index, chunk in enumerate(model):
+        inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
-            witness: _DataWitness = getattr(chunk.module, attr)
+            witness: _DataWitness = getattr(inner, attr)
             _record_and_log_witness_param(
                 witness=witness,
                 instance_id=f"pp{chunk_index}." + attr.replace("_witness", ""),
@@ -68,6 +69,14 @@ class _DataWitness(nn.Module):
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
+def _unwrap_to_witness_owner(chunk: nn.Module) -> nn.Module:
+    """Navigate through wrapping layers (DDP → Float16Module → GPTModel) to find the module with witness attrs."""
+    inner = chunk.module
+    while not hasattr(inner, "head_witness") and hasattr(inner, "module"):
+        inner = inner.module
+    return inner
+
+
 def _clear_witness_stale_rows(
     *,
     model: Sequence[nn.Module],
@@ -86,8 +95,9 @@ def _clear_witness_stale_rows(
 def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> list[_DataWitness]:
     witnesses: list[_DataWitness] = []
     for chunk in model_chunks:
+        inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
-            witnesses.append(getattr(chunk.module, attr))
+            witnesses.append(getattr(inner, attr))
     return witnesses
 
 
