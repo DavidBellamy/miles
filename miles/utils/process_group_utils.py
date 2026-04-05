@@ -250,7 +250,7 @@ def _gather_object_via_util(
     - Hardcoded dst=0 (always gather to first rank)
     - Hardcoded cpu device (was: _get_object_coll_device)
     - Inlined _validate_output_list_for_rank as simple assert
-    - Dropped group arg from _object_to_tensor/_tensor_to_object (only used for NCCL debug logging, irrelevant on cpu)
+    - Pass group arg to _object_to_tensor/_tensor_to_object (required since PyTorch 2.9+)
     - Removed redundant post-gather None check on object_gather_list (already asserted at function entry)
     """
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
@@ -262,7 +262,7 @@ def _gather_object_via_util(
         assert object_gather_list is None
 
     current_device = torch.device("cpu")  # was: _get_object_coll_device(group)
-    input_tensor, local_size = _object_to_tensor(obj, current_device)
+    input_tensor, local_size = _object_to_tensor(obj, current_device, group)
 
     # Gather all local sizes. This is so that we can find the max size, and index
     # until the correct size when deserializing the tensors.
@@ -295,7 +295,7 @@ def _gather_object_via_util(
     for i, tensor in enumerate(output_tensors):
         tensor = tensor.type(torch.uint8)
         tensor_size = object_size_list[i]
-        object_gather_list[i] = _tensor_to_object(tensor, tensor_size)
+        object_gather_list[i] = _tensor_to_object(tensor, tensor_size, group)
 
     # --- End: adapted from PyTorch v2.11.0 gather_object ---
 
