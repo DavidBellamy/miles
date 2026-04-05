@@ -63,6 +63,7 @@ class _DataWitness(nn.Module):
         self.buffer_size = buffer_size
         self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
         nn.init.zeros_(self.witness.weight)
+        self.witness.weight._is_witness_param = True
 
     def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
         assert input_ids.shape == witness_ids.shape
