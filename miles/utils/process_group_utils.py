@@ -172,7 +172,9 @@ class _RawPGUtil(GeneralPGUtil):
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
     ) -> None:
-        _check_wait(group.allgather([output_tensors], [input_tensor], dist.AllgatherOptions()), "allgather")
+        from torch._C._distributed_c10d import AllgatherOptions
+
+        _check_wait(group.allgather([output_tensors], [input_tensor], AllgatherOptions()), "allgather")
 
     def gather(
         self,
