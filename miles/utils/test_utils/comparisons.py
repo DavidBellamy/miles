@@ -195,4 +195,11 @@ def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
     if not events_dir.exists():
         return []
     all_events = read_events(events_dir)
-    return [e for e in all_events if isinstance(e, MetricEvent)]
+    from miles.utils.process_identity import TrainProcessIdentity
+
+    return [
+        e
+        for e in all_events
+        if isinstance(e, MetricEvent)
+        and (not isinstance(e.source, TrainProcessIdentity) or e.source.cell_index == 0)
+    ]
