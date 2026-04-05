@@ -200,6 +200,5 @@ def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
     return [
         e
         for e in all_events
-        if isinstance(e, MetricEvent)
-        and (not isinstance(e.source, TrainProcessIdentity) or e.source.cell_index == 0)
+        if isinstance(e, MetricEvent) and isinstance(e.source, TrainProcessIdentity) and e.source.cell_index == 0
     ]
