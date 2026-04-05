@@ -170,10 +170,14 @@ def setup_session_routes(app, backend, args):
                 # Rollback failures indicate corrupted prefix-cache state in SGLang.
                 # Retry once without pretokenized input_ids so SGLang processes the
                 # request from scratch instead of attempting prefix continuation.
-                error_body = result.get("response_body", b"")
+                error_body = result.get("response_body") or b""
                 if isinstance(error_body, bytes):
                     error_body = error_body.decode("utf-8", errors="replace")
-                if result["status_code"] == 400 and "rollback failed" in error_body:
+                if (
+                    result["status_code"] == 400
+                    and "rollback failed" in error_body.lower()
+                    and "input_ids" in request_body
+                ):
                     logger.warning(
                         "SGLang rollback failed for session %s, retrying without prefix continuation",
                         session_id,
