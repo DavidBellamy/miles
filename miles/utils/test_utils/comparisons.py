@@ -213,14 +213,8 @@ def _run_comparator(
 
     result: subprocess.CompletedProcess[str] = subprocess.run(
         cmd,
-        capture_output=True,
         text=True,
     )
-
-    if result.stdout.strip():
-        print(f"[comparator stdout]\n{result.stdout}")
-    if result.stderr.strip():
-        print(f"[comparator stderr]\n{result.stderr}")
 
     return result
 
