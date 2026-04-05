@@ -10,7 +10,7 @@ from megatron.training.global_vars import get_args
 
 from miles.utils.process_group_utils import GroupInfo
 
-from ..training_utils.parallel import ParallelState
+from ..training_utils.parallel import ParallelState, get_parallel_state
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +57,10 @@ def _compute_vpp_fields() -> tuple[int, int | None]:
 
 
 def verify_megatron_parallel_state(
-    parallel_state: ParallelState,
     model: torch.nn.Module | Sequence[torch.nn.Module],
 ) -> None:
     """Verify that ParallelState fields match what the model config produces."""
+    parallel_state = get_parallel_state()
     vpp_size_value = mpu.get_virtual_pipeline_model_parallel_world_size()
     if vpp_size_value is not None and vpp_size_value > 1:
         model_to_check = model[0] if isinstance(model, Sequence) else model
