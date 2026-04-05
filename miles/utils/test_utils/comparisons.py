@@ -43,6 +43,7 @@ def compare_metrics(
     *,
     rtol: float = 1e-3,
     key_prefixes: list[str] | None = None,
+    exclude_keys: list[str] | None = None,
 ) -> None:
     if key_prefixes is None:
         key_prefixes = ["train/"]
@@ -56,7 +57,7 @@ def compare_metrics(
 
     if not issues:
         for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
-            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol)
+            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, exclude_keys=exclude_keys)
 
     issues += _check_required_keys_exist(baseline_events)
 
@@ -88,10 +89,14 @@ def _check_step_metrics(
     target_event: MetricEvent,
     key_prefixes: list[str],
     rtol: float,
+    *,
+    exclude_keys: list[str] | None = None,
 ) -> list[str]:
     issues: list[str] = []
     for key in baseline_event.metrics:
         if not any(key.startswith(prefix) for prefix in key_prefixes):
+            continue
+        if exclude_keys and key in exclude_keys:
             continue
 
         if key not in target_event.metrics:
