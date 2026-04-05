@@ -126,7 +126,8 @@ def _build_name_by_tensor_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
         for name, param in model_chunk.named_parameters():
             assert param is not None, f"pp{pp_idx}.{name}: param is None"
             main_param = getattr(param, "main_param", None)
-            assert main_param is not None, f"pp{pp_idx}.{name}: param has no main_param attribute"
+            if main_param is None:
+                continue
             name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
     return name_map
 
