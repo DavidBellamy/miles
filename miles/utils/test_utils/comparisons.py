@@ -56,6 +56,7 @@ def compare_metrics(
 
     if not issues:
         for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
+            _print_step_comparison_table(step_idx, b_event, t_event, key_prefixes, exclude_keys=exclude_keys)
             issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, exclude_keys=exclude_keys)
 
     issues += _check_required_keys_exist(baseline_events)
@@ -130,6 +131,41 @@ def _check_single_metric(
             f"rel_diff={rel_diff:.6f} > rtol={rtol}"
         ]
     return []
+
+
+def _print_step_comparison_table(
+    step_idx: int,
+    baseline_event: MetricEvent,
+    target_event: MetricEvent,
+    key_prefixes: list[str],
+    *,
+    exclude_keys: list[str] | None = None,
+) -> None:
+    rows: list[tuple[str, str, str, str, str]] = []
+    for key in sorted(baseline_event.metrics):
+        if not any(key.startswith(p) for p in key_prefixes):
+            continue
+        b_val = baseline_event.metrics[key]
+        t_val = target_event.metrics.get(key)
+        if not isinstance(b_val, (int, float)) or t_val is None or not isinstance(t_val, (int, float)):
+            continue
+        excluded = "(excluded)" if exclude_keys and key in exclude_keys else ""
+        abs_diff = abs(b_val - t_val)
+        denom = max(abs(b_val), abs(t_val), 1e-12)
+        rel_diff = abs_diff / denom
+        rows.append((key, f"{b_val:.6e}", f"{t_val:.6e}", f"{abs_diff:.2e}", f"{rel_diff:.4%}{excluded}"))
+
+    if not rows:
+        return
+    col_widths = [max(len(r[i]) for r in rows) for i in range(5)]
+    headers = ("metric", "baseline", "target", "abs_diff", "rel_diff")
+    col_widths = [max(col_widths[i], len(headers[i])) for i in range(5)]
+    fmt = f"  {{:<{col_widths[0]}}}  {{:>{col_widths[1]}}}  {{:>{col_widths[2]}}}  {{:>{col_widths[3]}}}  {{:>{col_widths[4]}}}"
+    print(f"\n--- Step {step_idx} metric comparison ---")
+    print(fmt.format(*headers))
+    print(fmt.format(*("-" * w for w in col_widths)))
+    for row in rows:
+        print(fmt.format(*row))
 
 
 def _check_required_keys_exist(events: list[MetricEvent]) -> list[str]:
