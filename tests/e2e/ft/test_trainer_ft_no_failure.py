@@ -33,9 +33,6 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         target_dir=f"{dump_dir}/target",
         rtol=1e-2,
         key_prefixes=["train/"],
-        # grad_norm includes witness embedding gradients in target (FT mode),
-        # which legitimately increases the norm vs baseline (no witness).
-        exclude_keys=["train/grad_norm"],
     )
 
     compare_dumps(
