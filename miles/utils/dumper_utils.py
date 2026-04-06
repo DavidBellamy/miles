@@ -142,10 +142,11 @@ def _wrap_forward_step_with_stepping(forward_step_func: Callable) -> Callable:
 def _cleanup_dump_dir(dump_dir: Path) -> None:
     if _get_rank() == 0 and dump_dir.is_dir():
         shutil.rmtree(dump_dir, ignore_errors=True)
-    # No barrier here: in multi-cell FT mode, dist.barrier() on the default PG
-    # can deadlock when dumper enable flags differ across cells. The dumper's own
-    # file I/O is safe without a barrier because configure() creates directories
-    # with exist_ok=True and each rank writes to distinct files.
+    if dist.is_initialized():
+        dist.barrier()
+    indep_dp_group = get_parallel_state().indep_dp.group
+    if indep_dp_group is not None:
+        indep_dp_group.barrier()
 
 
 def _get_phase_override_configs(args: Namespace, phase: DumperPhase) -> dict[str, Any]:
