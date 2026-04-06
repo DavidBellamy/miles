@@ -22,8 +22,8 @@ def install_witness(
     *,
     buffer_size: int,
 ) -> None:
-    model.local_head_witness = _DataWitness(buffer_size=buffer_size)
-    model.local_tail_witness = _DataWitness(buffer_size=buffer_size)
+    model.local_head_witness = _DataWitness(buffer_size=buffer_size, debug_name="head")
+    model.local_tail_witness = _DataWitness(buffer_size=buffer_size, debug_name="tail")
 
 
 def witness_dump_and_clear_stale(
@@ -57,9 +57,10 @@ def witness_dump_and_clear_stale(
 
 
 class _DataWitness(nn.Module):
-    def __init__(self, buffer_size: int) -> None:
+    def __init__(self, buffer_size: int, debug_name: str = "") -> None:
         super().__init__()
         self.buffer_size = buffer_size
+        self._debug_name = debug_name
         self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
         self.witness.weight._is_witness_param = True
         nn.init.zeros_(self.witness.weight)
@@ -75,6 +76,8 @@ class _DataWitness(nn.Module):
         has_104 = mask_104.any().item()
         num_104_tokens = int(mask_104.sum().item())
 
+        dn = self._debug_name
+
         def _grad_hook(grad: Tensor) -> None:
             try:
                 grad_sum = grad.sum().item()
@@ -82,17 +85,17 @@ class _DataWitness(nn.Module):
                 if has_104:
                     grad_at_104 = grad[mask_104]
                     logger.info(
-                        f"[WITNESS_GRAD_DEBUG] has_wid104=True n_tok={num_104_tokens} "
+                        f"[WITNESS_GRAD_DEBUG:{dn}] has_wid104=True n_tok={num_104_tokens} "
                         f"grad_104_sum={grad_at_104.sum().item():.6e} grad_104_absmax={grad_at_104.abs().max().item():.6e} "
                         f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
                     )
                 else:
                     logger.info(
-                        f"[WITNESS_GRAD_DEBUG] has_wid104=False "
+                        f"[WITNESS_GRAD_DEBUG:{dn}] has_wid104=False "
                         f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
                     )
             except Exception as e:
-                logger.warning(f"[WITNESS_GRAD_DEBUG] hook error: {e}")
+                logger.warning(f"[WITNESS_GRAD_DEBUG:{dn}] hook error: {e}")
 
         if w.requires_grad:
             w.register_hook(_grad_hook)
@@ -104,11 +107,11 @@ class _DataWitness(nn.Module):
                     row_104 = grad[debug_wid].item()
                     nz = int((grad.abs() > 0).sum().item())
                     logger.info(
-                        f"[WITNESS_WEIGHT_GRAD] weight.grad[{debug_wid}]={row_104:.6e} "
+                        f"[WITNESS_WEIGHT_GRAD:{dn}] weight.grad[{debug_wid}]={row_104:.6e} "
                         f"nonzero={nz}/{grad.shape[0]} absmax={grad.abs().max().item():.6e}"
                     )
                 except Exception as e:
-                    logger.warning(f"[WITNESS_WEIGHT_GRAD] hook error: {e}")
+                    logger.warning(f"[WITNESS_WEIGHT_GRAD:{dn}] hook error: {e}")
 
             self.witness.weight.register_hook(_weight_grad_hook)
             self._debug_weight_hook_registered = True
