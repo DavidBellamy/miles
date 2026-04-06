@@ -88,6 +88,8 @@ def get_common_train_args(
             "--n-samples-per-prompt 8 "
             "--sglang-disable-cuda-graph "
             "--sglang-enable-deterministic-inference "
+            "--sglang-attention-backend flashinfer "
+            "--deterministic-mode "
             f"--save-debug-rollout-data {dump_dir}/rollout_data/{{rollout_id}}.pt "
             f"--rollout-num-gpus {mode.total_rollout_gpus} "
             f"--rollout-num-gpus-per-engine {mode.rollout_gpus_per_engine} "
@@ -138,6 +140,15 @@ def get_ft_args(mode: FTTestMode) -> str:
     return "--use-fault-tolerance " "--ft-components train " "--control-server-port 0 "
 
 
+# Env vars required for full training reproducibility.
+# Ref: https://github.com/THUDM/slime/pull/370
+_DETERMINISTIC_ENV_VARS: dict[str, str] = {
+    "NCCL_ALGO": "Ring",
+    "NVTE_ALLOW_NONDETERMINISTIC_ALGO": "0",
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+}
+
+
 def run_training(
     train_args: str,
     mode: FTTestMode,
@@ -147,10 +158,11 @@ def run_training(
 ) -> None:
     if dump_dir is not None and os.path.exists(dump_dir):
         shutil.rmtree(dump_dir)
+    merged_env_vars = {**_DETERMINISTIC_ENV_VARS, **(extra_env_vars or {})}
     U.execute_train(
         train_args=train_args,
         num_gpus_per_node=mode.train_gpus_per_node,
         megatron_model_type=mode.megatron_model_type,
-        extra_env_vars=extra_env_vars or {},
+        extra_env_vars=merged_env_vars,
         megatron_path=_MEGATRON_PATH,
     )

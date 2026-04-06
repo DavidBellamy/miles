@@ -28,12 +28,8 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
-    # Real rollout has ~1-2% metric drift due to non-deterministic NCCL/cuBLAS ops.
-    # TODO: enable full determinism (--deterministic-mode, NCCL_ALGO=Ring,
-    # CUBLAS_WORKSPACE_CONFIG, NVTE_ALLOW_NONDETERMINISTIC_ALGO=0) per PR #370
-    # and tighten these tolerances.
-    rtol = 3e-2 if mode.has_real_rollout else 1e-2
-    atol = 1e-7 if mode.has_real_rollout else 1e-8
+    rtol = 1e-2
+    atol = 1e-8
     compare_metrics(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
