@@ -45,6 +45,7 @@ def compare_metrics(
     target_dir: str,
     *,
     rtol: float = 1e-3,
+    atol: float = 1e-8,
     key_prefixes: list[str] | None = None,
     exclude_keys: list[str] | None = None,
 ) -> None:
@@ -60,7 +61,7 @@ def compare_metrics(
     if not issues:
         for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
             _print_step_comparison_table(step_idx, b_event, t_event, key_prefixes, exclude_keys=exclude_keys)
-            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, exclude_keys=exclude_keys)
+            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, atol=atol, exclude_keys=exclude_keys)
 
     issues += _check_required_keys_exist(baseline_events)
 
@@ -93,6 +94,7 @@ def _check_step_metrics(
     key_prefixes: list[str],
     rtol: float,
     *,
+    atol: float = 1e-8,
     exclude_keys: list[str] | None = None,
 ) -> list[str]:
     issues: list[str] = []
@@ -106,7 +108,7 @@ def _check_step_metrics(
             issues.append(f"Step {step_idx}: metric '{key}' present in baseline but missing in target")
             continue
 
-        issues += _check_single_metric(step_idx, key, baseline_event.metrics[key], target_event.metrics[key], rtol)
+        issues += _check_single_metric(step_idx, key, baseline_event.metrics[key], target_event.metrics[key], rtol, atol=atol)
     return issues
 
 
@@ -215,7 +217,6 @@ def _run_comparator(
         "--output-format",
         "json",
         "--grouping-skip-keys",
-        "rank",
         "--diff-threshold",
         str(diff_threshold),
         "--allow-skipped-pattern",

@@ -29,12 +29,15 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
     # Real rollout modes have sglang inference non-determinism that causes
-    # ~1-2% metric drift even with deterministic inference enabled.
+    # ~1-2% metric drift and near-zero loss values (~1e-8) even with
+    # deterministic inference enabled.
     rtol = 5e-2 if mode.has_real_rollout else 1e-2
+    atol = 1e-7 if mode.has_real_rollout else 1e-8
     compare_metrics(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
         rtol=rtol,
+        atol=atol,
         key_prefixes=["train/"],
     )
 
