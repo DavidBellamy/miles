@@ -71,7 +71,7 @@ class _DataWitness(nn.Module):
     ) -> dict:
         from megatron.core import parallel_state as mpu
         from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group
-        from megatron.core.utils import make_sharded_tensors_for_checkpoint
+        from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
         pp_rank = mpu.get_pipeline_model_parallel_rank()
         # Embed PP rank in the checkpoint key so each pipeline stage has a unique
