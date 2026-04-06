@@ -66,6 +66,14 @@ class _DataWitness(nn.Module):
         out = w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
         return out
 
+    def sharded_state_dict(
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
+    ) -> dict:
+        # Witness params are transient (zeroed each rollout) and must not participate
+        # in Megatron distributed checkpointing.  With PP>1 every stage registers
+        # the same key with replica_id=(0,0,0), causing a sharding validation error.
+        return {}
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
