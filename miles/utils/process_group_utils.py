@@ -159,6 +159,7 @@ class _RawPGUtil(GeneralPGUtil):
         _check_wait(group.allreduce([tensor], opts), "allreduce")
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        # TODO(torchft): switch to real reduce once torchft adds it to ProcessGroupWrapper.
         # torchft ProcessGroupWrapper doesn't override reduce() — calling it hits
         # the base class which errors with "No backend type associated with device".
         # allreduce is a safe substitute: the only caller is MultiPGUtil.all_reduce
