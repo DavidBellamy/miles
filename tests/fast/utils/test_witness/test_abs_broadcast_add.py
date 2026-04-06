@@ -24,10 +24,16 @@ class TestAbsBroadcastAddForward:
         with pytest.raises(AssertionError, match="addend last dim must be 1"):
             witness_broadcast_add(hidden, addend)
 
+    def test_forward_assert_leading_dims_must_match(self) -> None:
+        hidden = torch.randn(4, 2, 8)
+        addend = torch.randn(4, 3, 1)  # second dim differs
+        with pytest.raises(AssertionError, match="must match on all dims except last"):
+            witness_broadcast_add(hidden, addend)
+
     def test_forward_assert_ndim_must_match(self) -> None:
         hidden = torch.randn(4, 2, 8)
         addend = torch.randn(2, 1)  # 2D vs 3D
-        with pytest.raises(AssertionError, match="same ndim"):
+        with pytest.raises(AssertionError, match="must match on all dims except last"):
             witness_broadcast_add(hidden, addend)
 
 

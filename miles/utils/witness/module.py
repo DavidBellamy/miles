@@ -73,8 +73,9 @@ class _AbsBroadcastAdd(torch.autograd.Function):
     @staticmethod
     def forward(ctx: torch.autograd.function.FunctionCtx, hidden_states: Tensor, addend: Tensor) -> Tensor:
         assert addend.shape[-1] == 1, f"addend last dim must be 1, got {addend.shape}"
-        assert hidden_states.dim() == addend.dim(), (
-            f"hidden_states and addend must have same ndim, got {hidden_states.dim()} vs {addend.dim()}"
+        assert hidden_states.shape[:-1] == addend.shape[:-1], (
+            f"hidden_states and addend must match on all dims except last, "
+            f"got {hidden_states.shape} vs {addend.shape}"
         )
         return hidden_states + addend
 
