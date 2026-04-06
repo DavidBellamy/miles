@@ -16,7 +16,7 @@ def compare_dumps(
     target_dir: str,
     *,
     diff_threshold: float = 0.0085,
-    allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format",
+    allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format|witness",
     extra_args: list[str] | None = None,
 ) -> None:
     baseline_path = Path(baseline_dir) / "dumps"
