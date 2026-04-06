@@ -194,7 +194,7 @@ class RolloutManager:
 
     # -------------------------- engine management -----------------------------
 
-    async def get_updatable_engines_and_lock(self):
+    def get_updatable_engines_and_lock(self):
         """Return engines eligible for weight updates."""
         srv = self._get_updatable_server()
         engines = srv.engines if srv else []
@@ -203,7 +203,7 @@ class RolloutManager:
         num_new = srv.num_new_engines if srv else 0
         return engines, self.rollout_engine_lock, num_new, gpu_counts, gpu_offsets
 
-    async def clear_updatable_num_new_engines(self):
+    def clear_updatable_num_new_engines(self):
         # when fault tolerance is not enabled, we need to manually clear num_new_engines after update_weights
         srv = self._get_updatable_server()
         if srv:
@@ -232,7 +232,7 @@ class RolloutManager:
 
     # -------------------------- misc APIs -----------------------------
 
-    async def get_num_rollout_per_epoch(self):
+    def get_num_rollout_per_epoch(self):
         assert self.args.rollout_global_dataset
         return len(self.data_source.dataset) // self.args.rollout_batch_size
 
@@ -241,7 +241,7 @@ class RolloutManager:
             await asyncio.gather(*[engine.check_weights.remote(action=action) for engine in self._rollout_engines])
         )
 
-    async def set_train_parallel_config(self, config: dict):
+    def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
 
     # -------------------------- utils -----------------------------
