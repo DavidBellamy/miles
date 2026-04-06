@@ -192,36 +192,7 @@ class RolloutServer:
 
     async def recover(self):
         """Recover dead engines across all active groups, overlapping init."""
-        dead_per_group = [[i for i, engine in enumerate(g.all_engines) if engine is None] for g in self.server_groups]
-
-        all_handles = []
-        port_cursors = PortCursors.empty()
-        for g in self.server_groups:
-            handles = g.start_engines(port_cursors)
-            all_handles.extend(handles)
-        if all_handles:
-            await asyncio.gather(*all_handles)
-
-        release_handles = []
-        all_resume_engines = []
-        for g, dead_indices in zip(self.server_groups, dead_per_group, strict=True):
-            logger.info(f"Recovered {g.num_new_engines} dead rollout engines (worker_type={g.worker_type})")
-            assert g.num_new_engines == len(dead_indices), "num_new_engines does not match dead_indices length"
-            if g.needs_offload and dead_indices:
-                new_engines = [g.all_engines[i] for i in dead_indices]
-                release_handles.extend(engine.release_memory_occupation.remote() for engine in new_engines)
-                if self.update_weights or g.model_path:
-                    all_resume_engines.extend(new_engines)
-
-        if release_handles:
-            await asyncio.gather(*release_handles)
-            if all_resume_engines:
-                await asyncio.gather(
-                    *[
-                        engine.resume_memory_occupation.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS])
-                        for engine in all_resume_engines
-                    ]
-                )
+        return await asyncio.gather(*[g.recover() for g in self.server_groups])
 
     async def offload(self):
         handles = []
