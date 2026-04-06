@@ -94,7 +94,8 @@ class _DataWitness(nn.Module):
             except Exception as e:
                 logger.warning(f"[WITNESS_GRAD_DEBUG] hook error: {e}")
 
-        out.register_hook(_grad_hook)
+        if w.requires_grad:
+            w.register_hook(_grad_hook)
 
         # Register weight grad hook only once
         if not getattr(self, "_debug_weight_hook_registered", False):
