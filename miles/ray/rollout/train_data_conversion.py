@@ -10,8 +10,8 @@ def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample
     """
     Convert inference generated samples to training data.
     """
-    if self.custom_convert_samples_to_train_data_func is not None:
-        return self.custom_convert_samples_to_train_data_func(args, samples)
+    if (f := self.custom_convert_samples_to_train_data_func) is not None:
+        return f(args, samples)
 
     raw_rewards, rewards = _post_process_rewards(args, samples)
 
@@ -78,8 +78,8 @@ def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample
 
 
 def _post_process_rewards(args, samples: list[Sample] | list[list[Sample]]):
-    if self.custom_reward_post_process_func is not None:
-        return self.custom_reward_post_process_func(args, samples)
+    if (f := self.custom_reward_post_process_func) is not None:
+        return f(args, samples)
 
     raw_rewards = [sample.get_reward_value(args) for sample in samples]
     if (
