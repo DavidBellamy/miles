@@ -169,20 +169,19 @@ class ServerGroup:
             self.all_engines[i] = None
 
     async def recover(self, port_cursors: PortCursors):
-        dead_of_this_group = [i for i, engine in enumerate(self.all_engines) if engine is None]
+        dead_indices = [i for i, engine in enumerate(self.all_engines) if engine is None]
 
         await asyncio.gather(*self.start_engines(port_cursors))
 
         release_handles = []
         all_resume_engines = []
-        for g, dead_indices in zip(self.server_groups, dead_per_group, strict=True):
-            logger.info(f"Recovered {g.num_new_engines} dead rollout engines (worker_type={g.worker_type})")
-            assert g.num_new_engines == len(dead_indices), "num_new_engines does not match dead_indices length"
-            if g.needs_offload and dead_indices:
-                new_engines = [g.all_engines[i] for i in dead_indices]
-                release_handles.extend(engine.release_memory_occupation.remote() for engine in new_engines)
-                if self.update_weights or g.model_path:
-                    all_resume_engines.extend(new_engines)
+        logger.info(f"Recovered {self.num_new_engines} dead rollout engines (worker_type={self.worker_type})")
+        assert self.num_new_engines == len(dead_indices), "num_new_engines does not match dead_indices length"
+        if self.needs_offload and dead_indices:
+            new_engines = [self.all_engines[i] for i in dead_indices]
+            release_handles.extend(engine.release_memory_occupation.remote() for engine in new_engines)
+            if self.update_weights or self.model_path:
+                all_resume_engines.extend(new_engines)
 
         if release_handles:
             await asyncio.gather(*release_handles)
