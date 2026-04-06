@@ -1,4 +1,3 @@
-import itertools
 import logging
 import time
 
@@ -255,7 +254,9 @@ class RolloutManager:
                 )
             metrics = data.metrics
             data = data.samples
-            data, metadata = postprocess_rollout_data(self.args, data, train_parallel_config=self.train_parallel_config)
+            data, metadata = postprocess_rollout_data(
+                self.args, data, train_parallel_config=self.train_parallel_config
+            )
 
         return data, metadata, metrics
 

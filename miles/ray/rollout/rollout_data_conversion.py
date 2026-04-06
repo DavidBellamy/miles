@@ -16,7 +16,9 @@ def postprocess_rollout_data(args, data, train_parallel_config):
         global_batch_size = args.global_batch_size
         if args.use_dynamic_global_batch_size:
             logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
-            dynamic_global_batch_size = _compute_dynamic_global_batch_size(args, train_parallel_config=train_parallel_config, num_samples=len(data))
+            dynamic_global_batch_size = _compute_dynamic_global_batch_size(
+                args, train_parallel_config=train_parallel_config, num_samples=len(data)
+            )
             metadata["dynamic_global_batch_size"] = dynamic_global_batch_size
             global_batch_size = dynamic_global_batch_size
 
@@ -60,4 +62,3 @@ def _compute_dynamic_global_batch_size(args, train_parallel_config, num_samples:
         )
 
     return dynamic_gbs
-
