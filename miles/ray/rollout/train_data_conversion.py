@@ -6,33 +6,7 @@ from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import Sample
 
 
-def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
-    if self.custom_reward_post_process_func is not None:
-        return self.custom_reward_post_process_func(self.args, samples)
-
-    raw_rewards = [sample.get_reward_value(self.args) for sample in samples]
-    if (
-            self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
-            and self.args.rewards_normalization
-    ):
-        # group norm
-        rewards = torch.tensor(raw_rewards, dtype=torch.float)
-        if rewards.shape[-1] == self.args.n_samples_per_prompt * self.args.rollout_batch_size:
-            rewards = rewards.reshape(-1, self.args.n_samples_per_prompt)
-        else:
-            # when samples count are not equal in each group
-            rewards = rewards.view(-1, rewards.shape[-1])
-        mean = rewards.mean(dim=-1, keepdim=True)
-        rewards = rewards - mean
-
-        if self.args.advantage_estimator in ["grpo", "gspo"] and self.args.grpo_std_normalization:
-            std = rewards.std(dim=-1, keepdim=True)
-            rewards = rewards / (std + 1e-6)
-
-        return raw_rewards, rewards.flatten().tolist()
-
-    return raw_rewards, raw_rewards
-
+# TODO: remove `self`
 def convert_samples_to_train_data(self, samples: list[Sample] | list[list[Sample]]):
     """
     Convert inference generated samples to training data.
@@ -40,7 +14,7 @@ def convert_samples_to_train_data(self, samples: list[Sample] | list[list[Sample
     if self.custom_convert_samples_to_train_data_func is not None:
         return self.custom_convert_samples_to_train_data_func(self.args, samples)
 
-    raw_rewards, rewards = self._post_process_rewards(samples)
+    raw_rewards, rewards = _post_process_rewards(self, samples)
 
     assert len(raw_rewards) == len(samples)
     assert len(rewards) == len(samples)
@@ -103,6 +77,37 @@ def convert_samples_to_train_data(self, samples: list[Sample] | list[list[Sample
 
     return train_data
 
+
+# TODO: remove `self`
+def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
+    if self.custom_reward_post_process_func is not None:
+        return self.custom_reward_post_process_func(self.args, samples)
+
+    raw_rewards = [sample.get_reward_value(self.args) for sample in samples]
+    if (
+            self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
+            and self.args.rewards_normalization
+    ):
+        # group norm
+        rewards = torch.tensor(raw_rewards, dtype=torch.float)
+        if rewards.shape[-1] == self.args.n_samples_per_prompt * self.args.rollout_batch_size:
+            rewards = rewards.reshape(-1, self.args.n_samples_per_prompt)
+        else:
+            # when samples count are not equal in each group
+            rewards = rewards.view(-1, rewards.shape[-1])
+        mean = rewards.mean(dim=-1, keepdim=True)
+        rewards = rewards - mean
+
+        if self.args.advantage_estimator in ["grpo", "gspo"] and self.args.grpo_std_normalization:
+            std = rewards.std(dim=-1, keepdim=True)
+            rewards = rewards / (std + 1e-6)
+
+        return raw_rewards, rewards.flatten().tolist()
+
+    return raw_rewards, raw_rewards
+
+
+# TODO: remove `self`
 def split_train_data_by_dp(self, data, dp_size):
     """Split the train data by data parallel size."""
     rollout_data = {}
