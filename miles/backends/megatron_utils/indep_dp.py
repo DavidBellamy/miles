@@ -98,4 +98,8 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
 
-    return collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)
+    try:
+        return collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)
+    except Exception:
+        logger.exception("collective_bool_and for gradient allreduce failed (peer cell likely dead)")
+        return False
