@@ -1,10 +1,38 @@
+import itertools
 import logging
 
 
 logger = logging.getLogger(__name__)
 
 
-def compute_dynamic_global_batch_size(num_samples: int) -> int:
+def postprocess_rollout_data(args, data):
+    metadata = {}
+
+    # flatten the data if it is a list of lists
+    while isinstance(data[0], list):
+        data = list(itertools.chain.from_iterable(data))
+
+    if not args.disable_rollout_trim_samples:
+        global_batch_size = args.global_batch_size
+        if args.use_dynamic_global_batch_size:
+            logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
+            dynamic_global_batch_size = _compute_dynamic_global_batch_size(len(data))
+            metadata["dynamic_global_batch_size"] = dynamic_global_batch_size
+            global_batch_size = dynamic_global_batch_size
+
+        if len(data) % global_batch_size != 0:
+            trim_len = (len(data) // global_batch_size) * global_batch_size
+            if trim_len == 0:
+                raise ValueError(f"Not enough samples {len(data)} for global_batch_size {global_batch_size}")
+            origin_data_length = len(data)
+            data = data[:trim_len]
+            logger.info(f"trim number of samples from {origin_data_length} to {trim_len}")
+        logger.info(f"Final collected {len(data)} samples from rollout to train")
+
+    return data, metadata
+
+
+def _compute_dynamic_global_batch_size(num_samples: int) -> int:
     """Calculate dynamic global_batch_size to ensure only one training step.
 
     Strategy: global_batch_size = num_samples rounded down to a multiple of dp_size

@@ -6,7 +6,7 @@ import ray
 
 from miles.ray.rollout.debug_data import load_debug_rollout_data, save_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
-from miles.ray.rollout.rollout_data_conversion import compute_dynamic_global_batch_size
+from miles.ray.rollout.rollout_data_conversion import postprocess_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
 from miles.ray.rollout.train_data_conversion import convert_samples_to_train_data, split_train_data_by_dp
@@ -255,27 +255,7 @@ class RolloutManager:
                 )
             metrics = data.metrics
             data = data.samples
-            metadata = {}
-            # flatten the data if it is a list of lists
-            while isinstance(data[0], list):
-                data = list(itertools.chain.from_iterable(data))
-
-            if not self.args.disable_rollout_trim_samples:
-                global_batch_size = self.args.global_batch_size
-                if self.args.use_dynamic_global_batch_size:
-                    logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
-                    dynamic_global_batch_size = compute_dynamic_global_batch_size(len(data))
-                    metadata["dynamic_global_batch_size"] = dynamic_global_batch_size
-                    global_batch_size = dynamic_global_batch_size
-
-                if len(data) % global_batch_size != 0:
-                    trim_len = (len(data) // global_batch_size) * global_batch_size
-                    if trim_len == 0:
-                        raise ValueError(f"Not enough samples {len(data)} for global_batch_size {global_batch_size}")
-                    origin_data_length = len(data)
-                    data = data[:trim_len]
-                    logger.info(f"trim number of samples from {origin_data_length} to {trim_len}")
-                logger.info(f"Final collected {len(data)} samples from rollout to train")
+            data, metadata = postprocess_rollout_data(self.args, data)
 
         return data, metadata, metrics
 
