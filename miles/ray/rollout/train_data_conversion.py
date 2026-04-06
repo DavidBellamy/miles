@@ -79,7 +79,9 @@ def convert_samples_to_train_data(
     if "teacher_log_probs" in samples[0].__dict__:
         train_data["teacher_log_probs"] = [sample.teacher_log_probs for sample in samples]
 
-    if (x := metadata.get("dynamic_global_batch_size")) is not None:
+    x = metadata.get("dynamic_global_batch_size")
+    assert args.use_dynamic_global_batch_size == x is not None
+    if x is not None:
         train_data["dynamic_global_batch_size"] = x
 
     return train_data
