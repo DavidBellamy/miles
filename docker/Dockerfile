@@ -88,7 +88,7 @@ RUN pip install megatron-energon --no-deps
 RUN pip install multi-storage-client --no-deps
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+RUN pip install --force-reinstall --no-deps PyJWT && pip install -r /tmp/requirements.txt
 
 # https://github.com/pytorch/pytorch/issues/168167
 RUN if [ "${ENABLE_CUDA_13}" = "1" ]; then \
