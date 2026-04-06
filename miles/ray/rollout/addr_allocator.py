@@ -1,5 +1,4 @@
 import logging
-from copy import deepcopy
 from dataclasses import dataclass
 
 import ray
@@ -16,7 +15,7 @@ class PortCursors:
         return PortCursors(_values={})
 
     def assign(self, other: "PortCursors"):
-        self._values = deepcopy(other._values)
+        self._values = other._values.copy()
 
     def next_base_port(self) -> int:
         return max(self._values.values()) if self._values else 15000
