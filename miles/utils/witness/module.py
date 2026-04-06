@@ -56,6 +56,42 @@ def witness_dump_and_clear_stale(
 # ---------------------------------------------------------------------------
 
 
+class _AbsBroadcastAdd(torch.autograd.Function):
+    """Broadcast-add a low-dim addend to a high-dim tensor, using abs-reduced gradient for the addend.
+
+    Forward: ``hidden_states + addend`` (standard broadcast).
+    Backward for ``hidden_states``: pass-through.
+    Backward for ``addend``: ``grad.abs().sum(dim=-1, keepdim=True)`` instead of ``grad.sum(dim=-1, keepdim=True)``.
+
+    This avoids gradient cancellation when the upstream gradient has mixed signs
+    across the last dimension.  The witness embedding only needs to detect
+    *whether* gradient flowed (nonzero), not the exact magnitude, so using
+    ``abs`` is acceptable.
+    """
+
+    @staticmethod
+    def forward(ctx: torch.autograd.function.FunctionCtx, hidden_states: Tensor, addend: Tensor) -> Tensor:
+        assert addend.shape[-1] == 1, f"addend last dim must be 1, got {addend.shape}"
+        assert hidden_states.dim() == addend.dim(), (
+            f"hidden_states and addend must have same ndim, got {hidden_states.dim()} vs {addend.dim()}"
+        )
+        return hidden_states + addend
+
+    @staticmethod
+    def backward(ctx: torch.autograd.function.FunctionCtx, grad: Tensor) -> tuple[Tensor, Tensor]:
+        grad_addend = grad.abs().sum(dim=-1, keepdim=True)
+        return grad, grad_addend
+
+
+def witness_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
+    """Add witness output to hidden states with abs-reduced gradient for the addend.
+
+    Use this instead of ``hidden_states + tail_out`` for tail witnesses
+    to prevent gradient cancellation across the hidden dimension.
+    """
+    return _AbsBroadcastAdd.apply(hidden_states, addend)
+
+
 class _DataWitness(nn.Module):
     def __init__(self, buffer_size: int, debug_name: str = "") -> None:
         super().__init__()
@@ -69,52 +105,6 @@ class _DataWitness(nn.Module):
         assert input_ids.shape == witness_ids.shape
         w = self.witness(witness_ids)  # (*, 1)
         out = w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
-
-        # DEBUG: gradient hook to diagnose missing witness_id=104
-        debug_wid = 104
-        mask_104 = (witness_ids == debug_wid)
-        has_104 = mask_104.any().item()
-        num_104_tokens = int(mask_104.sum().item())
-        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
-
-        dn = self._debug_name
-
-        def _grad_hook(grad: Tensor) -> None:
-            try:
-                if has_104:
-                    grad_at_104 = grad[mask_104]
-                    print(
-                        f"[WITNESS_GRAD_DEBUG:{dn}:rank{rank}] wid104 n_tok={num_104_tokens} "
-                        f"w_grad_104_sum={grad_at_104.sum().item():.6e} "
-                        f"w_grad_104_absmax={grad_at_104.abs().max().item():.6e} "
-                        f"dtype={grad.dtype}",
-                        flush=True,
-                    )
-            except Exception as e:
-                print(f"[WITNESS_GRAD_DEBUG:{dn}:rank{rank}] error: {e}", flush=True)
-
-        if w.requires_grad:
-            w.register_hook(_grad_hook)
-
-        # Register weight grad hook only once
-        if not getattr(self, "_debug_weight_hook_registered", False):
-            def _weight_grad_hook(grad: Tensor) -> None:
-                try:
-                    row_104 = grad[debug_wid].item()
-                    nz = int((grad.abs() > 0).sum().item())
-                    print(
-                        f"[WITNESS_WEIGHT_GRAD:{dn}:rank{rank}] "
-                        f"weight.grad[{debug_wid}]={row_104:.6e} "
-                        f"nonzero={nz}/{grad.shape[0]} "
-                        f"dtype={grad.dtype}",
-                        flush=True,
-                    )
-                except Exception as e:
-                    print(f"[WITNESS_WEIGHT_GRAD:{dn}:rank{rank}] error: {e}", flush=True)
-
-            self.witness.weight.register_hook(_weight_grad_hook)
-            self._debug_weight_hook_registered = True
-
         return out
 
     def sharded_state_dict(
