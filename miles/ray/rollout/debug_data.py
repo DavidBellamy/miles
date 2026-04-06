@@ -3,10 +3,25 @@ from pathlib import Path
 
 import torch
 
+from miles.utils.types import Sample
+
 logger = logging.getLogger(__name__)
 
 
-# TODO extract `load_debug_rollout_data`
+def load_debug_rollout_data(args, rollout_id: int):
+    data = torch.load(
+        args.load_debug_rollout_data.format(rollout_id=rollout_id),
+        weights_only=False,
+    )["samples"]
+    data = [Sample.from_dict(sample) for sample in data]
+    if (ratio := args.load_debug_rollout_data_subsample) is not None:
+        original_num_rows = len(data)
+        rough_subsample_num_rows = int(original_num_rows * ratio)
+        data = data[: rough_subsample_num_rows // 2] + data[-rough_subsample_num_rows // 2 :]
+        logger.info(
+            f"Subsample loaded debug rollout data using {ratio=} and change num rows {original_num_rows} -> {len(data)}"
+        )
+    return data
 
 
 def save_debug_rollout_data(args, data, rollout_id, evaluation: bool):

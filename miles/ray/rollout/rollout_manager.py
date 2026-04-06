@@ -5,7 +5,7 @@ import time
 import ray
 import torch
 
-from miles.ray.rollout.debug_data import save_debug_rollout_data
+from miles.ray.rollout.debug_data import save_debug_rollout_data, load_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
@@ -248,19 +248,7 @@ class RolloutManager:
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
-            # TODO extract to `load_debug_rollout_data`
-            data = torch.load(
-                self.args.load_debug_rollout_data.format(rollout_id=rollout_id),
-                weights_only=False,
-            )["samples"]
-            data = [Sample.from_dict(sample) for sample in data]
-            if (ratio := self.args.load_debug_rollout_data_subsample) is not None:
-                original_num_rows = len(data)
-                rough_subsample_num_rows = int(original_num_rows * ratio)
-                data = data[: rough_subsample_num_rows // 2] + data[-rough_subsample_num_rows // 2 :]
-                logger.info(
-                    f"Subsample loaded debug rollout data using {ratio=} and change num rows {original_num_rows} -> {len(data)}"
-                )
+            data = load_debug_rollout_data(self.args, rollout_id=rollout_id)
             metrics = None
         else:
             if self.use_experimental_refactor:
