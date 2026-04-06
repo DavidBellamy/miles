@@ -14,6 +14,8 @@ import torch
 import torch.distributed as dist
 from sglang.srt.debug_utils.dumper import DumperConfig, _get_rank, dumper
 
+from miles.backends.training_utils.parallel import get_parallel_state
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,8 +112,6 @@ class DumperMegatronUtil:
         # Only write dump files on effective DP rank 0 (covers both intra-DP
         # and indep-DP). Other DP ranks still participate in dumper collectives
         # (barrier, broadcast, allgather) but don't produce output files.
-        from miles.backends.training_utils.parallel import get_parallel_state
-
         if get_parallel_state().effective_dp.rank != 0:
             merged["enable_output_file"] = False
             merged["enable_output_console"] = False
