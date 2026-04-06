@@ -85,6 +85,15 @@ class RolloutManager:
                     self._health_monitors.append(monitor)
             self._ci_fault_injection_pending = self.args.ci_test  # Flag for CI fault injection
 
+    # -------------------------- lifecycle -----------------------------
+    # TODO: may have a `async def init` here later
+
+    def dispose(self):
+        if self._metric_checker is not None:
+            self._metric_checker.dispose()
+        for monitor in self._health_monitors:
+            monitor.stop()
+
     # -------------------------- data generation -----------------------------
 
     def generate(self, rollout_id):
@@ -180,12 +189,6 @@ class RolloutManager:
                 time.sleep(wait_time)
             except Exception as e:
                 logger.warning(f"CI Fault Injection failed: {e}")
-
-    def dispose(self):
-        if self._metric_checker is not None:
-            self._metric_checker.dispose()
-        for monitor in self._health_monitors:
-            monitor.stop()
 
     @property
     def server(self) -> RolloutServer | None:
