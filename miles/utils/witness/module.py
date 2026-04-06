@@ -121,6 +121,8 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
         assert main_param is not model_weight
         main_param.data[idx] = 0.0
 
+    # Distributed optimizer keys state by main_param (fp32 copy);
+    # non-distributed optimizer keys by model_weight directly.
     optimizer_key = main_param if main_param is not None else model_weight
     if optimizer_key in optimizer.state:
         state = optimizer.state[optimizer_key]
