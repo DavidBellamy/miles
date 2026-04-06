@@ -85,6 +85,72 @@ class RolloutManager:
                     self._health_monitors.append(monitor)
             self._ci_fault_injection_pending = self.args.ci_test  # Flag for CI fault injection
 
+    # -------------------------- data generation -----------------------------
+
+    def generate(self, rollout_id):
+        start_time = time.time()
+        self.rollout_id = rollout_id
+        self.health_monitoring_resume()
+        if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
+            self._try_ci_fault_injection()
+        data, metadata, metrics = self._get_rollout_data(rollout_id=rollout_id)
+        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
+        log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
+        data = convert_samples_to_train_data(
+            self.args,
+            data,
+            metadata=metadata,
+            custom_convert_samples_to_train_data_func=self.custom_convert_samples_to_train_data_func,
+            custom_reward_post_process_func=self.custom_reward_post_process_func,
+        )
+        return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
+
+    def eval(self, rollout_id):
+        if self.args.debug_train_only:
+            # if debug train only, we don't generate evaluation data
+            return
+        self.health_monitoring_resume()
+
+        if self.use_experimental_refactor:
+            result = call_rollout_function(self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
+        else:
+            result = call_rollout_fn(
+                self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
+            )
+        data = result.data
+        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
+        metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
+        if self._metric_checker is not None:
+            self._metric_checker.on_eval(metrics)
+
+    # -------------------------- offload/onload -----------------------------
+
+    def offload(self, tags: list[str] | None = None):
+        self.health_monitoring_pause()
+        if tags is not None:
+            handles = [
+                engine.release_memory_occupation.remote(tags=tags)
+                for engine in self.rollout_engines
+                if engine is not None
+            ]
+            return ray.get(handles) if handles else []
+        for srv in self.servers.values():
+            srv.offload()
+
+    def onload(self, tags: list[str] | None = None):
+        for srv in self.servers.values():
+            srv.onload(tags)
+
+    def onload_weights(self):
+        for srv in self.servers.values():
+            srv.onload_weights()
+
+    def onload_kv(self):
+        for srv in self.servers.values():
+            srv.onload_kv()
+
+    # -------------------------- TODO -----------------------------
+
     # TODO will be replaced by full ft
     def _try_ci_fault_injection(self):
         """Try to inject fault during generate (when health monitor is running)."""
@@ -144,63 +210,11 @@ class RolloutManager:
         assert self.args.rollout_global_dataset
         return len(self.data_source.dataset) // self.args.rollout_batch_size
 
-    def generate(self, rollout_id):
-        start_time = time.time()
-        self.rollout_id = rollout_id
-        self.health_monitoring_resume()
-        if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
-            self._try_ci_fault_injection()
-        data, metadata, metrics = self._get_rollout_data(rollout_id=rollout_id)
-        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
-        log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
-        data = convert_samples_to_train_data(
-            self.args,
-            data,
-            metadata=metadata,
-            custom_convert_samples_to_train_data_func=self.custom_convert_samples_to_train_data_func,
-            custom_reward_post_process_func=self.custom_reward_post_process_func,
-        )
-        return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
-
-    def eval(self, rollout_id):
-        if self.args.debug_train_only:
-            # if debug train only, we don't generate evaluation data
-            return
-        self.health_monitoring_resume()
-
-        if self.use_experimental_refactor:
-            result = call_rollout_function(self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
-        else:
-            result = call_rollout_fn(
-                self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
-            )
-        data = result.data
-        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
-        metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
-        if self._metric_checker is not None:
-            self._metric_checker.on_eval(metrics)
-
     def save(self, rollout_id):
         self.data_source.save(rollout_id)
 
     def load(self, rollout_id=None):
         self.data_source.load(rollout_id)
-
-    def offload(self, tags: list[str] | None = None):
-        self.health_monitoring_pause()
-        if tags is not None:
-            handles = [
-                engine.release_memory_occupation.remote(tags=tags)
-                for engine in self.rollout_engines
-                if engine is not None
-            ]
-            return ray.get(handles) if handles else []
-        for srv in self.servers.values():
-            srv.offload()
-
-    def onload(self, tags: list[str] | None = None):
-        for srv in self.servers.values():
-            srv.onload(tags)
 
     def health_monitoring_pause(self) -> None:
         for monitor in self._health_monitors:
@@ -209,14 +223,6 @@ class RolloutManager:
     def health_monitoring_resume(self) -> None:
         for monitor in self._health_monitors:
             monitor.resume()
-
-    def onload_weights(self):
-        for srv in self.servers.values():
-            srv.onload_weights()
-
-    def onload_kv(self):
-        for srv in self.servers.values():
-            srv.onload_kv()
 
     def recover_updatable_engines(self) -> None:
         """Restart any dead rollout engines and update num_new_engines for update_weights detection.
