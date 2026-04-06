@@ -120,6 +120,13 @@ class DumperMegatronUtil:
         dumper.reset()
         _cleanup_dump_dir(Path(merged["dir"]) / merged["exp_name"])
         dumper.configure(**dataclasses.asdict(full_config))
+
+        from megatron.core import parallel_state as mpu
+
+        pp_size = mpu.get_pipeline_model_parallel_world_size()
+        if pp_size > 1:
+            dumper.set_ctx(pp_rank=mpu.get_pipeline_model_parallel_rank())
+
         return True
 
 
