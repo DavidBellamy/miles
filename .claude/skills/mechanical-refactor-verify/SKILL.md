@@ -20,9 +20,11 @@ Regardless of who did the move (human or agent) and when (before or after commit
 
 Write the script to `/tmp/transform_<short_description>.py`. **Never write it inside the repo.**
 
-The scaffold lives in `mechanical_refactor_verify_utils.py` next to this skill. The transform script only defines `transform()` and calls `verify_mechanical_refactor`.
+The scaffold (worktree creation, diff check, ruff format, result reporting) lives in `mechanical_refactor_verify_utils.py` next to this skill.
 
-Script template:
+**MANDATORY**: The transform script MUST use `verify_mechanical_refactor()` from the utils module. Do NOT reimplement the verification scaffold — no hand-written worktree management, no hand-written diff checking. The script only defines `transform()` and calls `verify_mechanical_refactor`.
+
+Script template (follow this structure exactly):
 
 ```python
 #!/usr/bin/env python3
