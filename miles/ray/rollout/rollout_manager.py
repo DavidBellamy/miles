@@ -167,6 +167,7 @@ class RolloutManager:
 
     # -------------------------- offload/onload -----------------------------
 
+    # TODO may parallelly execute offload/onload across services
     async def offload(self, tags: list[str] | None = None):
         self._health_monitoring_pause()
         if tags is not None:
