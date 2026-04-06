@@ -54,28 +54,32 @@ class TestDataWitnessForward:
         assert set(nonzero_rows) == {2, 5}
 
     def test_no_effect_on_main_model_gradients(self) -> None:
-        """Witness should not alter gradients for main model parameters."""
+        """Witness should not alter gradients for upstream or downstream model parameters."""
         torch.manual_seed(42)
+        embed = nn.Embedding(100, 8)
         linear = nn.Linear(8, 1)
 
-        hidden = torch.randn(4, 1, 8, requires_grad=True)
+        tokens = torch.tensor([[1, 2, 3, 4]])
 
-        # Compute loss without witness
+        # Step 1: Compute loss without witness
+        hidden = embed(tokens).transpose(0, 1).contiguous()  # [s=4, b=1, h=8]
         out_no_witness = linear(hidden).sum()
         out_no_witness.backward()
+        grad_embed_no = embed.weight.grad.clone()
         grad_linear_no = linear.weight.grad.clone()
 
+        embed.zero_grad()
         linear.zero_grad()
-        if hidden.grad is not None:
-            hidden.grad.zero_()
 
-        # Compute loss with witness
+        # Step 2: Compute loss with witness
+        hidden = embed(tokens).transpose(0, 1).contiguous()
         witness = _DataWitness(buffer_size=10)
         ids = torch.tensor([[0, 0, 0, 0]])
-        h = witness(ids, hidden)  # hidden unchanged (witness output is zero)
+        h = witness(ids, hidden)
         out_with_witness = linear(h).sum()
         out_with_witness.backward()
 
+        assert torch.equal(grad_embed_no, embed.weight.grad)
         assert torch.equal(grad_linear_no, linear.weight.grad)
 
 
