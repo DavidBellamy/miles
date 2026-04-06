@@ -171,10 +171,8 @@ class ServerGroup:
     async def recover(self):
         dead_of_this_group = [i for i, engine in enumerate(self.all_engines) if engine is None]
 
-        all_handles = []
         port_cursors = PortCursors.empty()
-        handles = self.start_engines(port_cursors)
-        all_handles.extend(handles)
+        all_handles = self.start_engines(port_cursors)
         if all_handles:
             await asyncio.gather(*all_handles)
 
