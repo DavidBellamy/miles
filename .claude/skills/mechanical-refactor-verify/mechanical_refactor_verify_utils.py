@@ -22,6 +22,10 @@ def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str
     return result.stdout.strip()
 
 
+def git_add_and_commit(message: str, cwd: str) -> None:
+    exec_command(f"git add -A && git commit -m '{message}'", cwd=cwd)
+
+
 def verify_mechanical_refactor(
     base_commit: str,
     target_commit: str,

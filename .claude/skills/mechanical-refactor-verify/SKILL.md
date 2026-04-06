@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command
+from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command, git_add_and_commit
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
@@ -61,15 +61,15 @@ def transform(root: Path) -> None:
     source.unlink()
     (root / "path/to/pkg/__init__.py").touch()
 
-    exec_command("git add -A && git commit -m 'mechanical: split source.py'", cwd=str(root))
+    git_add_and_commit("mechanical: split source.py", cwd=str(root))
 
     # --- Step 2: Fix imports ---
     # <edit files>
-    # exec_command("git add -A && git commit -m 'fix imports'", cwd=str(root))
+    # git_add_and_commit("fix imports", cwd=str(root))
 
     # --- Step 3: Format ---
     # exec_command("ruff format .", cwd=str(root))
-    # exec_command("git add -A && git commit -m 'fmt'", cwd=str(root))
+    # git_add_and_commit("fmt", cwd=str(root))
 
 
 if __name__ == "__main__":
