@@ -1,10 +1,12 @@
 import logging
+from collections import defaultdict
 from collections.abc import Iterator
 
 from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
     TrainGroupStepEndEvent,
+    TrainLossComputationEvent,
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
 )
@@ -56,12 +58,37 @@ def check(events: list[Event]) -> list[WitnessIssue]:
             expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(
                 _filter_by_type(events, WitnessAllocateIdEvent)
             ),
+            zero_adv_witness_ids_by_key=_compute_zero_advantage_witness_ids(
+                _filter_by_type(events, TrainLossComputationEvent)
+            ),
         )
     )
 
 
 def _filter_by_type(arr: list, ty: type) -> list:
     return [x for x in arr if isinstance(x, ty)]
+
+
+def _compute_zero_advantage_witness_ids(
+    events: list[TrainLossComputationEvent],
+) -> dict[tuple[int, int], set[int]]:
+    """Return witness_ids where ALL tokens have advantage == 0.0, keyed by (rollout_id, cell_index)."""
+    result: dict[tuple[int, int], set[int]] = defaultdict(set)
+
+    for event in events:
+        if event.witness_ids is None:
+            continue
+
+        advantages_by_wid: dict[int, list[float]] = defaultdict(list)
+        for adv, wid in zip(event.advantages, event.witness_ids, strict=True):
+            advantages_by_wid[wid].append(adv)
+
+        key = (event.rollout_id, event.source.cell_index)
+        for wid, advs in advantages_by_wid.items():
+            if all(a == 0.0 for a in advs):
+                result[key].add(wid)
+
+    return dict(result)
 
 
 def _compute_expected_witness_ids_of_step(events: list[WitnessAllocateIdEvent]) -> dict[int, set[int]]:
@@ -87,6 +114,7 @@ def _find_mismatches(
     all_step_events: list[TrainGroupStepEndEvent],
     all_witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids_of_step: dict[int, set[int]],
+    zero_adv_witness_ids_by_key: dict[tuple[int, int], set[int]],
 ) -> Iterator[WitnessIssue]:
     for step_event in all_step_events:
         rollout_id = step_event.rollout_id
@@ -114,12 +142,15 @@ def _find_mismatches(
                 )
                 continue
 
+            zero_adv_ids = zero_adv_witness_ids_by_key.get((rollout_id, cell_index), set())
+
             for event in witness_events_of_cell:
                 issue = _compare_snapshot(
                     event=event,
                     expected=expected_witness_ids_of_step.get(rollout_id, set()),
                     rollout_id=rollout_id,
                     cell_index=cell_index,
+                    zero_adv_witness_ids=zero_adv_ids,
                 )
                 if issue is not None:
                     yield issue
@@ -131,9 +162,10 @@ def _compare_snapshot(
     expected: set[int],
     rollout_id: int,
     cell_index: int,
+    zero_adv_witness_ids: set[int],
 ) -> WitnessDataMismatchIssue | None:
     stale_set = set(event.stale_ids)
-    filtered_expected = expected - stale_set
+    filtered_expected = expected - stale_set - zero_adv_witness_ids
     filtered_actual = set(event.nonzero_witness_ids) - stale_set
 
     if filtered_expected == filtered_actual:
