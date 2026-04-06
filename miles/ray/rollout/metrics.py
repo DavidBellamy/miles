@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import numpy as np
@@ -13,6 +14,9 @@ from miles.utils.metric_utils import (
 )
 from miles.utils.misc import load_function
 from miles.utils.types import Sample
+
+
+logger = logging.getLogger(__name__)
 
 
 def log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):

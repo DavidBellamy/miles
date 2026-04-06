@@ -6,7 +6,7 @@ from pathlib import Path
 import ray
 import torch
 
-from miles.ray.rollout.metrics import log_rollout_data, log_eval_rollout_data
+from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
 from miles.ray.utils import Lock

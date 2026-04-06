@@ -1,4 +1,8 @@
+import logging
+
 import ray
+
+logger = logging.getLogger(__name__)
 
 
 def allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):

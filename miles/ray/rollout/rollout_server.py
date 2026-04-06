@@ -4,10 +4,9 @@ import logging
 import ray
 from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_WEIGHTS
 
-from miles.backends.sglang_utils.sglang_config import SglangConfig, ModelConfig, ServerGroupConfig
+from miles.backends.sglang_utils.sglang_config import ModelConfig, ServerGroupConfig, SglangConfig
 from miles.ray.rollout.router_manager import start_router
 from miles.ray.rollout.server_group import ServerGroup
-
 
 logger = logging.getLogger(__name__)
 
