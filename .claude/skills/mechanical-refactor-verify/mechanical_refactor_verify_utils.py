@@ -57,7 +57,8 @@ def verify_mechanical_refactor(
 
         print("[3/4] Running pre-commit...")
         exec_command("pre-commit run --all-files", cwd=worktree_dir, check=False)
-        git_add_and_commit("pre-commit fixes", cwd=worktree_dir)
+        if exec_command("git status --porcelain", cwd=worktree_dir):
+            git_add_and_commit("pre-commit fixes", cwd=worktree_dir)
 
         print(f"[4/4] Diffing against {target_commit[:8]}...")
         diff = exec_command(
