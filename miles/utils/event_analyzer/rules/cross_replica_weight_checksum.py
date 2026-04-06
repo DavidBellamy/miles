@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
@@ -36,29 +37,30 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
     return all_mismatches
 
 
+def _get_rank_key(event: LocalWeightChecksumEvent) -> int:
+    if isinstance(event.source, TrainProcessIdentity):
+        return event.source.rank_within_cell
+    return -1
+
+
 def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
     # Group events by rank_within_cell so we only compare across replicas (cell_index),
     # not across TP/PP/EP ranks within the same cell (which have different param shards).
     # TODO: group by (component, rank_within_cell) once critic checksum events are supported.
     #  Currently only actor emits LocalWeightChecksumEvent.
-    by_rank: dict[int, list[LocalWeightChecksumEvent]] = {}
+    by_rank: dict[int, list[LocalWeightChecksumEvent]] = defaultdict(list)
     for event in events:
-        if isinstance(event.source, TrainProcessIdentity):
-            by_rank.setdefault(event.source.rank_within_cell, []).append(event)
-        else:
-            by_rank.setdefault(-1, []).append(event)
+        by_rank[_get_rank_key(event)].append(event)
 
     for rank_events in by_rank.values():
-        if len(rank_events) < 2:
-            continue
-        event_a = rank_events[0]
-        for i in range(1, len(rank_events)):
-            event_b = rank_events[i]
+        first = rank_events[0]
+        first_flat = _flatten_event(first)
+        for other in rank_events[1:]:
             yield from _compare_flat_dicts(
-                a=_flatten_event(event_a),
-                b=_flatten_event(event_b),
-                label_a=_compute_label(event_a),
-                label_b=_compute_label(event_b),
+                a=first_flat,
+                b=_flatten_event(other),
+                label_a=_compute_label(first),
+                label_b=_compute_label(other),
             )
 
 
