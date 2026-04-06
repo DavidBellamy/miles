@@ -149,6 +149,11 @@ class RayTrainCell:
         )
 
     def _mark_as_errored(self) -> None:
+        for actor in self._state.actor_handles:
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                pass
         self._change_state(
             "_mark_as_errored",
             (StateAllocatedAlive, StateAllocatedErrored),
