@@ -249,4 +249,4 @@ class RolloutServer:
         return await asyncio.gather(*handles)
 
     async def check_weights(self, action: str):
-        return TODO
+        return await asyncio.gather(*[g.check_weights(action=action) for g in self.server_groups])

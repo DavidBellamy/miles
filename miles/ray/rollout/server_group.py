@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import os
@@ -185,3 +186,8 @@ class ServerGroup:
         return [
             engine.update_weights_from_disk.remote(self.model_path) for engine in self.engines if engine is not None
         ]
+
+    async def check_weights(self, action: str):
+        return asyncio.gather(*[
+            engine.check_weights.remote(action=action) for engine in self.engines if engine is not None
+        ])
