@@ -5,7 +5,6 @@ from pathlib import Path
 
 from miles.utils.event_logger.logger import read_events
 from miles.utils.event_logger.models import MetricEvent
-from miles.utils.process_identity import TrainProcessIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +52,8 @@ def compare_metrics(
     if key_prefixes is None:
         key_prefixes = ["train/"]
 
-    baseline_events = _read_train_metric_events(Path(baseline_dir))
-    target_events = _read_train_metric_events(Path(target_dir))
+    baseline_events = _read_metric_events(Path(baseline_dir))
+    target_events = _read_metric_events(Path(target_dir))
 
     issues: list[str] = []
     issues += _check_event_counts(baseline_events, target_events, baseline_dir, target_dir)
@@ -234,15 +233,10 @@ def _run_comparator(
     return result
 
 
-def _read_train_metric_events(dump_dir: Path) -> list[MetricEvent]:
-    """Read MetricEvents from TrainProcessIdentity sources only.
-
-    Train metrics are already aggregated across all cells (gathered to global
-    rank 0), so there is exactly one set of metrics regardless of cell count.
-    RolloutManagerProcessIdentity events are excluded.
-    """
+def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
+    """Read all MetricEvents from the events directory."""
     events_dir: Path = dump_dir / "events"
     if not events_dir.exists():
         return []
     all_events = read_events(events_dir)
-    return [e for e in all_events if isinstance(e, MetricEvent) and isinstance(e.source, TrainProcessIdentity)]
+    return [e for e in all_events if isinstance(e, MetricEvent)]
