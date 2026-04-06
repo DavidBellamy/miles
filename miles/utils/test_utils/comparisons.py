@@ -17,7 +17,9 @@ def compare_dumps(
     target_dir: str,
     *,
     diff_threshold: float = 0.0085,
+    # Skipped (one side missing): aux tensors not always dumped; witness only in FT target
     allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format|.*witness.*",
+    # Failed (both sides present, values differ): real rollout produces different data per run
     allow_failed_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format",
     extra_args: list[str] | None = None,
 ) -> None:
@@ -97,7 +99,7 @@ def _check_step_metrics(
     key_prefixes: list[str],
     rtol: float,
     *,
-    atol: float = 1e-8,
+    atol: float,
     exclude_keys: list[str] | None = None,
 ) -> list[str]:
     issues: list[str] = []
@@ -121,7 +123,7 @@ def _check_single_metric(
     baseline_val: object,
     target_val: object,
     rtol: float,
-    atol: float = 1e-8,
+    atol: float,
 ) -> list[str]:
     if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
         return []
