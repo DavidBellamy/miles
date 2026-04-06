@@ -174,6 +174,8 @@ class _RawPGUtil(GeneralPGUtil):
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
     ) -> None:
+        # AllgatherOptions is not re-exported by torch.distributed (unlike
+        # AllreduceOptions, BroadcastOptions, GatherOptions). PyTorch omission.
         from torch._C._distributed_c10d import AllgatherOptions
 
         _check_wait(group.allgather([output_tensors], [input_tensor], AllgatherOptions()), "allgather")
