@@ -21,9 +21,14 @@ def install_witness(
     model: nn.Module,
     *,
     buffer_size: int,
+    sequence_parallel: bool = False,
 ) -> None:
-    model.local_head_witness = _DataWitness(buffer_size=buffer_size, debug_name="head")
-    model.local_tail_witness = _DataWitness(buffer_size=buffer_size, debug_name="tail")
+    model.local_head_witness = _DataWitness(
+        buffer_size=buffer_size, sequence_parallel=sequence_parallel, use_abs_broadcast=False,
+    )
+    model.local_tail_witness = _DataWitness(
+        buffer_size=buffer_size, sequence_parallel=sequence_parallel, use_abs_broadcast=True,
+    )
 
 
 def witness_dump_and_clear_stale(
@@ -93,19 +98,39 @@ def witness_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
 
 
 class _DataWitness(nn.Module):
-    def __init__(self, buffer_size: int, debug_name: str = "") -> None:
+    def __init__(
+        self,
+        buffer_size: int,
+        *,
+        sequence_parallel: bool = False,
+        use_abs_broadcast: bool = False,
+    ) -> None:
         super().__init__()
         self.buffer_size = buffer_size
-        self._debug_name = debug_name
+        self._sequence_parallel = sequence_parallel
+        self._use_abs_broadcast = use_abs_broadcast
         self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
         self.witness.weight._is_witness_param = True
         nn.init.zeros_(self.witness.weight)
 
-    def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
-        assert input_ids.shape == witness_ids.shape
-        w = self.witness(witness_ids)  # (*, 1)
-        out = w - w.detach()  # forward: bitwise 0 (for finite w), backward: d/dw = I
-        return out
+    def forward(self, witness_ids: Tensor, hidden_states: Tensor) -> Tensor:
+        """Inject witness signal into hidden_states and return the modified tensor.
+
+        1. Embedding lookup → zero-forward / identity-backward trick
+        2. Transpose from [b, s, 1] to [s, b, 1] (Megatron SBH layout)
+        3. Scatter along seq dim when sequence-parallel is active
+        4. Add to hidden_states (abs-reduced gradient for tail witnesses)
+        """
+        w = self.witness(witness_ids)  # [b, s, 1]
+        out = w - w.detach()  # forward: bitwise 0, backward: d/dw = I
+        out = out.transpose(0, 1).contiguous()  # [s, b, 1]
+        if self._sequence_parallel:
+            from megatron.core import tensor_parallel
+
+            out = tensor_parallel.scatter_to_sequence_parallel_region(out)
+        if self._use_abs_broadcast:
+            return _AbsBroadcastAdd.apply(hidden_states, out)
+        return hidden_states + out
 
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None

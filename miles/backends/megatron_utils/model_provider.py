@@ -264,4 +264,5 @@ def _maybe_install_witness(
         install_witness(
             model,
             buffer_size=args.witness_buffer_size,
+            sequence_parallel=getattr(model.config, "sequence_parallel", False),
         )
