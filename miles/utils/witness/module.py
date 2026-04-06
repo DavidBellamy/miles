@@ -75,27 +75,23 @@ class _DataWitness(nn.Module):
         mask_104 = (witness_ids == debug_wid)
         has_104 = mask_104.any().item()
         num_104_tokens = int(mask_104.sum().item())
+        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
 
         dn = self._debug_name
 
         def _grad_hook(grad: Tensor) -> None:
             try:
-                grad_sum = grad.sum().item()
-                grad_max = grad.abs().max().item()
                 if has_104:
                     grad_at_104 = grad[mask_104]
-                    logger.info(
-                        f"[WITNESS_GRAD_DEBUG:{dn}] has_wid104=True n_tok={num_104_tokens} "
-                        f"grad_104_sum={grad_at_104.sum().item():.6e} grad_104_absmax={grad_at_104.abs().max().item():.6e} "
-                        f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
-                    )
-                else:
-                    logger.info(
-                        f"[WITNESS_GRAD_DEBUG:{dn}] has_wid104=False "
-                        f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
+                    print(
+                        f"[WITNESS_GRAD_DEBUG:{dn}:rank{rank}] wid104 n_tok={num_104_tokens} "
+                        f"w_grad_104_sum={grad_at_104.sum().item():.6e} "
+                        f"w_grad_104_absmax={grad_at_104.abs().max().item():.6e} "
+                        f"dtype={grad.dtype}",
+                        flush=True,
                     )
             except Exception as e:
-                logger.warning(f"[WITNESS_GRAD_DEBUG:{dn}] hook error: {e}")
+                print(f"[WITNESS_GRAD_DEBUG:{dn}:rank{rank}] error: {e}", flush=True)
 
         if w.requires_grad:
             w.register_hook(_grad_hook)
@@ -106,12 +102,15 @@ class _DataWitness(nn.Module):
                 try:
                     row_104 = grad[debug_wid].item()
                     nz = int((grad.abs() > 0).sum().item())
-                    logger.info(
-                        f"[WITNESS_WEIGHT_GRAD:{dn}] weight.grad[{debug_wid}]={row_104:.6e} "
-                        f"nonzero={nz}/{grad.shape[0]} absmax={grad.abs().max().item():.6e}"
+                    print(
+                        f"[WITNESS_WEIGHT_GRAD:{dn}:rank{rank}] "
+                        f"weight.grad[{debug_wid}]={row_104:.6e} "
+                        f"nonzero={nz}/{grad.shape[0]} "
+                        f"dtype={grad.dtype}",
+                        flush=True,
                     )
                 except Exception as e:
-                    logger.warning(f"[WITNESS_WEIGHT_GRAD:{dn}] hook error: {e}")
+                    print(f"[WITNESS_WEIGHT_GRAD:{dn}:rank{rank}] error: {e}", flush=True)
 
             self.witness.weight.register_hook(_weight_grad_hook)
             self._debug_weight_hook_registered = True
