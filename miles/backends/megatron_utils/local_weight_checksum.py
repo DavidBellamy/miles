@@ -82,7 +82,11 @@ def _compute_weight_checksum_state(
 
 
 def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str]:
-    """Hash all named tensors from model chunks using the given accessor method."""
+    """Hash all named tensors from model chunks using the given accessor method.
+
+    Witness params (_is_witness_param) are intentionally included: cross-replica
+    checksum should verify that witness weights are consistent across replicas.
+    """
     hashes: dict[str, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, tensor in sorted(getattr(model_chunk, accessor)(), key=lambda x: x[0]):
