@@ -5,6 +5,7 @@ from pathlib import Path
 
 from miles.utils.event_logger.logger import read_events
 from miles.utils.event_logger.models import MetricEvent
+from miles.utils.process_identity import TrainProcessIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,4 @@ def _read_train_metric_events(dump_dir: Path) -> list[MetricEvent]:
     if not events_dir.exists():
         return []
     all_events = read_events(events_dir)
-    from miles.utils.process_identity import TrainProcessIdentity
-
     return [e for e in all_events if isinstance(e, MetricEvent) and isinstance(e.source, TrainProcessIdentity)]

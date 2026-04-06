@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
+from miles.utils.process_identity import TrainProcessIdentity
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
@@ -38,8 +39,6 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
     # Group events by rank_within_cell so we only compare across replicas (cell_index),
     # not across TP/PP/EP ranks within the same cell (which have different param shards).
-    from miles.utils.process_identity import TrainProcessIdentity
-
     # TODO: group by (component, rank_within_cell) once critic checksum events are supported.
     #  Currently only actor emits LocalWeightChecksumEvent.
     by_rank: dict[int, list[LocalWeightChecksumEvent]] = {}
