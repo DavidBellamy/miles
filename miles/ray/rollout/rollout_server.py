@@ -208,11 +208,5 @@ class RolloutServer:
             handles.extend(g.onload(tags))
         return await asyncio.gather(*handles)
 
-    async def onload_weights(self):
-        handles = []
-        for g in self.server_groups:
-            handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
-        return await asyncio.gather(*handles)
-
     async def check_weights(self, action: str):
         return await asyncio.gather(*[g.check_weights(action=action) for g in self.server_groups])
