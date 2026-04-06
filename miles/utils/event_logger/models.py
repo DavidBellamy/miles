@@ -64,6 +64,12 @@ class TrainGroupStepEndEvent(EventBase):
     cell_outcomes: dict[int, Literal["error"] | list[TrainStepOutcome]]
 
 
+class TrainLossComputationEvent(_ActorTrainEventBase):
+    type: Literal["train_loss_computation"] = "train_loss_computation"
+    advantages: list[float]
+    witness_ids: list[int] | None = None
+
+
 class MetricEvent(EventBase):
     type: Literal["metric"] = "metric"
     rollout_id: int | None = None
@@ -77,6 +83,7 @@ Event = Annotated[
     | RolloutGenerateCompletedEvent
     | WitnessAllocateIdEvent
     | TrainGroupStepEndEvent
+    | TrainLossComputationEvent
     | MetricEvent,
     Discriminator("type"),
 ]
