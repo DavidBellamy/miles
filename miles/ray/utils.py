@@ -1,4 +1,5 @@
 # Adapted from https://github.com/OpenRLHF/OpenRLHF/blob/10c733694ed9fbb78a0a2ff6a05efc7401584d46/openrlhf/trainer/ray/utils.py#L1
+import asyncio
 import os
 
 import ray
@@ -23,6 +24,11 @@ NOSET_VISIBLE_DEVICES_ENV_VARS_LIST = [
     "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS",
     "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR",
 ]
+
+
+async def gather_refs(refs: list) -> list:
+    """Await a list of Ray ObjectRefs concurrently, returning results as a list."""
+    return list(await asyncio.gather(*refs)) if refs else []
 
 
 def ray_noset_visible_devices(env_vars=os.environ):
