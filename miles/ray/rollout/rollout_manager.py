@@ -151,10 +151,10 @@ class RolloutManager:
 
     # -------------------------- checkpointing -----------------------------
 
-    async def save(self, rollout_id):
+    def save(self, rollout_id):
         self.data_source.save(rollout_id)
 
-    async def load(self, rollout_id=None):
+    def load(self, rollout_id=None):
         self.data_source.load(rollout_id)
 
     # -------------------------- offload/onload -----------------------------
