@@ -23,12 +23,8 @@ def install_witness(
     buffer_size: int,
     sequence_parallel: bool = False,
 ) -> None:
-    model.local_head_witness = _DataWitness(
-        buffer_size=buffer_size, sequence_parallel=sequence_parallel, use_abs_broadcast=False,
-    )
-    model.local_tail_witness = _DataWitness(
-        buffer_size=buffer_size, sequence_parallel=sequence_parallel, use_abs_broadcast=True,
-    )
+    model.local_head_witness = _DataWitness(buffer_size=buffer_size, sequence_parallel=sequence_parallel)
+    model.local_tail_witness = _DataWitness(buffer_size=buffer_size, sequence_parallel=sequence_parallel)
 
 
 def witness_dump_and_clear_stale(
@@ -103,12 +99,10 @@ class _DataWitness(nn.Module):
         buffer_size: int,
         *,
         sequence_parallel: bool = False,
-        use_abs_broadcast: bool = False,
     ) -> None:
         super().__init__()
         self.buffer_size = buffer_size
         self._sequence_parallel = sequence_parallel
-        self._use_abs_broadcast = use_abs_broadcast
         self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
         self.witness.weight._is_witness_param = True
         nn.init.zeros_(self.witness.weight)
@@ -128,9 +122,7 @@ class _DataWitness(nn.Module):
             from megatron.core import tensor_parallel
 
             out = tensor_parallel.scatter_to_sequence_parallel_region(out)
-        if self._use_abs_broadcast:
-            return _AbsBroadcastAdd.apply(hidden_states, out)
-        return hidden_states + out
+        return _AbsBroadcastAdd.apply(hidden_states, out)
 
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
