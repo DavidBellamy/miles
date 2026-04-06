@@ -1,4 +1,5 @@
 import logging
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -122,8 +123,6 @@ def _check_single_metric(
 ) -> list[str]:
     if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
         return []
-
-    import math
 
     if math.isnan(baseline_val) or math.isnan(target_val):
         return [f"Step {step_idx}, metric '{key}': NaN detected (baseline={baseline_val}, target={target_val})"]
