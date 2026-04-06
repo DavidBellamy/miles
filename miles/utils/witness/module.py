@@ -36,8 +36,7 @@ def witness_dump_and_clear_stale(
     for chunk_index, chunk in enumerate(model):
         inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
-            if not hasattr(inner, attr):
-                continue
+            assert hasattr(inner, attr), f"chunk {chunk_index} missing {attr}"
             witness: _DataWitness = getattr(inner, attr)
             _record_and_log_witness_param(
                 witness=witness,
@@ -58,8 +57,8 @@ class _DataWitness(nn.Module):
         super().__init__()
         self.buffer_size = buffer_size
         self.witness = nn.Embedding(num_embeddings=buffer_size, embedding_dim=1)
-        nn.init.zeros_(self.witness.weight)
         self.witness.weight._is_witness_param = True
+        nn.init.zeros_(self.witness.weight)
 
     def forward(self, input_ids: Tensor, witness_ids: Tensor) -> Tensor:
         assert input_ids.shape == witness_ids.shape
@@ -108,8 +107,8 @@ def _get_all_witnesses_in_model(model_chunks: Sequence[nn.Module]) -> list[_Data
     for chunk in model_chunks:
         inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
-            if hasattr(inner, attr):
-                witnesses.append(getattr(inner, attr))
+            assert hasattr(inner, attr), f"model chunk missing {attr}"
+            witnesses.append(getattr(inner, attr))
     return witnesses
 
 
@@ -117,13 +116,14 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
     model_weight = witness.witness.weight
     model_weight.data[idx] = 0.0
 
-    opt_weight: Tensor | None = getattr(model_weight, "main_param", model_weight)
-    if opt_weight is not None and opt_weight is not model_weight:
-        opt_weight.data[idx] = 0.0
+    main_param = getattr(model_weight, "main_param", None)
+    if main_param is not None:
+        assert main_param is not model_weight
+        main_param.data[idx] = 0.0
 
-    lookup_weight = opt_weight if opt_weight is not None else model_weight
-    if lookup_weight in optimizer.state:
-        state = optimizer.state[lookup_weight]
+    optimizer_key = main_param if main_param is not None else model_weight
+    if optimizer_key in optimizer.state:
+        state = optimizer.state[optimizer_key]
         for key in ("exp_avg", "exp_avg_sq"):
             if key in state:
                 state[key][idx] = 0.0
