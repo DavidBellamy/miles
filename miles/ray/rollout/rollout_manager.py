@@ -90,7 +90,7 @@ class RolloutManager:
     def generate(self, rollout_id):
         start_time = time.time()
         self.rollout_id = rollout_id
-        self.health_monitoring_resume()
+        self._health_monitoring_resume()
         if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
             self._try_ci_fault_injection()
         data, metadata, metrics = self._get_rollout_data(rollout_id=rollout_id)
@@ -109,7 +109,7 @@ class RolloutManager:
         if self.args.debug_train_only:
             # if debug train only, we don't generate evaluation data
             return
-        self.health_monitoring_resume()
+        self._health_monitoring_resume()
 
         if self.use_experimental_refactor:
             result = call_rollout_function(self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
@@ -126,7 +126,7 @@ class RolloutManager:
     # -------------------------- offload/onload -----------------------------
 
     def offload(self, tags: list[str] | None = None):
-        self.health_monitoring_pause()
+        self._health_monitoring_pause()
         if tags is not None:
             handles = [
                 engine.release_memory_occupation.remote(tags=tags)
@@ -148,6 +148,14 @@ class RolloutManager:
     def onload_kv(self):
         for srv in self.servers.values():
             srv.onload_kv()
+
+    # -------------------------- checkpointing -----------------------------
+
+    def save(self, rollout_id):
+        self.data_source.save(rollout_id)
+
+    def load(self, rollout_id=None):
+        self.data_source.load(rollout_id)
 
     # -------------------------- TODO -----------------------------
 
@@ -210,17 +218,11 @@ class RolloutManager:
         assert self.args.rollout_global_dataset
         return len(self.data_source.dataset) // self.args.rollout_batch_size
 
-    def save(self, rollout_id):
-        self.data_source.save(rollout_id)
-
-    def load(self, rollout_id=None):
-        self.data_source.load(rollout_id)
-
-    def health_monitoring_pause(self) -> None:
+    def _health_monitoring_pause(self) -> None:
         for monitor in self._health_monitors:
             monitor.pause()
 
-    def health_monitoring_resume(self) -> None:
+    def _health_monitoring_resume(self) -> None:
         for monitor in self._health_monitors:
             monitor.resume()
 
@@ -230,7 +232,7 @@ class RolloutManager:
         Recovers the updatable model (the one that receives weight
         updates from training).
         """
-        self.health_monitoring_pause()
+        self._health_monitoring_pause()
         srv = self._get_updatable_server()
         if self.rollout_id == -1 or srv is None:
             return
