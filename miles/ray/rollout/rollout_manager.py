@@ -103,7 +103,7 @@ class RolloutManager:
         self._health_monitoring_resume()
         if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
             self._try_ci_fault_injection()
-        data, metadata, metrics = self._get_rollout_data(rollout_id=rollout_id)
+        data, metadata, metrics = await self._get_rollout_data(rollout_id=rollout_id)
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
         log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = convert_samples_to_train_data(
