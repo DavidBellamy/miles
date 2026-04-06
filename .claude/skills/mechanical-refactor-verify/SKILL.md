@@ -118,9 +118,11 @@ python3 <(curl -sL <gist_raw_url>)
 
 Anyone verifying the PR just copy-pastes the one-liner.
 
-### Step 4: Non-mechanical changes go in subsequent commits
+### Step 4: PR scope
 
-After the mechanical move commits, separate commits handle semantic changes (rename symbols, restructure APIs, etc.). These are standard code review — no script verification needed.
+A mechanical refactor PR should contain **only** mechanical changes (moves, splits, renames, import fixes, formatting). All of these should be reproducible by the transform script.
+
+Semantic changes (new logic, API restructuring, behavior changes) belong in a **separate PR**.
 
 ## Verifying an existing PR (`/mechanical-refactor-verify verify`)
 
