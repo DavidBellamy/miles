@@ -45,8 +45,8 @@ def compare_metrics(
     baseline_dir: str,
     target_dir: str,
     *,
-    rtol: float = 1e-3,
-    atol: float = 1e-8,
+    rtol: float,
+    atol: float,
     key_prefixes: list[str] | None = None,
     exclude_keys: list[str] | None = None,
 ) -> None:

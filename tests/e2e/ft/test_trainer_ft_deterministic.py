@@ -64,6 +64,7 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         baseline_dir=f"{dump_dir}/baseline/phase_b",
         target_dir=f"{dump_dir}/target/phase_b",
         rtol=1e-2,
+        atol=1e-8,
         key_prefixes=["train/"],
     )
     compare_dumps(
