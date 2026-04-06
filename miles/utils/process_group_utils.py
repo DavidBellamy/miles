@@ -258,7 +258,6 @@ def _gather_object_via_util(
     - Hardcoded dst=0 (always gather to first rank)
     - Hardcoded cpu device (was: _get_object_coll_device)
     - Inlined _validate_output_list_for_rank as simple assert
-    - Pass group arg to _object_to_tensor/_tensor_to_object (required since PyTorch 2.9+)
     - Removed redundant post-gather None check on object_gather_list (already asserted at function entry)
     """
     # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
