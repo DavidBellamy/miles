@@ -6,6 +6,7 @@ from pathlib import Path
 import ray
 import torch
 
+from miles.ray.rollout.debug_data import save_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
@@ -153,7 +154,7 @@ class RolloutManager:
         if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
             self._try_ci_fault_injection()
         data, metrics = self._get_rollout_data(rollout_id=rollout_id)
-        self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
+        save_debug_rollout_data(self, data, rollout_id=rollout_id, evaluation=False)
         log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = convert_samples_to_train_data(self, data)
         return split_train_data_by_dp(self, data, self.train_parallel_config["dp_size"])
@@ -171,7 +172,7 @@ class RolloutManager:
                 self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
             )
         data = result.data
-        self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=True)
+        save_debug_rollout_data(self, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
@@ -321,25 +322,6 @@ class RolloutManager:
             )
 
         return dynamic_gbs
-
-    def _save_debug_rollout_data(self, data, rollout_id, evaluation: bool):
-        # TODO to be refactored (originally Buffer._set_data)
-        if (path_template := self.args.save_debug_rollout_data) is not None:
-            path = Path(path_template.format(rollout_id=("eval_" if evaluation else "") + str(rollout_id)))
-            logger.info(f"Save debug rollout data to {path}")
-            path.parent.mkdir(parents=True, exist_ok=True)
-
-            # TODO may improve the format
-            if evaluation:
-                dump_data = dict(
-                    samples=[sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
-                )
-            else:
-                dump_data = dict(
-                    samples=[sample.to_dict() for sample in data],
-                )
-
-            torch.save(dict(rollout_id=rollout_id, **dump_data), path)
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
