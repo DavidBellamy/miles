@@ -35,13 +35,9 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         key_prefixes=["train/"],
     )
 
-    # Simple 1:1 comparison: skip rank (different numbering between baseline
-    # and target) and dp/edp (different DP layout). Each tensor is matched
-    # purely by name.
     compare_dumps(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
-        extra_args=["--grouping-skip-keys", "rank", "dp", "edp"],
     )
     print("No-failure comparison test PASSED")
 
