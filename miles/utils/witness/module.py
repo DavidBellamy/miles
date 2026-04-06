@@ -69,10 +69,23 @@ class _DataWitness(nn.Module):
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
     ) -> dict:
-        # Witness params are transient (zeroed each rollout) and must not participate
-        # in Megatron distributed checkpointing.  With PP>1 every stage registers
-        # the same key with replica_id=(0,0,0), causing a sharding validation error.
-        return {}
+        from megatron.core import parallel_state as mpu
+
+        pp_rank = mpu.get_pipeline_model_parallel_rank()
+        # Embed PP rank in the checkpoint key so each pipeline stage has a unique
+        # key (e.g. local_head_witness_pp0.witness.weight vs _pp1.witness.weight).
+        # Without this, PP>1 causes a sharding validation error because multiple
+        # stages register the same key with identical replica_id.
+        parts = prefix.rstrip(".").rsplit(".", 1)
+        if len(parts) == 2:
+            parent, name = parts
+            pp_prefix = f"{parent}.{name}_pp{pp_rank}."
+        else:
+            pp_prefix = f"{parts[0]}_pp{pp_rank}."
+
+        from megatron.core.transformer.utils import sharded_state_dict_default
+
+        return sharded_state_dict_default(self, pp_prefix, sharded_offsets, metadata)
 
 
 # ---------------------------------------------------------------------------
