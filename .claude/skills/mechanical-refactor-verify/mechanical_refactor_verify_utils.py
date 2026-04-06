@@ -3,18 +3,22 @@
 See SKILL.md for usage and transform script template.
 """
 
+import shlex
 import subprocess
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
 
 
-def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
+def exec_command(cmd: str, cwd: str | None = None, check: bool = True) -> str:
     print(f"  $ {cmd}", flush=True)
     result = subprocess.run(
-        cmd, shell=True, cwd=cwd, capture_output=True, text=True,
+        cmd,
+        shell=True,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
     )
     if check and result.returncode != 0:
         print(f"FAILED: {result.stderr}", file=sys.stderr)
@@ -23,7 +27,13 @@ def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str
 
 
 def git_add_and_commit(message: str, cwd: str) -> None:
-    exec_command(f"git add -A && git commit -m '{message}'", cwd=cwd)
+    exec_command(f"git add -A && git commit -m {shlex.quote(message)}", cwd=cwd)
+
+
+def dedent(text: str, n: int) -> str:
+    """Remove exactly n leading spaces from each line."""
+    lines = text.splitlines(keepends=True)
+    return "".join(line[n:] if line[:n] == " " * n else line for line in lines)
 
 
 def verify_mechanical_refactor(

@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command, git_add_and_commit
+from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command, git_add_and_commit, dedent
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
