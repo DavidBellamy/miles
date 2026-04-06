@@ -44,7 +44,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool, enabl
         base += f"--save {dump_dir}/ckpt --save-interval 1 "
     else:
         phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
-        base += f"--load {phase_a_dir}/ckpt "
+        base += f"--load {phase_a_dir}/ckpt --override-opt-param-scheduler "
         if is_target:
             base += f"--ci-ft-test-actions '{json.dumps(_WITH_FAILURE_ACTIONS)}' "
 
