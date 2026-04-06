@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from mechanical_refactor_verify_utils import MechanicalVerifier, RunFn
+from mechanical_refactor_verify_utils import verify_mechanical_refactor, RunFn
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
@@ -74,7 +74,11 @@ def transform(root: Path, run: RunFn) -> None:
 
 
 if __name__ == "__main__":
-    MechanicalVerifier(base_commit=BASE_COMMIT, target_commit=TARGET_COMMIT).run(transform)
+    verify_mechanical_refactor(
+        base_commit=BASE_COMMIT,
+        target_commit=TARGET_COMMIT,
+        transform=transform,
+    )
 ```
 
 The `transform()` function:
