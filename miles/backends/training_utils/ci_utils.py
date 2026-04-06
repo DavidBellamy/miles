@@ -36,16 +36,16 @@ def check_grad_norm(
     if rank != 0:
         return
 
-    if args.ci_save_grad_norm is not None:
-        ci_save_grad_norm_path = args.ci_save_grad_norm.format(
+    if (ci_save_template := args.ci_save_grad_norm) is not None:
+        ci_save_grad_norm_path = ci_save_template.format(
             role=role,
             rollout_id=rollout_id,
             step_id=step_id,
         )
         torch.save(grad_norm, ci_save_grad_norm_path)
 
-    elif args.ci_load_grad_norm is not None:
-        ci_load_grad_norm_path = args.ci_load_grad_norm.format(
+    elif (ci_load_template := args.ci_load_grad_norm) is not None:
+        ci_load_grad_norm_path = ci_load_template.format(
             role=role,
             rollout_id=rollout_id,
             step_id=step_id,

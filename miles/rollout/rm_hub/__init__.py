@@ -28,8 +28,8 @@ async def remote_rm(args, sample: Sample):
 
 
 async def async_rm(args, sample: Sample, **kwargs):
-    if args.custom_rm_path is not None:
-        rm_function = load_function(args.custom_rm_path)
+    if (rm_path := args.custom_rm_path) is not None:
+        rm_function = load_function(rm_path)
         return await rm_function(args, sample, **kwargs)
 
     metadata = sample.metadata if isinstance(sample.metadata, dict) else {}
@@ -81,9 +81,9 @@ async def batched_async_rm(
             sample.reward = reward
         return None
 
-    if args.custom_rm_path is not None:
+    if (rm_path := args.custom_rm_path) is not None:
         # Ensure the custom reward function is implemented in batch mode
-        rm_function = load_function(args.custom_rm_path)
+        rm_function = load_function(rm_path)
         return await rm_function(args, samples, **kwargs)
     tasks = [async_rm(args, sample, **kwargs) for sample in samples]
     rewards = await asyncio.gather(*tasks)

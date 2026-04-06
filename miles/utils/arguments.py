@@ -1798,10 +1798,10 @@ def miles_validate_args(args):
             )
         args.chat_template_path = resolved
 
-    if args.chat_template_path is not None:
-        if not os.path.isfile(args.chat_template_path):
-            raise FileNotFoundError(f"--chat-template-path file not found: {args.chat_template_path}")
-        args.sglang_chat_template = args.chat_template_path
+    if (chat_tpl_path := args.chat_template_path) is not None:
+        if not os.path.isfile(chat_tpl_path):
+            raise FileNotFoundError(f"--chat-template-path file not found: {chat_tpl_path}")
+        args.sglang_chat_template = chat_tpl_path
 
     if args.kl_coef != 0 or args.use_kl_loss:
         if not os.path.exists(args.ref_load):
@@ -1828,8 +1828,8 @@ def miles_validate_args(args):
             args.no_load_rng = True
             args.finetune = True
             args.load = args.ref_load
-            if args.ref_ckpt_step is not None:
-                args.ckpt_step = args.ref_ckpt_step
+            if (ref_step := args.ref_ckpt_step) is not None:
+                args.ckpt_step = ref_step
             args.start_rollout_id = 0
 
     if args.eval_interval is not None:
@@ -1891,13 +1891,13 @@ def miles_validate_args(args):
     if args.eval_reward_key is None:
         args.eval_reward_key = args.reward_key
 
-    if args.dump_details is not None:
-        args.save_debug_rollout_data = f"{args.dump_details}/rollout_data/{{rollout_id}}.pt"
-        args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
+    if (dump_dir := args.dump_details) is not None:
+        args.save_debug_rollout_data = f"{dump_dir}/rollout_data/{{rollout_id}}.pt"
+        args.save_debug_train_data = f"{dump_dir}/train_data/{{rollout_id}}_{{rank}}.pt"
 
-    if args.load_debug_rollout_data is not None:
+    if (debug_data := args.load_debug_rollout_data) is not None:
         logger.info(
-            f"load_debug_rollout_data {args.load_debug_rollout_data} is set, "
+            f"load_debug_rollout_data {debug_data} is set, "
             "will not instantiate sglang servers and will only run the training process."
         )
         args.debug_train_only = True
@@ -1969,13 +1969,13 @@ def miles_validate_args(args):
     if args.eval_function_path is None:
         args.eval_function_path = args.rollout_function_path
 
-    if args.num_steps_per_rollout is not None:
-        global_batch_size = args.rollout_batch_size * args.n_samples_per_prompt // args.num_steps_per_rollout
+    if (steps_per_rollout := args.num_steps_per_rollout) is not None:
+        global_batch_size = args.rollout_batch_size * args.n_samples_per_prompt // steps_per_rollout
         if args.global_batch_size is not None:
             assert args.global_batch_size == global_batch_size, (
                 f"global_batch_size {args.global_batch_size} is not equal to "
                 f"rollout_batch_size {args.rollout_batch_size} * n_samples_per_prompt {args.n_samples_per_prompt} "
-                f"// num_steps_per_rollout {args.num_steps_per_rollout}"
+                f"// num_steps_per_rollout {steps_per_rollout}"
             )
         args.global_batch_size = global_batch_size
 
@@ -2025,15 +2025,15 @@ def miles_validate_args(args):
         )
         args.eval_max_context_len = args.rollout_max_context_len
 
-    if args.rollout_max_context_len is not None:
+    if (max_ctx_len := args.rollout_max_context_len) is not None:
         if args.rollout_max_prompt_len is None:
-            args.rollout_max_prompt_len = args.rollout_max_context_len - 1
+            args.rollout_max_prompt_len = max_ctx_len - 1
             logger.info(
-                f"args.rollout_max_prompt_len is not set. Use args.rollout_max_context_len - 1 ({args.rollout_max_context_len} - 1) as default value so that there is at least one generated token to compute loss."
+                f"args.rollout_max_prompt_len is not set. Use args.rollout_max_context_len - 1 ({max_ctx_len} - 1) as default value so that there is at least one generated token to compute loss."
             )
         assert (
-            args.rollout_max_prompt_len <= args.rollout_max_context_len - 1
-        ), f"args.rollout_max_prompt_len ({args.rollout_max_prompt_len}) must be smaller than args.rollout_max_context_len ({args.rollout_max_context_len}) so that there is at least one generated token to compute loss."
+            args.rollout_max_prompt_len <= max_ctx_len - 1
+        ), f"args.rollout_max_prompt_len ({args.rollout_max_prompt_len}) must be smaller than args.rollout_max_context_len ({max_ctx_len}) so that there is at least one generated token to compute loss."
 
     assert not (
         args.prefill_num_servers is not None and args.rollout_external

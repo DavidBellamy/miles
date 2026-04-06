@@ -658,8 +658,8 @@ def _compute_server_args(
         kwargs["max_lora_rank"] = max(getattr(args, "lora_rank", 0), 1)
         kwargs["lora_target_modules"] = convert_target_modules_to_hf(args.target_modules)
 
-        if args.lora_adapter_path is not None:
-            kwargs["lora_paths"] = {LORA_ADAPTER_NAME: args.lora_adapter_path}
+        if (lora_path := args.lora_adapter_path) is not None:
+            kwargs["lora_paths"] = {LORA_ADAPTER_NAME: lora_path}
         else:
             logger.info("No pre-trained LoRA adapter_path provided, will use random initial weights")
 

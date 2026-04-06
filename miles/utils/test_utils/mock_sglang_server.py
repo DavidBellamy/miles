@@ -77,8 +77,8 @@ class MockSGLangServer:
         self._server.start()
 
     def stop(self):
-        if self._server is not None:
-            self._server.stop()
+        if (server := self._server) is not None:
+            server.stop()
 
     @property
     def url(self) -> str:

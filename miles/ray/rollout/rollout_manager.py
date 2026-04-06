@@ -56,13 +56,11 @@ class RolloutManager:
             self.generate_rollout = load_function(self.args.rollout_function_path)
             self.eval_generate_rollout = load_function(self.args.eval_function_path)
         self.custom_reward_post_process_func = None
-        if self.args.custom_reward_post_process_path is not None:
-            self.custom_reward_post_process_func = load_function(self.args.custom_reward_post_process_path)
+        if (path := self.args.custom_reward_post_process_path) is not None:
+            self.custom_reward_post_process_func = load_function(path)
         self.custom_convert_samples_to_train_data_func = None
-        if self.args.custom_convert_samples_to_train_data_path is not None:
-            self.custom_convert_samples_to_train_data_func = load_function(
-                self.args.custom_convert_samples_to_train_data_path
-            )
+        if (path := self.args.custom_convert_samples_to_train_data_path) is not None:
+            self.custom_convert_samples_to_train_data_func = load_function(path)
         logger.info(f"import {self.args.rollout_function_path} as generate_rollout function.")
         logger.info(f"import {self.args.eval_function_path} as eval_generate_rollout function.")
 
@@ -91,8 +89,8 @@ class RolloutManager:
     # TODO: may have a `async def init` here later
 
     def dispose(self):
-        if self._metric_checker is not None:
-            self._metric_checker.dispose()
+        if (checker := self._metric_checker) is not None:
+            checker.dispose()
         for monitor in self._health_monitors:
             monitor.stop()
 
@@ -131,8 +129,8 @@ class RolloutManager:
         data = result.data
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
-        if self._metric_checker is not None:
-            self._metric_checker.on_eval(metrics)
+        if (checker := self._metric_checker) is not None:
+            checker.on_eval(metrics)
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:

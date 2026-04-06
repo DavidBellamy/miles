@@ -24,12 +24,12 @@ class TrainProfiler:
             self._memory_profiler_overall.start()
 
     def on_init_end(self):
-        if self._torch_profiler_overall is not None:
-            self._torch_profiler_overall.start()
+        if (profiler := self._torch_profiler_overall) is not None:
+            profiler.start()
 
     def step(self, rollout_id: int):
-        if self._torch_profiler_overall is not None:
-            self._torch_profiler_overall.step()
+        if (profiler := self._torch_profiler_overall) is not None:
+            profiler.step()
 
         if (
             self._memory_profiler_overall is not None

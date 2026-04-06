@@ -172,10 +172,10 @@ def get_lr_scheduler(args, optimizer: torch.optim.Optimizer) -> FSDPLRScheduler:
         args.lr_decay_iters = args.train_iters
     lr_decay_steps = args.lr_decay_iters
     wsd_decay_steps = None
-    if args.lr_wsd_decay_iters is not None:
-        wsd_decay_steps = args.lr_wsd_decay_iters
-    if args.lr_warmup_fraction is not None:
-        lr_warmup_steps = args.lr_warmup_fraction * lr_decay_steps
+    if (wsd_iters := args.lr_wsd_decay_iters) is not None:
+        wsd_decay_steps = wsd_iters
+    if (warmup_frac := args.lr_warmup_fraction) is not None:
+        lr_warmup_steps = warmup_frac * lr_decay_steps
     else:
         lr_warmup_steps = args.lr_warmup_iters
     lr_scheduler = FSDPLRScheduler(

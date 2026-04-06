@@ -177,8 +177,8 @@ class StringRadixTrie:
                 if best_child.has_value:
                     matched_tokens.extend(best_child.token_ids)
                     matched_logp.extend(best_child.logp)
-                    if best_child.loss_mask is not None:
-                        matched_loss_mask.extend(best_child.loss_mask)
+                    if (child_mask := best_child.loss_mask) is not None:
+                        matched_loss_mask.extend(child_mask)
                     else:
                         # If no loss_mask is stored, create default mask same as logp
                         matched_loss_mask.extend([1] * len(best_child.token_ids))

@@ -176,10 +176,10 @@ class MegatronTrainRayActor(TrainRayActor):
         self.rollout_engines = None
 
         self.rollout_data_postprocess = None
-        if self.args.rollout_data_postprocess_path is not None:
+        if (path := self.args.rollout_data_postprocess_path) is not None:
             from miles.utils.misc import load_function
 
-            self.rollout_data_postprocess = load_function(self.args.rollout_data_postprocess_path)
+            self.rollout_data_postprocess = load_function(path)
 
         self.prof.on_init_end()
 
@@ -416,8 +416,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 # because we may need normalize the whole rollout.
                 compute_advantages_and_returns(self.args, rollout_data)
 
-            if self.rollout_data_postprocess is not None:
-                self.rollout_data_postprocess(self.args)
+            if (postprocess := self.rollout_data_postprocess) is not None:
+                postprocess(self.args)
 
             log_rollout_data(rollout_id, self.args, rollout_data)
 

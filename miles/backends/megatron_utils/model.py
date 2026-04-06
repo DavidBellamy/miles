@@ -68,10 +68,10 @@ def get_optimizer_param_scheduler(args: Namespace, optimizer: MegatronOptimizer)
     lr_decay_steps = args.lr_decay_iters * args.global_batch_size
     wd_incr_steps = args.train_iters * args.global_batch_size
     wsd_decay_steps = None
-    if args.lr_wsd_decay_iters is not None:
-        wsd_decay_steps = args.lr_wsd_decay_iters * args.global_batch_size
-    if args.lr_warmup_fraction is not None:
-        lr_warmup_steps = args.lr_warmup_fraction * lr_decay_steps
+    if (wsd_iters := args.lr_wsd_decay_iters) is not None:
+        wsd_decay_steps = wsd_iters * args.global_batch_size
+    if (warmup_frac := args.lr_warmup_fraction) is not None:
+        lr_warmup_steps = warmup_frac * lr_decay_steps
     else:
         lr_warmup_steps = args.lr_warmup_iters * args.global_batch_size
 
@@ -425,8 +425,8 @@ def train_one_step(
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
 
-            if batch["multimodal_train_inputs"] is not None:
-                forward_kwargs.update(batch["multimodal_train_inputs"])
+            if (mm_inputs := batch["multimodal_train_inputs"]) is not None:
+                forward_kwargs.update(mm_inputs)
 
             output_tensor = model(**forward_kwargs)
 
@@ -617,10 +617,10 @@ def train(
             tracker = MTPLossLoggingHelper.tracker
             if "values" in tracker:
                 values = tracker["values"]
-                if tracker.get("reduce_group") is not None:
-                    torch.distributed.all_reduce(values, group=tracker.get("reduce_group"))
-                if tracker.get("avg_group") is not None:
-                    torch.distributed.all_reduce(values, group=tracker["avg_group"], op=torch.distributed.ReduceOp.AVG)
+                if (reduce_group := tracker.get("reduce_group")) is not None:
+                    torch.distributed.all_reduce(values, group=reduce_group)
+                if (avg_group := tracker.get("avg_group")) is not None:
+                    torch.distributed.all_reduce(values, group=avg_group, op=torch.distributed.ReduceOp.AVG)
                 # here we assume only one mtp layer
                 mtp_losses = (tracker["values"] * mtp_loss_scale).item()
                 MTPLossLoggingHelper.clean_loss_in_tracker()
