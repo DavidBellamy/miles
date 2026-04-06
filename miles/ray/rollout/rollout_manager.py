@@ -222,9 +222,41 @@ class RolloutManager:
                 return srv
         return None
 
-    # -------------------------- TODO -----------------------------
+    # -------------------------- misc APIs -----------------------------
 
-    # TODO will be replaced by full ft
+    def get_num_rollout_per_epoch(self):
+        assert self.args.rollout_global_dataset
+        return len(self.data_source.dataset) // self.args.rollout_batch_size
+
+    def check_weights(self, action: str):
+        return ray.get([engine.check_weights.remote(action=action) for engine in self._rollout_engines])
+
+    def set_train_parallel_config(self, config: dict):
+        self.train_parallel_config = config
+
+    # -------------------------- utils -----------------------------
+
+    def _health_monitoring_pause(self) -> None:
+        for monitor in self._health_monitors:
+            monitor.pause()
+
+    def _health_monitoring_resume(self) -> None:
+        for monitor in self._health_monitors:
+            monitor.resume()
+
+    @property
+    def _server(self) -> RolloutServer | None:
+        """Default server (first model).  For backward compatibility."""
+        if not self.servers:
+            return None
+        return next(iter(self.servers.values()))
+
+    @property
+    def _rollout_engines(self):
+        """All node-0 engines across all servers / models."""
+        return [e for srv in self.servers.values() for e in srv.engines]
+
+    # TODO will be replaced by full ft, thus temp put arbitrarily
     def _try_ci_fault_injection(self):
         """Try to inject fault during generate (when health monitor is running)."""
         if not self._ci_fault_injection_pending:
@@ -245,33 +277,3 @@ class RolloutManager:
                 time.sleep(wait_time)
             except Exception as e:
                 logger.warning(f"CI Fault Injection failed: {e}")
-
-    @property
-    def _server(self) -> RolloutServer | None:
-        """Default server (first model).  For backward compatibility."""
-        if not self.servers:
-            return None
-        return next(iter(self.servers.values()))
-
-    @property
-    def _rollout_engines(self):
-        """All node-0 engines across all servers / models."""
-        return [e for srv in self.servers.values() for e in srv.engines]
-
-    def get_num_rollout_per_epoch(self):
-        assert self.args.rollout_global_dataset
-        return len(self.data_source.dataset) // self.args.rollout_batch_size
-
-    def _health_monitoring_pause(self) -> None:
-        for monitor in self._health_monitors:
-            monitor.pause()
-
-    def _health_monitoring_resume(self) -> None:
-        for monitor in self._health_monitors:
-            monitor.resume()
-
-    def check_weights(self, action: str):
-        return ray.get([engine.check_weights.remote(action=action) for engine in self._rollout_engines])
-
-    def set_train_parallel_config(self, config: dict):
-        self.train_parallel_config = config
