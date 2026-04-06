@@ -39,7 +39,7 @@ def convert_samples_to_train_data(self, samples: list[Sample] | list[list[Sample
             sample.loss_mask = [1] * sample.response_length
 
         assert (
-                len(sample.loss_mask) == sample.response_length
+            len(sample.loss_mask) == sample.response_length
         ), f"loss mask length {len(sample.loss_mask)} != response length {sample.response_length}"
         if sample.remove_sample:
             sample.loss_mask = [0] * sample.response_length
@@ -85,8 +85,8 @@ def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
 
     raw_rewards = [sample.get_reward_value(self.args) for sample in samples]
     if (
-            self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
-            and self.args.rewards_normalization
+        self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
+        and self.args.rewards_normalization
     ):
         # group norm
         rewards = torch.tensor(raw_rewards, dtype=torch.float)
