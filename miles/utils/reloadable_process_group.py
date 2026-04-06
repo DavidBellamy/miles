@@ -167,12 +167,12 @@ class ReloadableProcessGroup(torch.distributed.ProcessGroup):
         return self.group.name()
 
     def shutdown(self) -> None:
-        if (group := self.group) is not None:
-            group.shutdown()
+        if (x := self.group) is not None:
+            x.shutdown()
 
     def abort(self) -> None:
-        if (group := self.group) is not None:
-            group.abort()
+        if (x := self.group) is not None:
+            x.abort()
 
     def _fwd(self, method, *args, **kwargs):
         inner = self.group

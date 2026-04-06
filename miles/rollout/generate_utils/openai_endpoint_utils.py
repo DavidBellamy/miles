@@ -224,8 +224,8 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
     sample.tokens = sample.tokens[:prompt_len] + kept_ids
     sample.response = tokenizer.decode(kept_ids)
     sample.response_length = keep_tokens
-    if (log_probs := sample.rollout_log_probs) is not None:
-        sample.rollout_log_probs = log_probs[:keep_tokens]
-    if (mask := sample.loss_mask) is not None:
-        sample.loss_mask = mask[:keep_tokens]
+    if (x := sample.rollout_log_probs) is not None:
+        sample.rollout_log_probs = x[:keep_tokens]
+    if (x := sample.loss_mask) is not None:
+        sample.loss_mask = x[:keep_tokens]
     sample.status = Sample.Status.TRUNCATED

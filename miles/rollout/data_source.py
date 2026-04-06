@@ -85,17 +85,17 @@ class RolloutDataSource(DataSource):
 
     def get_samples(self, num_samples):
         # TODO further improve code
-        if (dataset := self.dataset) is not None:
-            if self.sample_offset + num_samples <= len(dataset):
-                prompt_samples = dataset.samples[self.sample_offset : self.sample_offset + num_samples]
+        if (x := self.dataset) is not None:
+            if self.sample_offset + num_samples <= len(x):
+                prompt_samples = x.samples[self.sample_offset : self.sample_offset + num_samples]
                 self.sample_offset += num_samples
             else:
-                prompt_samples = dataset.samples[self.sample_offset :]
+                prompt_samples = x.samples[self.sample_offset :]
                 num_samples -= len(prompt_samples)
                 self.epoch_id += 1
                 if self.args.rollout_shuffle:
-                    dataset.shuffle(self.epoch_id)
-                prompt_samples += dataset.samples[:num_samples]
+                    x.shuffle(self.epoch_id)
+                prompt_samples += x.samples[:num_samples]
                 self.sample_offset = num_samples
         else:
             prompt_samples = [Sample() for _ in range(num_samples)]

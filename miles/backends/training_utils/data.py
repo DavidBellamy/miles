@@ -302,8 +302,8 @@ class DataIterator:
             if vals is None:
                 batch[key] = None
             else:
-                if (mb_indices := self.micro_batch_indices) is not None:
-                    indices = mb_indices[self.offset]
+                if (x := self.micro_batch_indices) is not None:
+                    indices = x[self.offset]
                     batch[key] = [vals[i] for i in indices]
                 else:
                     assert self.offset + self.micro_batch_size <= len(

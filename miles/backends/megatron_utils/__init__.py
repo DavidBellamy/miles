@@ -9,12 +9,12 @@ try:
     old_init = deep_ep.Buffer.__init__
 
     def new_init(self, *args, **kwargs):
-        if (impl := torch_memory_saver._impl) is not None:
-            impl._binary_wrapper.cdll.tms_set_interesting_region(False)
+        if (x := torch_memory_saver._impl) is not None:
+            x._binary_wrapper.cdll.tms_set_interesting_region(False)
         old_init(self, *args, **kwargs)
         torch.cuda.synchronize()
-        if (impl := torch_memory_saver._impl) is not None:
-            impl._binary_wrapper.cdll.tms_set_interesting_region(True)
+        if (x := torch_memory_saver._impl) is not None:
+            x._binary_wrapper.cdll.tms_set_interesting_region(True)
 
     deep_ep.Buffer.__init__ = new_init
 except ImportError:

@@ -203,9 +203,9 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         sample.response += output["text"]
 
         # When partial rollout and masking off policy is enabled, update the loss mask
-        if (mask := sample.loss_mask) is not None:
+        if (x := sample.loss_mask) is not None:
             assert args.partial_rollout and args.mask_offpolicy_in_partial_rollout
-            mask += [1] * len(new_response_tokens)
+            x += [1] * len(new_response_tokens)
 
         if sample.rollout_log_probs is None:
             sample.rollout_log_probs = []
@@ -448,13 +448,13 @@ async def generate_rollout_async(
 
     # reset the global state to prevent effects on the next rollout or eval.
     state.reset()
-    if (filter_path := args.rollout_sample_filter_path) is not None:
-        filter_func = load_function(filter_path)
+    if (x := args.rollout_sample_filter_path) is not None:
+        filter_func = load_function(x)
         filter_func(args, data)
 
     # There can be circumstances where users want to process all samples including filtered ones.
-    if (process_path := args.rollout_all_samples_process_path) is not None:
-        process_func = load_function(process_path)
+    if (x := args.rollout_all_samples_process_path) is not None:
+        process_func = load_function(x)
         process_func(args, all_samples, data_source)
 
     return RolloutFnTrainOutput(samples=data, metrics=metric_gatherer.collect()), aborted_samples

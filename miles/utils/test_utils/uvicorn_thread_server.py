@@ -30,8 +30,8 @@ class UvicornThreadServer:
         self._wait_for_port_open()
 
     def stop(self) -> None:
-        if (server := self._server) is not None:
-            server.should_exit = True
+        if (x := self._server) is not None:
+            x.should_exit = True
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 

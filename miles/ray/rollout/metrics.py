@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
-    if (log_path := args.custom_eval_rollout_log_function_path) is not None:
-        custom_log_func = load_function(log_path)
+    if (x := args.custom_eval_rollout_log_function_path) is not None:
+        custom_log_func = load_function(x)
         if custom_log_func(rollout_id, args, data, extra_metrics):
             return
 
@@ -53,8 +53,8 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] 
 
 
 def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
-    if (log_path := args.custom_rollout_log_function_path) is not None:
-        custom_log_func = load_function(log_path)
+    if (x := args.custom_rollout_log_function_path) is not None:
+        custom_log_func = load_function(x)
         if custom_log_func(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
             return
 
