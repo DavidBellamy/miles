@@ -62,7 +62,7 @@ async def async_rm(args, sample: Sample, **kwargs):
     elif rm_type == "random":
         return random.randint(0, 1)
     elif rm_type == "deterministic_random":
-        content = str(sample.prompt) + response
+        content = str(sample.tokens) + response
         content_hash = hashlib.sha256(content.encode()).digest()
         return int(content_hash[0]) % 2
     elif rm_type:
