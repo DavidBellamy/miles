@@ -5,20 +5,6 @@ import ray
 logger = logging.getLogger(__name__)
 
 
-def allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):
-    addr_and_ports = {}
-    for rank, _ in rollout_engines:
-        addr = args.rollout_external_engine_addrs[rank]
-        [host, port] = addr.split(":")
-        addr_and_ports[rank] = dict(
-            dist_init_addr=addr,
-            nccl_port=None,
-            host=host,
-            port=int(port),
-        )
-    return addr_and_ports
-
-
 def allocate_rollout_engine_addr_and_ports_normal(
     *,
     args,
@@ -107,3 +93,17 @@ def allocate_rollout_engine_addr_and_ports_normal(
         logger.info(f"Ports for engine {i}: {addr_and_ports[i]}")
 
     return addr_and_ports, node_port_cursor
+
+
+def allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):
+    addr_and_ports = {}
+    for rank, _ in rollout_engines:
+        addr = args.rollout_external_engine_addrs[rank]
+        [host, port] = addr.split(":")
+        addr_and_ports[rank] = dict(
+            dist_init_addr=addr,
+            nccl_port=None,
+            host=host,
+            port=int(port),
+        )
+    return addr_and_ports
