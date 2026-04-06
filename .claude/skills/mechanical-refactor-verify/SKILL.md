@@ -18,85 +18,34 @@ Regardless of who did the move (human or agent) and when (before or after commit
 
 ### Step 1: Write the transform script
 
-Write a **fully self-contained** Python script that:
-
-1. Creates a git worktree at the base commit on a temp branch
-2. Performs the mechanical transformation (may produce multiple commits, e.g. "move files", "fix imports", "format")
-3. Diffs the final result against the PR's target commit
-4. Reports pass/fail
-5. Leaves the worktree for inspection (prints cleanup command)
-
-If the move is already done, reverse-engineer the script by reading the before state (`git show <base>:<file>`) and the after state, then encode the transformation.
-
-Requirements:
-
-- **No external dependencies**: stdlib + git CLI only
-- **Idempotent**: safe to run multiple times
-- **Self-verifying**: the script itself checks the diff and reports the result
+The scaffold (worktree creation, diff check, cleanup) lives in `utils.py` next to this skill. The transform script only needs to define the `transform()` function and call `MechanicalVerifier`.
 
 Script template:
 
 ```python
 #!/usr/bin/env python3
-"""Reproducible transform script for: <describe the mechanical move>
+"""Reproducible transform for: <describe the mechanical move>
 
-Verifies that the mechanical refactoring in this PR is reproducible.
-Run from anywhere inside the repo.
+Run from the repo root:  python3 transform.py
 """
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
+
+sys.path.append(".claude/skills/mechanical-refactor-verify")
+from utils import MechanicalVerifier, RunFn
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
 
-def run(cmd: str, cwd: str | None = None, check: bool = True) -> str:
-    print(f"  $ {cmd}", flush=True)
-    result = subprocess.run(
-        cmd, shell=True, cwd=cwd, capture_output=True, text=True,
-    )
-    if check and result.returncode != 0:
-        print(f"FAILED: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-    return result.stdout.strip()
 
-def main() -> None:
-    repo_root = run("git rev-parse --show-toplevel")
-    worktree_dir = tempfile.mkdtemp(prefix="verify-mechanical-")
-    branch_name = f"verify-mechanical-{BASE_COMMIT[:8]}"
+def transform(root: Path, run: RunFn) -> None:
+    """Perform the mechanical transformation and commit each step.
 
-    try:
-        print(f"[1/4] Creating worktree at {BASE_COMMIT[:8]}...")
-        run(f"git worktree add -b {branch_name} {worktree_dir} {BASE_COMMIT}",
-            cwd=repo_root)
-
-        print("[2/4] Running transformation...")
-        transform(worktree_dir)
-
-        print(f"[3/4] Diffing against {TARGET_COMMIT[:8]}...")
-        diff = run(
-            f"git diff {TARGET_COMMIT} -- .",
-            cwd=worktree_dir, check=False,
-        )
-
-        if diff:
-            print(f"\nFAIL: diff is non-empty:\n{diff}")
-            sys.exit(1)
-        else:
-            print("\nPASS: transform reproduces the commit exactly.")
-
-    finally:
-        print(f"\nWorktree left at: {worktree_dir}")
-        print(f"Branch: {branch_name}")
-        print("To clean up manually:")
-        print(f"  git worktree remove {worktree_dir} && git branch -D {branch_name}")
-
-def transform(worktree: str) -> None:
-    """Perform the mechanical transformation and commit each step."""
-    root = Path(worktree)
-
-    # --- Step 1: Split source file into target files ---
+    Args:
+        root: Path to the worktree (checked out at BASE_COMMIT).
+        run: Helper to execute shell commands. Signature: run(cmd, cwd=None, check=True) -> str.
+    """
+    # --- Step 1: Split source file ---
     source = root / "path/to/source.py"
     content = source.read_text()
     lines = content.splitlines(keepends=True)
@@ -113,31 +62,34 @@ def transform(worktree: str) -> None:
     source.unlink()
     (root / "path/to/pkg/__init__.py").touch()
 
-    run("git add -A && git commit -m 'mechanical: split source.py into pkg/'",
-        cwd=worktree)
+    run("git add -A && git commit -m 'mechanical: split source.py'", cwd=str(root))
 
     # --- Step 2: Fix imports ---
-    # <make import changes here>
-    # run("git add -A && git commit -m 'fix imports'", cwd=worktree)
+    # <edit files>
+    # run("git add -A && git commit -m 'fix imports'", cwd=str(root))
 
     # --- Step 3: Format ---
-    # run("ruff format .", cwd=worktree)
-    # run("git add -A && git commit -m 'fmt'", cwd=worktree)
+    # run("ruff format .", cwd=str(root))
+    # run("git add -A && git commit -m 'fmt'", cwd=str(root))
+
 
 if __name__ == "__main__":
-    main()
+    MechanicalVerifier(base_commit=BASE_COMMIT, target_commit=TARGET_COMMIT).run(transform)
 ```
+
+The `transform()` function:
+- Receives `root` (worktree path, checked out at base commit) and `run` (shell command helper)
+- Makes file changes and commits each logical step
+- The verifier handles worktree creation, diffing against target, and reporting pass/fail
 
 ### Step 2: Run locally to verify
 
 ```bash
 python3 transform.py
-# Expected output: "PASS: transform reproduces the commit exactly."
+# Expected: "PASS: transform reproduces the commit exactly."
 ```
 
 ### Step 3: Upload gist and add to PR description
-
-Always upload the script as a gist (never inline in PR body).
 
 ```bash
 gh gist create --public -d "Mechanical refactor transform: <description>" transform.py
