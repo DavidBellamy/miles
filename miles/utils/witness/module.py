@@ -73,44 +73,44 @@ class _DataWitness(nn.Module):
         debug_wid = 104
         mask_104 = (witness_ids == debug_wid)
         has_104 = mask_104.any().item()
-        num_104_tokens = mask_104.sum().item()
+        num_104_tokens = int(mask_104.sum().item())
 
         def _grad_hook(grad: Tensor) -> None:
-            # grad shape matches out shape: (*, 1)
-            grad_abs = grad.abs()
-            grad_sum = grad.sum().item()
-            grad_max = grad_abs.max().item()
-            if has_104:
-                grad_at_104 = grad[mask_104]
-                grad_104_sum = grad_at_104.sum().item()
-                grad_104_abs_max = grad_at_104.abs().max().item()
-                logger.info(
-                    f"[WITNESS_GRAD_DEBUG] has_wid104={has_104} n_tokens_104={num_104_tokens} "
-                    f"grad_104_sum={grad_104_sum:.6e} grad_104_abs_max={grad_104_abs_max:.6e} "
-                    f"grad_total_sum={grad_sum:.6e} grad_total_max={grad_max:.6e} "
-                    f"grad_shape={list(grad.shape)}"
-                )
-            else:
-                logger.info(
-                    f"[WITNESS_GRAD_DEBUG] has_wid104=False "
-                    f"grad_total_sum={grad_sum:.6e} grad_total_max={grad_max:.6e} "
-                    f"grad_shape={list(grad.shape)}"
-                )
+            try:
+                grad_sum = grad.sum().item()
+                grad_max = grad.abs().max().item()
+                if has_104:
+                    grad_at_104 = grad[mask_104]
+                    logger.info(
+                        f"[WITNESS_GRAD_DEBUG] has_wid104=True n_tok={num_104_tokens} "
+                        f"grad_104_sum={grad_at_104.sum().item():.6e} grad_104_absmax={grad_at_104.abs().max().item():.6e} "
+                        f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
+                    )
+                else:
+                    logger.info(
+                        f"[WITNESS_GRAD_DEBUG] has_wid104=False "
+                        f"grad_all_sum={grad_sum:.6e} grad_all_max={grad_max:.6e} shape={list(grad.shape)}"
+                    )
+            except Exception as e:
+                logger.warning(f"[WITNESS_GRAD_DEBUG] hook error: {e}")
 
         out.register_hook(_grad_hook)
 
-        # Also check weight grad after backward via a weight hook
-        def _weight_grad_hook(grad: Tensor) -> None:
-            row_104 = grad[debug_wid].item()
-            nonzero_count = (grad.abs() > 0).sum().item()
-            logger.info(
-                f"[WITNESS_WEIGHT_GRAD_DEBUG] weight_grad[{debug_wid}]={row_104:.6e} "
-                f"nonzero_grad_rows={nonzero_count}/{grad.shape[0]} "
-                f"grad_abs_max={grad.abs().max().item():.6e}"
-            )
+        # Register weight grad hook only once
+        if not getattr(self, "_debug_weight_hook_registered", False):
+            def _weight_grad_hook(grad: Tensor) -> None:
+                try:
+                    row_104 = grad[debug_wid].item()
+                    nz = int((grad.abs() > 0).sum().item())
+                    logger.info(
+                        f"[WITNESS_WEIGHT_GRAD] weight.grad[{debug_wid}]={row_104:.6e} "
+                        f"nonzero={nz}/{grad.shape[0]} absmax={grad.abs().max().item():.6e}"
+                    )
+                except Exception as e:
+                    logger.warning(f"[WITNESS_WEIGHT_GRAD] hook error: {e}")
 
-        if self.witness.weight.requires_grad:
             self.witness.weight.register_hook(_weight_grad_hook)
+            self._debug_weight_hook_registered = True
 
         return out
 
