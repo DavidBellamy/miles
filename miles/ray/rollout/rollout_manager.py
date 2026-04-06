@@ -3,9 +3,8 @@ import logging
 import time
 
 import ray
-import torch
 
-from miles.ray.rollout.debug_data import save_debug_rollout_data, load_debug_rollout_data
+from miles.ray.rollout.debug_data import load_debug_rollout_data, save_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
@@ -25,7 +24,6 @@ from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.misc import load_function
 from miles.utils.tracking_utils import init_tracking
-from miles.utils.types import Sample
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)

@@ -6,14 +6,21 @@ from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import Sample
 
 
-def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample]], custom_convert_samples_to_train_data_func, custom_reward_post_process_func):
+def convert_samples_to_train_data(
+    args,
+    samples: list[Sample] | list[list[Sample]],
+    custom_convert_samples_to_train_data_func,
+    custom_reward_post_process_func,
+):
     """
     Convert inference generated samples to training data.
     """
     if (f := custom_convert_samples_to_train_data_func) is not None:
         return f(args, samples)
 
-    raw_rewards, rewards = _post_process_rewards(args, samples, custom_reward_post_process_func=custom_reward_post_process_func)
+    raw_rewards, rewards = _post_process_rewards(
+        args, samples, custom_reward_post_process_func=custom_reward_post_process_func
+    )
 
     assert len(raw_rewards) == len(samples)
     assert len(rewards) == len(samples)
@@ -82,10 +89,7 @@ def _post_process_rewards(args, samples: list[Sample] | list[list[Sample]], cust
         return f(args, samples)
 
     raw_rewards = [sample.get_reward_value(args) for sample in samples]
-    if (
-        args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
-        and args.rewards_normalization
-    ):
+    if args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"] and args.rewards_normalization:
         # group norm
         rewards = torch.tensor(raw_rewards, dtype=torch.float)
         if rewards.shape[-1] == args.n_samples_per_prompt * args.rollout_batch_size:
