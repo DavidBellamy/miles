@@ -33,6 +33,10 @@ def witness_dump_and_clear_stale(
     optimizer: torch.optim.Optimizer,
 ) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
+    from megatron.core import parallel_state as mpu
+
+    pp_rank = mpu.get_pipeline_model_parallel_rank()
+
     for chunk_index, chunk in enumerate(model):
         inner = _unwrap_to_witness_owner(chunk)
         for attr in _WITNESS_ATTRS:
@@ -40,7 +44,7 @@ def witness_dump_and_clear_stale(
             witness: _DataWitness = getattr(inner, attr)
             _record_and_log_witness_param(
                 witness=witness,
-                instance_id=f"pp{chunk_index}." + attr.replace("_witness", ""),
+                instance_id=f"pp{pp_rank}_chunk{chunk_index}." + attr.replace("_witness", ""),
                 stale_ids=witness_info.stale_ids,
             )
 
