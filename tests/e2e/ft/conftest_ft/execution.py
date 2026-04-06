@@ -87,6 +87,7 @@ def get_common_train_args(
             "--rollout-batch-size 32 "
             "--n-samples-per-prompt 8 "
             "--sglang-disable-cuda-graph "
+            # Required for reproducibility (ref: https://github.com/THUDM/slime/pull/370)
             "--sglang-enable-deterministic-inference "
             "--sglang-attention-backend flashinfer "
             "--deterministic-mode "
