@@ -70,6 +70,7 @@ def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
                 model_path=overrides.get("model_path", args.hf_checkpoint),
                 router_ip=router_ip,
                 router_port=router_port,
+                update_weights=model_cfg.update_weights,
             )
             handles = group.start_engines(port_cursors)
             all_init_handles.extend(handles)

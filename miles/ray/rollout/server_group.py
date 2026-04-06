@@ -41,6 +41,7 @@ class ServerGroup:
     model_path: str | None = None
     router_ip: str | None = None
     router_port: int | None = None
+    update_weights: bool = True
 
     @property
     def nodes_per_engine(self):
