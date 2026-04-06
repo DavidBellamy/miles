@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def postprocess_rollout_data(args, data):
+def postprocess_rollout_data(args, data, train_parallel_config):
     metadata = {}
 
     # flatten the data if it is a list of lists
@@ -16,7 +16,7 @@ def postprocess_rollout_data(args, data):
         global_batch_size = args.global_batch_size
         if args.use_dynamic_global_batch_size:
             logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
-            dynamic_global_batch_size = _compute_dynamic_global_batch_size(len(data))
+            dynamic_global_batch_size = _compute_dynamic_global_batch_size(args, train_parallel_config=train_parallel_config, num_samples=len(data))
             metadata["dynamic_global_batch_size"] = dynamic_global_batch_size
             global_batch_size = dynamic_global_batch_size
 
@@ -32,7 +32,7 @@ def postprocess_rollout_data(args, data):
     return data, metadata
 
 
-def _compute_dynamic_global_batch_size(num_samples: int) -> int:
+def _compute_dynamic_global_batch_size(args, train_parallel_config, num_samples: int) -> int:
     """Calculate dynamic global_batch_size to ensure only one training step.
 
     Strategy: global_batch_size = num_samples rounded down to a multiple of dp_size
