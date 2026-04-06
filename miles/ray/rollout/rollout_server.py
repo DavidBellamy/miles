@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 
@@ -188,7 +189,7 @@ class RolloutServer:
             raise ValueError(f"Heterogeneous nodes_per_engine across groups: {values}")
         return values.pop()
 
-    def recover(self):
+    async def recover(self):
         """Recover dead engines across all active groups, overlapping init."""
         dead_per_group = [[i for i, engine in enumerate(g.all_engines) if engine is None] for g in self.server_groups]
 
@@ -198,7 +199,7 @@ class RolloutServer:
             handles, port_cursors = g.start_engines(port_cursors)
             all_handles.extend(handles)
         if all_handles:
-            ray.get(all_handles)
+            await asyncio.gather(*all_handles)
 
         release_handles = []
         updatable_new_engines = []
@@ -215,40 +216,40 @@ class RolloutServer:
                     non_updatable_groups_engines.append((g.model_path, new_engines))
 
         if release_handles:
-            ray.get(release_handles)
+            await asyncio.gather(*release_handles)
             all_resume_engines = updatable_new_engines[:]
             for _model_path, engines in non_updatable_groups_engines:
                 all_resume_engines.extend(engines)
             if all_resume_engines:
-                ray.get(
-                    [
+                await asyncio.gather(
+                    *[
                         engine.resume_memory_occupation.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS])
                         for engine in all_resume_engines
                     ]
                 )
 
-    def offload(self):
+    async def offload(self):
         handles = []
         for g in self.server_groups:
             handles.extend(g.offload())
-        return ray.get(handles) if handles else []
+        return list(await asyncio.gather(*handles)) if handles else []
 
-    def onload(self, tags: list[str] | None = None):
+    async def onload(self, tags: list[str] | None = None):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags))
-        return ray.get(handles) if handles else []
+        return list(await asyncio.gather(*handles)) if handles else []
 
-    def onload_weights(self):
+    async def onload_weights(self):
         handles = []
         for g in self.server_groups:
             if not g.needs_offload:
                 continue
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
-        return ray.get(handles) if handles else []
+        return list(await asyncio.gather(*handles)) if handles else []
 
-    def onload_kv(self):
+    async def onload_kv(self):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_CUDA_GRAPH]))
-        return ray.get(handles) if handles else []
+        return list(await asyncio.gather(*handles)) if handles else []
