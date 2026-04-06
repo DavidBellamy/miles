@@ -17,9 +17,7 @@ def compare_dumps(
     target_dir: str,
     *,
     diff_threshold: float = 0.0085,
-    # Skipped (one side missing): aux tensors not always dumped; witness only in FT target
     allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format|.*witness.*",
-    # Failed (both sides present, values differ): real rollout produces different data per run
     allow_failed_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format",
     extra_args: list[str] | None = None,
 ) -> None:
