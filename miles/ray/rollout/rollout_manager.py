@@ -6,6 +6,9 @@ from pathlib import Path
 import ray
 import torch
 
+from miles.ray.rollout.metrics import log_rollout_data, log_eval_rollout_data
+from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
+from miles.ray.rollout.router_manager import start_session_server
 from miles.ray.utils import Lock
 from miles.rollout.base_types import (
     RolloutFnConstructorInput,
@@ -71,7 +74,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
-            _start_session_server(args)
+            start_session_server(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -151,7 +154,7 @@ class RolloutManager:
             self._try_ci_fault_injection()
         data, metrics = self._get_rollout_data(rollout_id=rollout_id)
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
-        _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
+        log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
         return self._split_train_data_by_dp(data, self.train_parallel_config["dp_size"])
 
@@ -169,7 +172,7 @@ class RolloutManager:
             )
         data = result.data
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=True)
-        metrics = _log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
+        metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
 

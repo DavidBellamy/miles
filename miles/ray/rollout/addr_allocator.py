@@ -1,7 +1,7 @@
 import ray
 
 
-def _allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):
+def allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):
     addr_and_ports = {}
     for rank, _ in rollout_engines:
         addr = args.rollout_external_engine_addrs[rank]
@@ -15,7 +15,7 @@ def _allocate_rollout_engine_addr_and_ports_external(args, rollout_engines):
     return addr_and_ports
 
 
-def _allocate_rollout_engine_addr_and_ports_normal(
+def allocate_rollout_engine_addr_and_ports_normal(
     *,
     args,
     rollout_engines,

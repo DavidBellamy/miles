@@ -6,6 +6,8 @@ import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.backends.sglang_utils.sglang_engine import SGLangEngine
+from miles.ray.rollout.addr_allocator import allocate_rollout_engine_addr_and_ports_external, \
+    allocate_rollout_engine_addr_and_ports_normal
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils import dumper_utils
 
@@ -117,12 +119,12 @@ class ServerGroup:
             return [], port_cursors
 
         if self.args.rollout_external:
-            addr_and_ports = _allocate_rollout_engine_addr_and_ports_external(
+            addr_and_ports = allocate_rollout_engine_addr_and_ports_external(
                 args=self.args, rollout_engines=rollout_engines
             )
         else:
             base_port = max(port_cursors.values()) if port_cursors else 15000
-            addr_and_ports, port_cursors = _allocate_rollout_engine_addr_and_ports_normal(
+            addr_and_ports, port_cursors = allocate_rollout_engine_addr_and_ports_normal(
                 args=self.args,
                 rollout_engines=rollout_engines,
                 worker_type=self.worker_type,

@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import random
 
@@ -11,7 +12,10 @@ from miles.utils.http_utils import (
 )
 
 
-def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool = False) -> tuple[str, int]:
+logger = logging.getLogger(__name__)
+
+
+def start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool = False) -> tuple[str, int]:
     """Start sgl router or miles router and return (router_ip, router_port).
 
     If ``args.sglang_router_ip`` is already set and ``force_new`` is False,
@@ -73,7 +77,7 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
     return router_ip, router_port
 
 
-def _start_session_server(args):
+def start_session_server(args):
     """Start a standalone session server when ``--use-session-server`` is set.
 
     The session server runs as a separate process with its own port and proxies

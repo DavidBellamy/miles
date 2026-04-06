@@ -1,9 +1,15 @@
 import dataclasses
+import logging
 
 import ray
 from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_WEIGHTS
 
+from miles.backends.sglang_utils.sglang_config import SglangConfig, ModelConfig, ServerGroupConfig
+from miles.ray.rollout.router_manager import start_router
 from miles.ray.rollout.server_group import ServerGroup
+
+
+logger = logging.getLogger(__name__)
 
 
 def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
@@ -24,7 +30,7 @@ def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
         model_cfg.resolve(args)
 
         has_pd = model_cfg.has_pd_disaggregation
-        router_ip, router_port = _start_router(args, has_pd_disaggregation=has_pd, force_new=(model_idx > 0))
+        router_ip, router_port = start_router(args, has_pd_disaggregation=has_pd, force_new=(model_idx > 0))
 
         if model_idx == 0:
             args.sglang_router_ip = router_ip
