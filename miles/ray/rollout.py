@@ -43,9 +43,8 @@ from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
-
-from ..utils.metric_utils import has_repetition
-from .utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
+from miles.utils.metric_utils import has_repetition
+from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
