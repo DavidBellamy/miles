@@ -31,6 +31,9 @@ def create_indep_dp_group(
         raise ImportError("torchft is required for indep_dp. Install with: pip install torchft") from e
 
     def _create(pg_cls: type, backend_name: str) -> dist.ProcessGroup:
+        # Must be large enough to tolerate cross-cell step-time skew (~30s observed),
+        # but not so large that a truly dead cell takes minutes to detect.
+        # TODO: tune this value based on production workload profiling.
         pg = pg_cls(timeout=timedelta(seconds=120))
         pg.configure(
             store_addr=f"{store_addr}/indep_dp/{backend_name}/{indep_dp_info.quorum_id}/{megatron_rank}",
