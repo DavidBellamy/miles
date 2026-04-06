@@ -190,27 +190,7 @@ class _RawPGUtil(GeneralPGUtil):
         _check_wait(group.gather(output, [input_tensor], opts), "gather")
 
     def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
-        # torchft ProcessGroupGloo.gather() doesn't properly support CPU tensors.
-        # Use allgather (which works) and discard non-rank-0 results instead.
-        import pickle
-
-        my_rank = self.get_rank(group)
-        world_size = self.get_size(group)
-
-        data = pickle.dumps(obj)
-        size_tensor = torch.tensor([len(data)], dtype=torch.long, device="cpu")
-        size_list = [torch.zeros(1, dtype=torch.long, device="cpu") for _ in range(world_size)]
-        self.all_gather(size_list, size_tensor, group=group)
-
-        max_size = max(s.item() for s in size_list)
-        input_tensor = torch.zeros(max_size, dtype=torch.uint8, device="cpu")
-        input_tensor[: len(data)] = torch.frombuffer(bytearray(data), dtype=torch.uint8)
-        output_tensors = [torch.zeros(max_size, dtype=torch.uint8, device="cpu") for _ in range(world_size)]
-        self.all_gather(output_tensors, input_tensor, group=group)
-
-        if my_rank == 0 and object_gather_list is not None:
-            for i in range(world_size):
-                object_gather_list[i] = pickle.loads(output_tensors[i][: size_list[i].item()].numpy().tobytes())
+        _gather_object_via_util(self, obj, object_gather_list, group)
 
 
 class MultiPGUtil:
@@ -287,7 +267,12 @@ def _gather_object_via_util(
     else:
         assert object_gather_list is None
 
-    current_device = torch.device("cpu")
+    try:
+        from torch.distributed.distributed_c10d import _get_object_coll_device
+
+        current_device = _get_object_coll_device(group)
+    except Exception:
+        current_device = torch.device("cpu")
     input_tensor, local_size = _object_to_tensor(obj, current_device, group)
 
     # Gather all local sizes. This is so that we can find the max size, and index
