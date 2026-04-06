@@ -141,7 +141,12 @@ class _DataWitness(nn.Module):
         metadata = ensure_metadata_has_dp_cp_group(metadata)
         module_sd = self.state_dict(prefix="", keep_vars=True)
         return make_sharded_tensors_for_checkpoint(
-            module_sd, pp_prefix, {}, sharded_offsets, dp_cp_group=metadata["dp_cp_group"]
+            module_sd,
+            pp_prefix,
+            {},
+            sharded_offsets,
+            tp_group=mpu.get_tensor_model_parallel_group(),
+            dp_cp_group=metadata["dp_cp_group"],
         )
 
 
