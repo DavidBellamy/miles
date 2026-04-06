@@ -499,16 +499,21 @@ def icepop_function(
     return pg_loss, loss_masks, metrics
 
 
-def _log_train_loss_computation_event(batch: RolloutBatch) -> None:
+def log_train_loss_computation_event(rollout_data: RolloutBatch) -> None:
+    """Log per-sample advantages and witness_ids for the witness verifier.
+
+    Must be called BEFORE get_batch packs witness_ids into a single tensor.
+    At this point both rollout_data["advantages"] and rollout_data["witness_ids"]
+    are list[Tensor] (one per sample).
+    """
     if not is_event_logger_initialized():
         return
 
-    advantages_list: list[torch.Tensor] | None = batch.get("advantages")
-    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
+    advantages_list: list[torch.Tensor] | None = rollout_data.get("advantages")
+    witness_ids_list: list[torch.Tensor] | None = rollout_data.get("witness_ids")
     if advantages_list is None or witness_ids_list is None:
         return
 
-    # Per-sample: scalar witness_id (constant per sample) and mean |advantage|
     per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
     per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
 
@@ -711,8 +716,6 @@ def policy_loss_function(
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
         rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
         train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
-
-    _log_train_loss_computation_event(batch=batch)
 
     reported_loss = {
         "loss": loss.clone().detach(),
