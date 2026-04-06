@@ -9,9 +9,10 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Optional
 
 
-def exec_command(cmd: str, cwd: str | None = None, check: bool = True) -> str:
+def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
     print(f"  $ {cmd}", flush=True)
     result = subprocess.run(
         cmd,
