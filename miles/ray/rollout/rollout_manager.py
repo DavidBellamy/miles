@@ -249,6 +249,7 @@ class RolloutManager:
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
+            # TODO extract to `load_debug_rollout_data`
             data = torch.load(
                 self.args.load_debug_rollout_data.format(rollout_id=rollout_id),
                 weights_only=False,
