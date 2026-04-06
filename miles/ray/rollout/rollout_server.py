@@ -8,7 +8,6 @@ from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_
 from miles.backends.sglang_utils.sglang_config import ModelConfig, ServerGroupConfig, SglangConfig
 from miles.ray.rollout.router_manager import start_router
 from miles.ray.rollout.server_group import ServerGroup
-from miles.ray.utils import gather_refs
 
 logger = logging.getLogger(__name__)
 
@@ -233,13 +232,13 @@ class RolloutServer:
         handles = []
         for g in self.server_groups:
             handles.extend(g.offload())
-        return await gather_refs(handles)
+        return list(await asyncio.gather(*handles)) if handles else []
 
     async def onload(self, tags: list[str] | None = None):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags))
-        return await gather_refs(handles)
+        return list(await asyncio.gather(*handles)) if handles else []
 
     async def onload_weights(self):
         handles = []
@@ -247,10 +246,10 @@ class RolloutServer:
             if not g.needs_offload:
                 continue
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
-        return await gather_refs(handles)
+        return list(await asyncio.gather(*handles)) if handles else []
 
     async def onload_kv(self):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_CUDA_GRAPH]))
-        return await gather_refs(handles)
+        return list(await asyncio.gather(*handles)) if handles else []
