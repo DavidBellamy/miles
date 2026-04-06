@@ -6,14 +6,14 @@ from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import Sample
 
 
-def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample]]):
+def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample]], custom_convert_samples_to_train_data_func, custom_reward_post_process_func):
     """
     Convert inference generated samples to training data.
     """
-    if (f := self.custom_convert_samples_to_train_data_func) is not None:
+    if (f := custom_convert_samples_to_train_data_func) is not None:
         return f(args, samples)
 
-    raw_rewards, rewards = _post_process_rewards(args, samples)
+    raw_rewards, rewards = _post_process_rewards(args, samples, custom_reward_post_process_func=custom_reward_post_process_func)
 
     assert len(raw_rewards) == len(samples)
     assert len(rewards) == len(samples)
@@ -77,8 +77,8 @@ def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample
     return train_data
 
 
-def _post_process_rewards(args, samples: list[Sample] | list[list[Sample]]):
-    if (f := self.custom_reward_post_process_func) is not None:
+def _post_process_rewards(args, samples: list[Sample] | list[list[Sample]], custom_reward_post_process_func):
+    if (f := custom_reward_post_process_func) is not None:
         return f(args, samples)
 
     raw_rewards = [sample.get_reward_value(args) for sample in samples]

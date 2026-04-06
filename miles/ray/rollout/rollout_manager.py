@@ -155,7 +155,12 @@ class RolloutManager:
         data, metrics = self._get_rollout_data(rollout_id=rollout_id)
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
         log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
-        data = convert_samples_to_train_data(self, data)
+        data = convert_samples_to_train_data(
+            self.args,
+            data,
+            custom_convert_samples_to_train_data_func=self.custom_convert_samples_to_train_data_func,
+            custom_reward_post_process_func=self.custom_reward_post_process_func,
+        )
         return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
 
     def eval(self, rollout_id):
