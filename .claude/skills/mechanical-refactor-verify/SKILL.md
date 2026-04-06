@@ -129,9 +129,3 @@ Semantic changes (new logic, API restructuring, behavior changes) belong in a **
 1. Find the gist URL and one-click command in the PR description
 2. Run the one-click command in the repo
 3. Report: PASS or show the diff
-
-## Relationship to existing refactor workflows
-
-- `simpledev-refactor-execute` (global skill): uses rope to execute moves, produces two commits
-- This skill: **verification layer** — regardless of how the move was done (rope, manual, sed), require a reproducible script as a gist
-- They compose: rope does the move → wrap the rope commands in a transform script → upload as gist
