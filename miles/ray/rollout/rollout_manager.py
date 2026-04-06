@@ -153,7 +153,7 @@ class RolloutManager:
         if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
             self._try_ci_fault_injection()
         data, metrics = self._get_rollout_data(rollout_id=rollout_id)
-        save_debug_rollout_data(self, data, rollout_id=rollout_id, evaluation=False)
+        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
         log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = convert_samples_to_train_data(self, data)
         return split_train_data_by_dp(self, data, self.train_parallel_config["dp_size"])
@@ -171,7 +171,7 @@ class RolloutManager:
                 self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
             )
         data = result.data
-        save_debug_rollout_data(self, data, rollout_id=rollout_id, evaluation=True)
+        save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
