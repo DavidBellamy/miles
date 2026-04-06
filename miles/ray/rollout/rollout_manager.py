@@ -122,9 +122,13 @@ class RolloutManager:
         self._health_monitoring_resume()
 
         if self.use_experimental_refactor:
-            result = await asyncio.to_thread(call_rollout_function, self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
+            result = await asyncio.to_thread(
+                call_rollout_function, self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id)
+            )
         else:
-            result = await asyncio.to_thread(call_rollout_fn, self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True)
+            result = await asyncio.to_thread(
+                call_rollout_fn, self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
+            )
         data = result.data
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
@@ -138,9 +142,13 @@ class RolloutManager:
             metrics = None
         else:
             if self.use_experimental_refactor:
-                data = await asyncio.to_thread(call_rollout_function, self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
+                data = await asyncio.to_thread(
+                    call_rollout_function, self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id)
+                )
             else:
-                data = await asyncio.to_thread(call_rollout_fn, self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False)
+                data = await asyncio.to_thread(
+                    call_rollout_fn, self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False
+                )
             metrics = data.metrics
             data = data.samples
             data, metadata = postprocess_rollout_data(
@@ -228,7 +236,9 @@ class RolloutManager:
         return len(self.data_source.dataset) // self.args.rollout_batch_size
 
     async def check_weights(self, action: str):
-        return list(await asyncio.gather(*[engine.check_weights.remote(action=action) for engine in self._rollout_engines]))
+        return list(
+            await asyncio.gather(*[engine.check_weights.remote(action=action) for engine in self._rollout_engines])
+        )
 
     async def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
