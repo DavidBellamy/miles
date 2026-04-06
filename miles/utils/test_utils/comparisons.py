@@ -18,7 +18,6 @@ def compare_dumps(
     *,
     diff_threshold: float = 0.0085,
     allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format|.*witness.*",
-    allow_failed_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format",
     extra_args: list[str] | None = None,
 ) -> None:
     baseline_path = Path(baseline_dir) / "dumps"
@@ -32,7 +31,6 @@ def compare_dumps(
         target_path=target_path,
         diff_threshold=diff_threshold,
         allow_skipped_pattern=allow_skipped_pattern,
-        allow_failed_pattern=allow_failed_pattern,
         extra_args=extra_args,
     )
 
@@ -207,7 +205,6 @@ def _run_comparator(
     target_path: Path,
     diff_threshold: float,
     allow_skipped_pattern: str,
-    allow_failed_pattern: str,
     extra_args: list[str] | None,
 ) -> subprocess.CompletedProcess[str]:
     cmd: list[str] = [
@@ -225,8 +222,6 @@ def _run_comparator(
         str(diff_threshold),
         "--allow-skipped-pattern",
         allow_skipped_pattern,
-        "--allow-failed-pattern",
-        allow_failed_pattern,
     ]
     if extra_args:
         cmd.extend(extra_args)
