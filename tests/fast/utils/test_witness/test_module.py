@@ -16,74 +16,66 @@ from miles.utils.witness.module import (
 
 
 class TestDataWitnessForward:
-    def test_forward_is_bitwise_zero(self) -> None:
+    def test_forward_does_not_change_hidden_states(self) -> None:
+        """Witness output is zero, so hidden_states should be unchanged."""
         witness = _DataWitness(buffer_size=10)
-        ids = torch.tensor([0, 1, 2, 3])
-        out = witness(ids, ids)
-        assert torch.all(out == 0.0)
-        assert out.shape == (4, 1)
+        ids = torch.tensor([[0, 1, 2, 3]])  # [1, 4]
+        hidden = torch.randn(4, 1, 8)  # [s, b, h] Megatron SBH layout
+        result = witness(ids, hidden)
+        assert torch.equal(result, hidden)
 
-    def test_forward_zero_after_optimizer_step(self) -> None:
+    def test_forward_unchanged_after_optimizer_step(self) -> None:
         witness = _DataWitness(buffer_size=10)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
-        ids = torch.tensor([0, 1, 2])
-        out = witness(ids, ids)
-        loss = out.sum()
-        loss.backward()
+        ids = torch.tensor([[0, 1, 2]])
+        hidden = torch.randn(3, 1, 8)
+        result = witness(ids, hidden)
+        result.sum().backward()
         optimizer.step()
         optimizer.zero_grad()
 
-        # After optimizer update, weights are nonzero, but output is still zero
+        # After optimizer update, weights are nonzero, but hidden_states still unchanged
         assert not torch.all(witness.witness.weight == 0.0)
-        out2 = witness(ids, ids)
-        assert torch.all(out2 == 0.0)
+        result2 = witness(ids, hidden)
+        assert torch.equal(result2, hidden)
 
-    def test_backward_records_gradient(self) -> None:
+    def test_backward_records_gradient_on_witness_weight(self) -> None:
         witness = _DataWitness(buffer_size=10)
-        ids = torch.tensor([2, 5])
+        ids = torch.tensor([[2, 5]])
+        hidden = torch.randn(2, 1, 4, requires_grad=True)
 
-        # Need a downstream loss to propagate grads
-        out = witness(ids, ids)
-        loss = out.sum()
-        loss.backward()
+        result = witness(ids, hidden)
+        result.sum().backward()
 
         grad = witness.witness.weight.grad
         assert grad is not None
-
-        # Only IDs 2 and 5 should have nonzero grad
         nonzero_rows = grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
         assert set(nonzero_rows) == {2, 5}
 
-    def test_no_effect_on_main_model(self) -> None:
+    def test_no_effect_on_main_model_gradients(self) -> None:
+        """Witness should not alter gradients for main model parameters."""
         torch.manual_seed(42)
-        embed = nn.Embedding(100, 16)
-        linear = nn.Linear(16, 1)
+        linear = nn.Linear(8, 1)
 
-        tokens = torch.tensor([1, 2, 3, 4])
+        hidden = torch.randn(4, 1, 8, requires_grad=True)
 
         # Compute loss without witness
-        torch.manual_seed(0)
-        out_no_witness = linear(embed(tokens)).sum()
+        out_no_witness = linear(hidden).sum()
         out_no_witness.backward()
-        grad_embed_no = embed.weight.grad.clone()
         grad_linear_no = linear.weight.grad.clone()
 
-        embed.zero_grad()
         linear.zero_grad()
+        if hidden.grad is not None:
+            hidden.grad.zero_()
 
         # Compute loss with witness
         witness = _DataWitness(buffer_size=10)
-        ids = torch.tensor([0, 0, 0, 0])
-        witness_out = witness(ids, ids)  # (4, 1) of zeros
-
-        torch.manual_seed(0)
-        h = embed(tokens)  # (4, 16)
-        h = h + witness_out  # broadcast (4,1) → adds 0
+        ids = torch.tensor([[0, 0, 0, 0]])
+        h = witness(ids, hidden)  # hidden unchanged (witness output is zero)
         out_with_witness = linear(h).sum()
         out_with_witness.backward()
 
-        assert torch.equal(grad_embed_no, embed.weight.grad)
         assert torch.equal(grad_linear_no, linear.weight.grad)
 
 
@@ -153,11 +145,10 @@ class _FakeGPTModel(nn.Module):
             decoder_input = None
 
         if hasattr(self, "local_head_witness") and witness_ids is not None:
-            witness_out = self.local_head_witness(input_ids, witness_ids)
             if decoder_input is not None:
-                decoder_input = decoder_input + witness_out
+                decoder_input = self.local_head_witness(witness_ids, decoder_input)
             else:
-                self.decoder.input_tensor = self.decoder.input_tensor + witness_out
+                self.decoder.input_tensor = self.local_head_witness(witness_ids, self.decoder.input_tensor)
 
         if decoder_input is None:
             decoder_input = self.decoder.input_tensor
@@ -244,9 +235,10 @@ class TestInstallWitness:
     def test_forward_bitwise_zero_bf16(self) -> None:
         witness = _DataWitness(buffer_size=10).to(dtype=torch.bfloat16)
         witness.witness.weight.data.fill_(3.14)
-        ids = torch.tensor([0, 1, 2])
-        out = witness(ids, ids)
-        assert torch.all(out == 0.0)
+        ids = torch.tensor([[0, 1, 2]])
+        hidden = torch.randn(3, 1, 8, dtype=torch.bfloat16)
+        result = witness(ids, hidden)
+        assert torch.equal(result, hidden)
 
 
 class TestZeroWitnessRows:
