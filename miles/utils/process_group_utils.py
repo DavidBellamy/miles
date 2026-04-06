@@ -269,12 +269,9 @@ def _gather_object_via_util(
     else:
         assert object_gather_list is None
 
-    try:
-        from torch.distributed.distributed_c10d import _get_object_coll_device
+    from torch.distributed.distributed_c10d import _get_object_coll_device
 
-        current_device = _get_object_coll_device(group)
-    except Exception:
-        current_device = torch.device("cpu")
+    current_device = _get_object_coll_device(group)
     input_tensor, local_size = _object_to_tensor(obj, current_device, group)
 
     # Gather all local sizes. This is so that we can find the max size, and index
