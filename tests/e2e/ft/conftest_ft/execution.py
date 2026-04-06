@@ -141,8 +141,7 @@ def get_ft_args(mode: FTTestMode) -> str:
     return "--use-fault-tolerance " "--ft-components train " "--control-server-port 0 "
 
 
-# Env vars required for full training reproducibility.
-# Ref: https://github.com/THUDM/slime/pull/370
+# Required for reproducibility (ref: https://github.com/THUDM/slime/pull/370)
 _DETERMINISTIC_ENV_VARS: dict[str, str] = {
     "NCCL_ALGO": "Ring",
     "NVTE_ALLOW_NONDETERMINISTIC_ALGO": "0",
