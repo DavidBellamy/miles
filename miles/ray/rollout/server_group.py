@@ -6,6 +6,7 @@ from typing import Any
 
 import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from sglang.srt.constants import GPU_MEMORY_TYPE_WEIGHTS
 
 from miles.backends.sglang_utils.sglang_engine import SGLangEngine
 from miles.ray.rollout.addr_allocator import (
