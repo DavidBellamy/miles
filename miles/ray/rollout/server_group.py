@@ -188,6 +188,6 @@ class ServerGroup:
         ]
 
     async def check_weights(self, action: str):
-        return asyncio.gather(*[
-            engine.check_weights.remote(action=action) for engine in self.engines if engine is not None
-        ])
+        return asyncio.gather(
+            *[engine.check_weights.remote(action=action) for engine in self.engines if engine is not None]
+        )
