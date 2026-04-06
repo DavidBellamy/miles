@@ -38,14 +38,14 @@ BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
 
 
-def transform(root: Path) -> None:
+def transform(dir_root: Path) -> None:
     """Perform the mechanical transformation and commit each step.
 
     Args:
-        root: Path to the worktree (checked out at BASE_COMMIT).
+        dir_root: Path to the worktree (checked out at BASE_COMMIT).
     """
     # --- Step 1: Split source file ---
-    source = root / "path/to/source.py"
+    source = dir_root / "path/to/source.py"
     content = source.read_text()
     lines = content.splitlines(keepends=True)
 
@@ -54,18 +54,18 @@ def transform(root: Path) -> None:
         ("path/to/pkg/target_b.py", 51, 120),
     ]
     for target_path, start, end in splits:
-        target = root / target_path
+        target = dir_root / target_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("".join(lines[start - 1 : end]))
 
     source.unlink()
-    (root / "path/to/pkg/__init__.py").touch()
+    (dir_root / "path/to/pkg/__init__.py").touch()
 
-    git_add_and_commit("mechanical: split source.py", cwd=str(root))
+    git_add_and_commit("mechanical: split source.py", cwd=str(dir_root))
 
     # --- Step 2: Fix imports ---
     # <edit files>
-    # git_add_and_commit("fix imports", cwd=str(root))
+    # git_add_and_commit("fix imports", cwd=str(dir_root))
 
     # Note: formatting (ruff format) is handled automatically by verify_mechanical_refactor
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
 ```
 
 The `transform()` function:
-- Receives `root` (worktree path, checked out at base commit) and `run` (shell command helper)
+- Receives `dir_root` (worktree path, checked out at base commit)
 - Makes file changes and commits each logical step
 - The verifier handles worktree creation, diffing against target, and reporting pass/fail
 
