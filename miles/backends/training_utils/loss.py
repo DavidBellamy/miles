@@ -623,8 +623,8 @@ def policy_loss_function(
             "max_seq_lens": max_seq_lens,
         }
 
-        if (x := args.custom_tis_function_path) is not None:
-            tis_func = load_function(x)
+        if args.custom_tis_function_path is not None:
+            tis_func = load_function(args.custom_tis_function_path)
         else:
             tis_func = vanilla_tis_function
         pg_loss, modified_response_masks, tis_metrics = tis_func(**tis_kwargs)

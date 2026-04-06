@@ -89,8 +89,8 @@ class RolloutManager:
     # TODO: may have a `async def init` here later
 
     def dispose(self):
-        if (x := self._metric_checker) is not None:
-            x.dispose()
+        if self._metric_checker is not None:
+            self._metric_checker.dispose()
         for monitor in self._health_monitors:
             monitor.stop()
 
@@ -129,8 +129,8 @@ class RolloutManager:
         data = result.data
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
-        if (x := self._metric_checker) is not None:
-            x.on_eval(metrics)
+        if self._metric_checker is not None:
+            self._metric_checker.on_eval(metrics)
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:

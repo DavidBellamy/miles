@@ -149,8 +149,8 @@ def get_model_provider_func(
         assert config is None, "miles builds the config from args, so it expects config to be None"
         config = core_transformer_config_from_args(args)
 
-        if (x := args.spec) is not None:
-            transformer_layer_spec = import_module(x)
+        if args.spec is not None:
+            transformer_layer_spec = import_module(args.spec)
             # Allow the spec to be a function so that user can use customized Megatron easier.
             if callable(transformer_layer_spec):
                 transformer_layer_spec = transformer_layer_spec(args, config, vp_stage)

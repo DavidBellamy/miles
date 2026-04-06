@@ -68,10 +68,10 @@ def get_optimizer_param_scheduler(args: Namespace, optimizer: MegatronOptimizer)
     lr_decay_steps = args.lr_decay_iters * args.global_batch_size
     wd_incr_steps = args.train_iters * args.global_batch_size
     wsd_decay_steps = None
-    if (x := args.lr_wsd_decay_iters) is not None:
-        wsd_decay_steps = x * args.global_batch_size
-    if (x := args.lr_warmup_fraction) is not None:
-        lr_warmup_steps = x * lr_decay_steps
+    if args.lr_wsd_decay_iters is not None:
+        wsd_decay_steps = args.lr_wsd_decay_iters * args.global_batch_size
+    if args.lr_warmup_fraction is not None:
+        lr_warmup_steps = args.lr_warmup_fraction * lr_decay_steps
     else:
         lr_warmup_steps = args.lr_warmup_iters * args.global_batch_size
 

@@ -60,8 +60,8 @@ class StandardDispatcher:
             ] = torch.arange(0, self.num_local_experts, dtype=torch.int32, device="cuda")
 
     def dispatch(self, topk_ids) -> torch.Tensor:
-        if (x := self.local_expert_mapping) is not None:
-            return x[topk_ids]
+        if self.local_expert_mapping is not None:
+            return self.local_expert_mapping[topk_ids]
         return topk_ids
 
 

@@ -416,8 +416,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 # because we may need normalize the whole rollout.
                 compute_advantages_and_returns(self.args, rollout_data)
 
-            if (x := self.rollout_data_postprocess) is not None:
-                x(self.args)
+            if self.rollout_data_postprocess is not None:
+                self.rollout_data_postprocess(self.args)
 
             log_rollout_data(rollout_id, self.args, rollout_data)
 

@@ -86,8 +86,8 @@ class WQLinear_GEMM(nn.Module):
         assert scales is not None and zeros is not None
 
         awq_linear.scales = scales.clone().half()
-        if (x := linear.bias) is not None:
-            awq_linear.bias = x.clone().half()
+        if linear.bias is not None:
+            awq_linear.bias = linear.bias.clone().half()
 
         pack_num = 32 // awq_linear.w_bit
         device = torch.device(f"cuda:{torch.cuda.current_device()}")

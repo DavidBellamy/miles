@@ -142,8 +142,8 @@ class EvalDatasetConfig:
         else:
             metadata = dict(sample_metadata)
 
-        if (x := self.rm_type) is not None:
-            metadata["rm_type"] = x
+        if self.rm_type is not None:
+            metadata["rm_type"] = self.rm_type
 
         for key, value in self.metadata_overrides.items():
             metadata[key] = value

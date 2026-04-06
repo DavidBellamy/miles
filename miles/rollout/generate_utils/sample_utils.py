@@ -41,8 +41,8 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
         assert _startswith(short=a.prompt, long=b.prompt), "b.prompt must start with a.prompt"
         assert _startswith(short=a.tokens, long=b.tokens), "b.tokens must start with a.tokens"
         assert obs_len > 0, f"obs_len must be > 0, got {obs_len}"
-        if (x := a.rollout_routed_experts) is not None:
-            assert x.shape[0] <= b.rollout_routed_experts.shape[0]
+        if a.rollout_routed_experts is not None:
+            assert a.rollout_routed_experts.shape[0] <= b.rollout_routed_experts.shape[0]
         assert a.status == Sample.Status.COMPLETED, f"a.status must be COMPLETED, got {a.status}"
 
         return _create_with_all_fields(
