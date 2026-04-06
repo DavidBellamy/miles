@@ -70,7 +70,8 @@ class _DataWitness(nn.Module):
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
     ) -> dict:
         from megatron.core import parallel_state as mpu
-        from megatron.core.transformer.utils import sharded_state_dict_default
+        from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group
+        from megatron.core.utils import make_sharded_tensors_for_checkpoint
 
         pp_rank = mpu.get_pipeline_model_parallel_rank()
         # Embed PP rank in the checkpoint key so each pipeline stage has a unique
@@ -78,7 +79,11 @@ class _DataWitness(nn.Module):
         # Without this, PP>1 causes a sharding validation error because multiple
         # stages register the same key with identical replica_id.
         pp_prefix = f"{prefix.rstrip('.')}_pp{pp_rank}."
-        return sharded_state_dict_default(self, pp_prefix, sharded_offsets, metadata)
+        metadata = ensure_metadata_has_dp_cp_group(metadata)
+        module_sd = self.state_dict(prefix="", keep_vars=True)
+        return make_sharded_tensors_for_checkpoint(
+            module_sd, pp_prefix, {}, sharded_offsets, dp_cp_group=metadata["dp_cp_group"]
+        )
 
 
 # ---------------------------------------------------------------------------
