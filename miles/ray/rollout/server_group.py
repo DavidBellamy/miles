@@ -137,7 +137,7 @@ class ServerGroup:
                 rank_offset=self.rank_offset,
                 base_port=base_port,
             )
-            port_cursors.update(next_port_cursors)
+            port_cursors.assign(next_port_cursors)
 
         init_handles = [
             engine.init.remote(

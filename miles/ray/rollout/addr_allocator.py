@@ -15,8 +15,8 @@ class PortCursors:
     def empty() -> "PortCursors":
         return PortCursors(_values={})
 
-    def update(self, other: "PortCursors"):
-        self._values |= other._values
+    def assign(self, other: "PortCursors"):
+        self._values = deepcopy(other._values)
 
     def next_base_port(self) -> int:
         return max(self._values.values()) if self._values else 15000
