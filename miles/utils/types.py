@@ -154,16 +154,16 @@ class Sample:
         assert (
             len(self.tokens) >= self.response_length
         ), f"tokens length ({len(self.tokens)}) must be >= response_length ({self.response_length})"
-        if (x := self.loss_mask) is not None:
+        if self.loss_mask is not None:
             assert (
-                len(x) == self.response_length
-            ), f"loss_mask length ({len(x)}) != response_length ({self.response_length})"
-        if (x := self.rollout_log_probs) is not None:
+                len(self.loss_mask) == self.response_length
+            ), f"loss_mask length ({len(self.loss_mask)}) != response_length ({self.response_length})"
+        if self.rollout_log_probs is not None:
             assert (
-                len(x) == self.response_length
-            ), f"rollout_log_probs length ({len(x)}) != response_length ({self.response_length})"
-        if (x := self.rollout_routed_experts) is not None:
-            actual = len(x)
+                len(self.rollout_log_probs) == self.response_length
+            ), f"rollout_log_probs length ({len(self.rollout_log_probs)}) != response_length ({self.response_length})"
+        if self.rollout_routed_experts is not None:
+            actual = len(self.rollout_routed_experts)
             expect = len(self.tokens) - 1
             assert actual == expect, f"rollout_routed_experts length ({actual}) != len(tokens) - 1 ({expect})"
 
@@ -176,13 +176,13 @@ class Sample:
         ), f"cannot strip {n} tokens: only {self.response_length} output tokens available"
         self.tokens = self.tokens[:-n]
         self.response_length -= n
-        if (x := self.rollout_log_probs) is not None:
-            self.rollout_log_probs = x[:-n]
-        if (x := self.loss_mask) is not None:
-            self.loss_mask = x[:-n]
+        if self.rollout_log_probs is not None:
+            self.rollout_log_probs = self.rollout_log_probs[:-n]
+        if self.loss_mask is not None:
+            self.loss_mask = self.loss_mask[:-n]
         self.response = tokenizer.decode(self.tokens[-self.response_length :]) if self.response_length > 0 else ""
-        if (x := self.rollout_routed_experts) is not None:
-            self.rollout_routed_experts = x[:-n]
+        if self.rollout_routed_experts is not None:
+            self.rollout_routed_experts = self.rollout_routed_experts[:-n]
 
     def update_from_meta_info(self, args, meta_info: dict):
         """
