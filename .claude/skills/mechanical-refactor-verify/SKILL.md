@@ -92,8 +92,14 @@ python3 transform.py
 
 ### Step 3: Upload gist and add to PR description
 
+One gist per PR. Create or update:
+
 ```bash
+# First time
 gh gist create --public -d "Mechanical refactor transform: <description>" transform.py
+
+# Update existing gist (e.g. after revising the transform)
+gh gist edit <gist_id> -a transform.py
 ```
 
 PR description format:
