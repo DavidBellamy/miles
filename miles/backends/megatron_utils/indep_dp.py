@@ -31,7 +31,7 @@ def create_indep_dp_group(
         raise ImportError("torchft is required for indep_dp. Install with: pip install torchft") from e
 
     def _create(pg_cls: type, backend_name: str) -> dist.ProcessGroup:
-        pg = pg_cls(timeout=timedelta(seconds=600))
+        pg = pg_cls(timeout=timedelta(seconds=120))
         pg.configure(
             store_addr=f"{store_addr}/indep_dp/{backend_name}/{indep_dp_info.quorum_id}/{megatron_rank}",
             replica_id=str(indep_dp_info.cell_index),
