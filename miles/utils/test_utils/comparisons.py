@@ -157,7 +157,10 @@ def _print_step_comparison_table(
     *,
     exclude_keys: list[str] | None = None,
 ) -> None:
-    rows: list[tuple[str, str, str, str, str]] = []
+    import polars as pl
+    from sglang.srt.debug_utils.comparator.display import _render_polars_as_text
+
+    rows: list[dict[str, str]] = []
     for key in sorted(baseline_event.metrics):
         if not any(key.startswith(p) for p in key_prefixes):
             continue
@@ -169,19 +172,18 @@ def _print_step_comparison_table(
         abs_diff = abs(b_val - t_val)
         denom = max(abs(b_val), abs(t_val), 1e-12)
         rel_diff = abs_diff / denom
-        rows.append((key, f"{b_val:.6e}", f"{t_val:.6e}", f"{abs_diff:.2e}", f"{rel_diff:.4%}{excluded}"))
+        rows.append({
+            "metric": key,
+            "baseline": f"{b_val:.6e}",
+            "target": f"{t_val:.6e}",
+            "abs_diff": f"{abs_diff:.2e}",
+            "rel_diff": f"{rel_diff:.4%}{excluded}",
+        })
 
     if not rows:
         return
-    col_widths = [max(len(r[i]) for r in rows) for i in range(5)]
-    headers = ("metric", "baseline", "target", "abs_diff", "rel_diff")
-    col_widths = [max(col_widths[i], len(headers[i])) for i in range(5)]
-    fmt = f"  {{:<{col_widths[0]}}}  {{:>{col_widths[1]}}}  {{:>{col_widths[2]}}}  {{:>{col_widths[3]}}}  {{:>{col_widths[4]}}}"
-    print(f"\n--- Step {step_idx} metric comparison ---")
-    print(fmt.format(*headers))
-    print(fmt.format(*("-" * w for w in col_widths)))
-    for row in rows:
-        print(fmt.format(*row))
+    df = pl.DataFrame(rows)
+    print(_render_polars_as_text(df, title=f"Step {step_idx} metric comparison"))
 
 
 def _check_required_keys_exist(events: list[MetricEvent]) -> list[str]:
