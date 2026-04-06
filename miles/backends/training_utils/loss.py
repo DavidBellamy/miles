@@ -6,6 +6,8 @@ import torch
 from torch.utils.checkpoint import checkpoint
 
 from miles.utils.distributed_utils import distributed_masked_whiten
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import TrainLossComputationEvent
 from miles.utils.misc import load_function
 from miles.utils.ppo_utils import (
     calculate_log_probs_and_entropy,
@@ -497,6 +499,24 @@ def icepop_function(
     return pg_loss, loss_masks, metrics
 
 
+def _log_train_loss_computation_event(batch: RolloutBatch, advantages: torch.Tensor) -> None:
+    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
+    if witness_ids_list is None:
+        return
+
+    if not is_event_logger_initialized():
+        return
+
+    get_event_logger().log(
+        TrainLossComputationEvent,
+        dict(
+            advantages=advantages.detach().tolist(),
+            witness_ids=torch.cat(witness_ids_list, dim=0).tolist(),
+        ),
+        print_log=False,
+    )
+
+
 def policy_loss_function(
     args: Namespace,
     batch: RolloutBatch,
@@ -686,6 +706,8 @@ def policy_loss_function(
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
         rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
         train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
+
+    _log_train_loss_computation_event(batch=batch, advantages=advantages)
 
     reported_loss = {
         "loss": loss.clone().detach(),
