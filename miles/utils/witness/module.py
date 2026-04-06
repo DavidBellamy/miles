@@ -22,8 +22,8 @@ def install_witness(
     *,
     buffer_size: int,
 ) -> None:
-    model.head_witness = _DataWitness(buffer_size=buffer_size)
-    model.tail_witness = _DataWitness(buffer_size=buffer_size)
+    model.local_head_witness = _DataWitness(buffer_size=buffer_size)
+    model.local_tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
 def witness_dump_and_clear_stale(
@@ -73,7 +73,7 @@ class _DataWitness(nn.Module):
 # ---------------------------------------------------------------------------
 
 
-_WITNESS_ATTRS = ("head_witness", "tail_witness")
+_WITNESS_ATTRS = ("local_head_witness", "local_tail_witness")
 
 
 def _has_any_witness(module: nn.Module) -> bool:

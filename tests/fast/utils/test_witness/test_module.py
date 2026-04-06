@@ -152,8 +152,8 @@ class _FakeGPTModel(nn.Module):
         else:
             decoder_input = None
 
-        if hasattr(self, "head_witness") and witness_ids is not None:
-            witness_out = self.head_witness(input_ids, witness_ids)
+        if hasattr(self, "local_head_witness") and witness_ids is not None:
+            witness_out = self.local_head_witness(input_ids, witness_ids)
             if decoder_input is not None:
                 decoder_input = decoder_input + witness_out
             else:
@@ -169,15 +169,15 @@ class TestInstallWitness:
     def test_witness_is_submodule(self) -> None:
         model = _FakeGPTModel()
         install_witness(model, buffer_size=10)
-        assert "head_witness" in dict(model.named_modules())
-        assert "tail_witness" in dict(model.named_modules())
+        assert "local_head_witness" in dict(model.named_modules())
+        assert "local_tail_witness" in dict(model.named_modules())
 
     def test_witness_in_parameters(self) -> None:
         model = _FakeGPTModel()
         install_witness(model, buffer_size=10)
         param_names = [name for name, _ in model.named_parameters()]
-        assert any("head_witness" in name for name in param_names)
-        assert any("tail_witness" in name for name in param_names)
+        assert any("local_head_witness" in name for name in param_names)
+        assert any("local_tail_witness" in name for name in param_names)
 
     def test_forward_adds_zero(self) -> None:
         model = _FakeGPTModel()
@@ -193,7 +193,7 @@ class TestInstallWitness:
         tokens = torch.tensor([[1, 2, 3]])
         out = model(tokens, witness_ids=torch.tensor([[5, 5, 5]]))
         out.sum().backward()
-        grad = model.head_witness.witness.weight.grad
+        grad = model.local_head_witness.witness.weight.grad
         assert grad is not None
         assert 5 in grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
@@ -207,23 +207,23 @@ class TestInstallWitness:
         model = _FakeGPTModel()
         install_witness(model, buffer_size=10)
         sd = model.state_dict()
-        assert any("head_witness" in k for k in sd)
-        assert any("tail_witness" in k for k in sd)
+        assert any("local_head_witness" in k for k in sd)
+        assert any("local_tail_witness" in k for k in sd)
 
     def test_checkpoint_roundtrip(self) -> None:
         model = _FakeGPTModel()
         install_witness(model, buffer_size=10)
-        model.head_witness.witness.weight.data.fill_(42.0)
+        model.local_head_witness.witness.weight.data.fill_(42.0)
         sd = model.state_dict()
 
         model2 = _FakeGPTModel()
         install_witness(model2, buffer_size=10)
         model2.load_state_dict(sd)
-        assert torch.equal(model2.head_witness.witness.weight.data, model.head_witness.witness.weight.data)
+        assert torch.equal(model2.local_head_witness.witness.weight.data, model.local_head_witness.witness.weight.data)
 
     def test_disabled_no_submodule(self) -> None:
         model = _FakeGPTModel()
-        assert not hasattr(model, "head_witness")
+        assert not hasattr(model, "local_head_witness")
 
     def test_middle_pp_stage_modifies_input_tensor(self) -> None:
         model = _FakeGPTModel(pre_process=False)
@@ -239,7 +239,7 @@ class TestInstallWitness:
         model.decoder.input_tensor = torch.randn(1, 4, 16, requires_grad=True)
         out = model(torch.tensor([[1, 2, 3, 4]]), witness_ids=torch.tensor([[5, 5, 5, 5]]))
         out.sum().backward()
-        assert 5 in model.head_witness.witness.weight.grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
+        assert 5 in model.local_head_witness.witness.weight.grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     def test_forward_bitwise_zero_bf16(self) -> None:
         witness = _DataWitness(buffer_size=10).to(dtype=torch.bfloat16)
@@ -328,10 +328,10 @@ class TestZeroWitnessRows:
 
 
 def _make_fake_chunk(buffer_size: int = 10) -> nn.Module:
-    """Create a fake model chunk with .module.head_witness and .module.tail_witness."""
+    """Create a fake model chunk with .module.local_head_witness and .module.local_tail_witness."""
     inner = nn.Module()
-    inner.head_witness = _DataWitness(buffer_size=buffer_size)
-    inner.tail_witness = _DataWitness(buffer_size=buffer_size)
+    inner.local_head_witness = _DataWitness(buffer_size=buffer_size)
+    inner.local_tail_witness = _DataWitness(buffer_size=buffer_size)
     chunk = nn.Module()
     chunk.module = inner
     return chunk
@@ -342,10 +342,10 @@ class TestWitnessDumpAndClearStale:
         """2 chunks x 2 witnesses = 4 log events with correct instance_ids."""
         chunk0 = _make_fake_chunk()
         chunk1 = _make_fake_chunk()
-        chunk0.module.head_witness.witness.weight.data[1] = 1.0
-        chunk0.module.tail_witness.witness.weight.data[2] = 1.0
-        chunk1.module.head_witness.witness.weight.data[3] = 1.0
-        chunk1.module.tail_witness.witness.weight.data[4] = 1.0
+        chunk0.module.local_head_witness.witness.weight.data[1] = 1.0
+        chunk0.module.local_tail_witness.witness.weight.data[2] = 1.0
+        chunk1.module.local_head_witness.witness.weight.data[3] = 1.0
+        chunk1.module.local_tail_witness.witness.weight.data[4] = 1.0
 
         model = [chunk0, chunk1]
         all_params = list(chunk0.parameters()) + list(chunk1.parameters())
@@ -369,8 +369,8 @@ class TestWitnessDumpAndClearStale:
     def test_witness_dump_and_clear_stale_clears_stale_rows(self) -> None:
         """Stale IDs should have their weight rows zeroed after the call."""
         chunk = _make_fake_chunk(buffer_size=10)
-        chunk.module.head_witness.witness.weight.data.fill_(1.0)
-        chunk.module.tail_witness.witness.weight.data.fill_(1.0)
+        chunk.module.local_head_witness.witness.weight.data.fill_(1.0)
+        chunk.module.local_tail_witness.witness.weight.data.fill_(1.0)
 
         model = [chunk]
         optimizer = torch.optim.Adam(chunk.parameters(), lr=0.01)
@@ -380,7 +380,7 @@ class TestWitnessDumpAndClearStale:
             mock_get_logger.return_value = MagicMock()
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
-        for witness_attr in ("head_witness", "tail_witness"):
+        for witness_attr in ("local_head_witness", "local_tail_witness"):
             witness = getattr(chunk.module, witness_attr)
             assert witness.witness.weight.data[3].item() == 0.0
             assert witness.witness.weight.data[7].item() == 0.0
@@ -389,8 +389,8 @@ class TestWitnessDumpAndClearStale:
     def test_witness_dump_and_clear_stale_empty_stale_ids(self) -> None:
         """Empty stale_ids should not trigger any zeroing."""
         chunk = _make_fake_chunk(buffer_size=10)
-        chunk.module.head_witness.witness.weight.data.fill_(1.0)
-        chunk.module.tail_witness.witness.weight.data.fill_(1.0)
+        chunk.module.local_head_witness.witness.weight.data.fill_(1.0)
+        chunk.module.local_tail_witness.witness.weight.data.fill_(1.0)
 
         model = [chunk]
         optimizer = torch.optim.Adam(chunk.parameters(), lr=0.01)
@@ -400,7 +400,7 @@ class TestWitnessDumpAndClearStale:
             mock_get_logger.return_value = MagicMock()
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
-        for witness_attr in ("head_witness", "tail_witness"):
+        for witness_attr in ("local_head_witness", "local_tail_witness"):
             witness = getattr(chunk.module, witness_attr)
             assert torch.all(witness.witness.weight.data == 1.0)
 
