@@ -76,6 +76,8 @@ class RolloutManager:
         self.rollout_id = -1
 
         self._metric_checker = MetricChecker.maybe_create(args)
+
+        # TODO will be replaced by full ft, thus temporarily leave it without modifications
         self._health_monitors = []
         if not self.args.debug_train_only and self.args.use_fault_tolerance:
             for srv in self.servers.values():
@@ -256,7 +258,7 @@ class RolloutManager:
         """All node-0 engines across all servers / models."""
         return [e for srv in self.servers.values() for e in srv.engines]
 
-    # TODO will be replaced by full ft, thus temp put arbitrarily
+    # TODO will be replaced by full ft, thus temporarily leave it without modifications
     def _try_ci_fault_injection(self):
         """Try to inject fault during generate (when health monitor is running)."""
         if not self._ci_fault_injection_pending:
