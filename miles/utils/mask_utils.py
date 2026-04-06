@@ -94,9 +94,7 @@ class MultiTurnLossMaskGenerator:
 
         for i, message in enumerate(messages):
             if i == 0:
-                tailed_message_ids = _apply_chat_template_ids(
-                    self.tokenizer, [message, prefix_message], tools=tools
-                )
+                tailed_message_ids = _apply_chat_template_ids(self.tokenizer, [message, prefix_message], tools=tools)
                 message_ids = tailed_message_ids[: -len(prefix_token_ids)]
             else:
                 prefixed_message_ids = _apply_chat_template_ids(self.tokenizer, [prefix_message, message])
