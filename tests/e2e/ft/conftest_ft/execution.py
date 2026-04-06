@@ -81,7 +81,7 @@ def get_common_train_args(
             "--label-key label "
             "--apply-chat-template "
             "--rollout-shuffle "
-            "--rm-type random "
+            "--rm-type deterministic_random "
             "--rollout-max-response-len 200 "
             "--rollout-temperature 0.8 "
             "--rollout-batch-size 32 "
