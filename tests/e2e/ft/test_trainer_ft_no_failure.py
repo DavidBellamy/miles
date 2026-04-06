@@ -35,13 +35,13 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         key_prefixes=["train/"],
     )
 
-    # Skip dp/edp when grouping bundles: baseline (single-cell) has dp=0/2 while
-    # target (multi-cell FT) has dp=0/1. Both are DP-rank-0 dumps; the metadata
-    # differs only because of the different parallelism layout, not the data.
+    # Simple 1:1 comparison: skip rank (different numbering between baseline
+    # and target) and dp/edp (different DP layout). Each tensor is matched
+    # purely by name.
     compare_dumps(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
-        extra_args=["--grouping-skip-keys", "dp", "edp"],
+        extra_args=["--grouping-skip-keys", "rank", "dp", "edp"],
     )
     print("No-failure comparison test PASSED")
 

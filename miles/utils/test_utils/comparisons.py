@@ -215,7 +215,7 @@ def _run_comparator(
         "--output-format",
         "json",
         "--preset",
-        "sglang_megatron",
+        "raw",
         "--diff-threshold",
         str(diff_threshold),
         "--allow-skipped-pattern",
