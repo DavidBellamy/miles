@@ -13,7 +13,7 @@ from typing import Optional
 RunFn = Callable[..., str]
 
 
-def _run(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
+def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
     print(f"  $ {cmd}", flush=True)
     result = subprocess.run(
         cmd, shell=True, cwd=cwd, capture_output=True, text=True,
@@ -30,22 +30,22 @@ class MechanicalVerifier:
         self.target_commit = target_commit
 
     def run(self, transform: "Callable[[Path, RunFn], None]") -> None:
-        repo_root = _run("git rev-parse --show-toplevel")
+        repo_root = exec_command("git rev-parse --show-toplevel")
         worktree_dir = tempfile.mkdtemp(prefix="verify-mechanical-")
         branch_name = f"verify-mechanical-{self.base_commit[:8]}"
 
         try:
             print(f"[1/3] Creating worktree at {self.base_commit[:8]}...")
-            _run(
+            exec_command(
                 f"git worktree add -b {branch_name} {worktree_dir} {self.base_commit}",
                 cwd=repo_root,
             )
 
             print("[2/3] Running transformation...")
-            transform(Path(worktree_dir), _run)
+            transform(Path(worktree_dir), exec_command)
 
             print(f"[3/3] Diffing against {self.target_commit[:8]}...")
-            diff = _run(
+            diff = exec_command(
                 f"git diff {self.target_commit} -- .",
                 cwd=worktree_dir,
                 check=False,
