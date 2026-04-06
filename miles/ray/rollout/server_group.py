@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import os
 from typing import Any
 
@@ -12,6 +13,9 @@ from miles.ray.rollout.addr_allocator import (
 )
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils import dumper_utils
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
