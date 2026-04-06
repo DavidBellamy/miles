@@ -168,10 +168,9 @@ class ServerGroup:
                 logger.info(f"Engine at index {i} is already None")
             self.all_engines[i] = None
 
-    async def recover(self):
+    async def recover(self, port_cursors: PortCursors):
         dead_of_this_group = [i for i, engine in enumerate(self.all_engines) if engine is None]
 
-        port_cursors = PortCursors.empty()
         await asyncio.gather(*self.start_engines(port_cursors))
 
         release_handles = []
