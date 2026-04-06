@@ -21,11 +21,12 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Optional
 
-type RunFn = Callable[..., str]
+RunFn = Callable[..., str]
 
 
-def _run(cmd: str, cwd: str | None = None, check: bool = True) -> str:
+def _run(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
     print(f"  $ {cmd}", flush=True)
     result = subprocess.run(
         cmd, shell=True, cwd=cwd, capture_output=True, text=True,
@@ -41,7 +42,7 @@ class MechanicalVerifier:
         self.base_commit = base_commit
         self.target_commit = target_commit
 
-    def run(self, transform: Callable[[Path, RunFn], None]) -> None:
+    def run(self, transform: "Callable[[Path, RunFn], None]") -> None:
         repo_root = _run("git rev-parse --show-toplevel")
         worktree_dir = tempfile.mkdtemp(prefix="verify-mechanical-")
         branch_name = f"verify-mechanical-{self.base_commit[:8]}"
