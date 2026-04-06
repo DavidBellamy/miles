@@ -131,8 +131,10 @@ def _build_name_by_tensor_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
             assert param is not None, f"pp{pp_idx}.{name}: param is None"
             main_param = getattr(param, "main_param", None)
             if main_param is None:
-                # Distributed optimizer shards params across DP ranks; this rank
-                # doesn't own this param's shard, so no fp32 copy exists here.
+                assert getattr(param, "main_param_sharded", False), (
+                    f"pp{pp_idx}.{name}: main_param is None but main_param_sharded is not set. "
+                    "Expected only for distributed optimizer params not owned by this DP rank."
+                )
                 continue
             name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
     return name_map
