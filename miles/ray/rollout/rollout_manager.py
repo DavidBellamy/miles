@@ -158,6 +158,7 @@ class RolloutManager:
             data,
             custom_convert_samples_to_train_data_func=self.custom_convert_samples_to_train_data_func,
             custom_reward_post_process_func=self.custom_reward_post_process_func,
+            dynamic_global_batch_size=getattr(self, "_dynamic_global_batch_size", None),
         )
         return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
 
