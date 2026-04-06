@@ -230,9 +230,7 @@ class RolloutManager:
         return len(self.data_source.dataset) // self.args.rollout_batch_size
 
     async def check_weights(self, action: str):
-        return list(
-            await asyncio.gather(*[engine.check_weights.remote(action=action) for engine in self._rollout_engines])
-        )
+        return await asyncio.gather(*[engine.check_weights.remote(action=action) for engine in self._rollout_engines])
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
