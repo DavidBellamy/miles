@@ -4,6 +4,7 @@ import time
 
 import ray
 
+from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_WEIGHTS
 from miles.ray.rollout.debug_data import load_debug_rollout_data, save_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_data_conversion import postprocess_rollout_data
@@ -182,8 +183,7 @@ class RolloutManager:
             await srv.onload_weights()
 
     async def onload_kv(self):
-        for srv in self.servers.values():
-            await srv.onload_kv()
+        await self.onload(tags=[GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_CUDA_GRAPH])
 
     # -------------------------- engine management -----------------------------
 
