@@ -71,7 +71,7 @@ def transform(dir_root: Path) -> None:
     # <edit files>
     # git_add_and_commit("fix imports", cwd=str(dir_root))
 
-    # Note: ruff format is run automatically after transform() returns
+    # Note: pre-commit run --all-files is run automatically after transform() returns
 
 
 if __name__ == "__main__":

@@ -56,9 +56,9 @@ def verify_mechanical_refactor(
         print("[2/4] Running transformation...")
         transform(Path(worktree_dir))
 
-        print("[3/4] Formatting...")
-        exec_command("ruff format .", cwd=worktree_dir)
-        git_add_and_commit("fmt", cwd=worktree_dir)
+        print("[3/4] Running pre-commit...")
+        exec_command("pre-commit run --all-files", cwd=worktree_dir, check=False)
+        git_add_and_commit("pre-commit fixes", cwd=worktree_dir)
 
         print(f"[4/4] Diffing against {target_commit[:8]}...")
         diff = exec_command(
