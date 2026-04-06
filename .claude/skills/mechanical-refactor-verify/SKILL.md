@@ -16,23 +16,27 @@ A script is auditable; a diff is not.
 
 Regardless of who did the move (human or agent) and when (before or after committing), the workflow is the same:
 
-### Step 1: Write the transform script
+### Step 1: Write the transform script to /tmp/
 
-The scaffold (worktree creation, diff check, cleanup) lives in `utils.py` next to this skill. The transform script only needs to define the `transform()` function and call `MechanicalVerifier`.
+Write the script to `/tmp/transform_<short_description>.py`. **Never write it inside the repo.**
 
-Script template:
+The scaffold (worktree creation, diff check, ruff format, result reporting) lives in `mechanical_refactor_verify_utils.py` next to this skill.
+
+**MANDATORY**: The transform script MUST use `verify_mechanical_refactor()` from the utils module. Do NOT reimplement the verification scaffold — no hand-written worktree management, no hand-written diff checking. The script only defines `transform()` and calls `verify_mechanical_refactor`.
+
+Script template (follow this structure exactly):
 
 ```python
 #!/usr/bin/env python3
 """Reproducible transform for: <describe the mechanical move>
 
-Run from the repo root:  python3 transform.py
+Run from the repo root:  python3 /tmp/transform_<short_description>.py
 """
 import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command, git_add_and_commit
+from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command, git_add_and_commit, dedent
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
@@ -67,7 +71,7 @@ def transform(dir_root: Path) -> None:
     # <edit files>
     # git_add_and_commit("fix imports", cwd=str(dir_root))
 
-    # Note: formatting (ruff format) is handled automatically by verify_mechanical_refactor
+    # Note: pre-commit run --all-files is run automatically after transform() returns
 
 
 if __name__ == "__main__":
@@ -78,31 +82,32 @@ if __name__ == "__main__":
     )
 ```
 
-The `transform()` function:
-- Receives `dir_root` (worktree path, checked out at base commit)
-- Makes file changes and commits each logical step
-- The verifier handles worktree creation, diffing against target, and reporting pass/fail
-
-### Step 2: Run locally to verify
+### Step 2: Run the script from the repo root
 
 ```bash
-python3 transform.py
+cd <repo_root>
+python3 /tmp/transform_<short_description>.py
 # Expected: "PASS: transform reproduces the commit exactly."
 ```
 
-### Step 3: Upload gist and add to PR description
+If FAIL, fix the script and re-run until PASS.
 
-One gist per PR. Create or update:
+### Step 3: Upload gist, delete local file, update PR description
+
+One gist per PR. Do all three:
 
 ```bash
-# First time
-gh gist create --public -d "Mechanical refactor transform: <description>" transform.py
+# 1. Create gist (or update existing)
+gh gist create --public -d "Mechanical refactor transform: <description>" /tmp/transform_<short_description>.py
+# Or update: gh gist edit <gist_id> -a /tmp/transform_<short_description>.py
 
-# Update existing gist (e.g. after revising the transform)
-gh gist edit <gist_id> -a transform.py
+# 2. Delete local file
+rm /tmp/transform_<short_description>.py
+
+# 3. Update PR description (paste the block below)
 ```
 
-PR description format:
+PR description must include:
 
 ````markdown
 ## Mechanical Move
@@ -116,16 +121,14 @@ python3 <(curl -sL <gist_raw_url>)
 ```
 ````
 
-Anyone verifying the PR just copy-pastes the one-liner.
-
 ### Step 4: PR scope
 
-A mechanical refactor PR should contain **only** mechanical changes (moves, splits, renames, import fixes, formatting). All of these should be reproducible by the transform script.
+A mechanical refactor PR must contain **only** mechanical changes (moves, splits, renames, import fixes, formatting). All of these must be reproducible by the transform script.
 
 Semantic changes (new logic, API restructuring, behavior changes) belong in a **separate PR**.
 
 ## Verifying an existing PR (`/mechanical-refactor-verify verify`)
 
 1. Find the gist URL and one-click command in the PR description
-2. Run the one-click command in the repo
+2. Run the one-click command from the repo root
 3. Report: PASS or show the diff
