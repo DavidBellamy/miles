@@ -126,6 +126,58 @@ class TestCheck:
         assert any("step" in m.key for m in mismatches)
 
 
+    def test_different_ranks_not_compared(self) -> None:
+        """Events from different rank_within_cell should not be compared (PP sharding)."""
+        events = [
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=1, param_hashes={"pp1.w": "bbb"}),
+        ]
+        assert check(events) == []
+
+    def test_same_rank_different_cells_mismatch(self) -> None:
+        """Same rank_within_cell across different cells must be compared."""
+        events = [
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, rank_within_cell=0, param_hashes={"pp0.w": "zzz"}),
+        ]
+        mismatches = check(events)
+        assert len(mismatches) >= 1
+
+    def test_same_rank_different_cells_match(self) -> None:
+        """Same rank_within_cell across different cells, identical hashes → no mismatch."""
+        events = [
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=1, param_hashes={"pp1.w": "bbb"}),
+            _make_event(rollout_id=0, cell_index=1, rank_within_cell=1, param_hashes={"pp1.w": "bbb"}),
+        ]
+        assert check(events) == []
+
+    def test_multi_rank_multi_cell_only_mismatched_rank_reported(self) -> None:
+        """Only the rank with mismatch should produce issues."""
+        events = [
+            # rank 0: match
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, rank_within_cell=0, param_hashes={"pp0.w": "aaa"}),
+            # rank 1: mismatch
+            _make_event(rollout_id=0, cell_index=0, rank_within_cell=1, param_hashes={"pp1.w": "bbb"}),
+            _make_event(rollout_id=0, cell_index=1, rank_within_cell=1, param_hashes={"pp1.w": "zzz"}),
+        ]
+        mismatches = check(events)
+        assert len(mismatches) >= 1
+        assert all("pp1.w" in m.key for m in mismatches)
+
+    def test_three_cells_first_vs_rest(self) -> None:
+        """With 3 cells, all are compared against the first."""
+        events = [
+            _make_event(rollout_id=0, cell_index=0, param_hashes={"w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=1, param_hashes={"w": "aaa"}),
+            _make_event(rollout_id=0, cell_index=2, param_hashes={"w": "bbb"}),
+        ]
+        mismatches = check(events)
+        assert len(mismatches) >= 1
+
+
 class TestFlattenEvent:
     def test_excludes_metadata_fields(self) -> None:
         event = _make_event(rollout_id=0, cell_index=0, param_hashes={"pp0.w": "aaa"})
