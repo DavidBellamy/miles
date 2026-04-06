@@ -233,11 +233,11 @@ class RolloutManager:
         # Only inject fault once
         self._ci_fault_injection_pending = False
 
-        if self.server and self.server.server_groups[0].all_engines and self.server.server_groups[0].all_engines[0]:
+        if self._server and self._server.server_groups[0].all_engines and self._server.server_groups[0].all_engines[0]:
             logger.info("CI Fault Injection: Simulating crash on engine 0 during generate")
             try:
                 # This will cause the ray actor to exit
-                self.server.server_groups[0].all_engines[0].simulate_crash.remote()
+                self._server.server_groups[0].all_engines[0].simulate_crash.remote()
                 # Wait for health monitor to detect the crash and mark engine as None
                 # health_check_interval + health_check_timeout + buffer
                 wait_time = self.args.rollout_health_check_interval + self.args.rollout_health_check_timeout + 5
@@ -247,7 +247,7 @@ class RolloutManager:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
     @property
-    def server(self) -> RolloutServer | None:
+    def _server(self) -> RolloutServer | None:
         """Default server (first model).  For backward compatibility."""
         if not self.servers:
             return None
