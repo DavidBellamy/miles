@@ -6,6 +6,7 @@ import ray
 
 from miles.ray.rollout.debug_data import load_debug_rollout_data, save_debug_rollout_data
 from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
+from miles.ray.rollout.rollout_data_conversion import compute_dynamic_global_batch_size
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
 from miles.ray.rollout.train_data_conversion import convert_samples_to_train_data, split_train_data_by_dp
@@ -263,7 +264,7 @@ class RolloutManager:
                 global_batch_size = self.args.global_batch_size
                 if self.args.use_dynamic_global_batch_size:
                     logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
-                    dynamic_global_batch_size = self._compute_dynamic_global_batch_size(len(data))
+                    dynamic_global_batch_size = compute_dynamic_global_batch_size(len(data))
                     metadata["dynamic_global_batch_size"] = dynamic_global_batch_size
                     global_batch_size = dynamic_global_batch_size
 
@@ -277,35 +278,6 @@ class RolloutManager:
                 logger.info(f"Final collected {len(data)} samples from rollout to train")
 
         return data, metadata, metrics
-
-    def _compute_dynamic_global_batch_size(self, num_samples: int) -> int:
-        """Calculate dynamic global_batch_size to ensure only one training step.
-
-        Strategy: global_batch_size = num_samples rounded down to a multiple of dp_size
-        This ensures num_steps_per_rollout = num_samples // global_batch_size = 1
-        """
-        dp_size = self.train_parallel_config["dp_size"]
-        original_gbs = self.args.global_batch_size
-
-        # Round down to a multiple of dp_size to ensure only one training step
-        dynamic_gbs = (num_samples // dp_size) * dp_size
-
-        if dynamic_gbs == 0:
-            # Too few samples, use at least dp_size
-            dynamic_gbs = dp_size
-            logger.warning(f"num_samples={num_samples} < dp_size={dp_size}, using dp_size as global_batch_size")
-
-        # Calculate how many samples will be discarded
-        wasted = num_samples - dynamic_gbs
-
-        if dynamic_gbs != original_gbs or wasted > 0:
-            logger.info(
-                f"Dynamic global_batch_size: {original_gbs} -> {dynamic_gbs} "
-                f"(num_samples={num_samples}, dp_size={dp_size}, "
-                f"num_steps=1, wasted={wasted})"
-            )
-
-        return dynamic_gbs
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
