@@ -35,9 +35,12 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         key_prefixes=["train/"],
     )
 
+    # Match by parallel identity (pp_rank, tp_rank, cp_rank, ep_rank) instead
+    # of global rank, since baseline and target have different world sizes.
     compare_dumps(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
+        extra_args=["--grouping-skip-keys", "rank", "dp", "edp"],
     )
     print("No-failure comparison test PASSED")
 
