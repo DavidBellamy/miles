@@ -243,7 +243,7 @@ class RolloutManager:
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
             data = load_debug_rollout_data(self.args, rollout_id=rollout_id)
-            metadata = {}
+            metadata = {}  # save/load metadata into debug rollout data as well
             metrics = None
         else:
             if self.use_experimental_refactor:
