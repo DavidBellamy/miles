@@ -232,13 +232,13 @@ class RolloutServer:
         handles = []
         for g in self.server_groups:
             handles.extend(g.offload())
-        return list(await asyncio.gather(*handles))
+        return await asyncio.gather(*handles)
 
     async def onload(self, tags: list[str] | None = None):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags))
-        return list(await asyncio.gather(*handles))
+        return await asyncio.gather(*handles)
 
     async def onload_weights(self):
         handles = []
@@ -246,10 +246,10 @@ class RolloutServer:
             if not g.needs_offload:
                 continue
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_WEIGHTS]))
-        return list(await asyncio.gather(*handles))
+        return await asyncio.gather(*handles)
 
     async def onload_kv(self):
         handles = []
         for g in self.server_groups:
             handles.extend(g.onload(tags=[GPU_MEMORY_TYPE_KV_CACHE, GPU_MEMORY_TYPE_CUDA_GRAPH]))
-        return list(await asyncio.gather(*handles))
+        return await asyncio.gather(*handles)
