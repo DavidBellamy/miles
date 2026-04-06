@@ -24,7 +24,7 @@ Write a **fully self-contained** Python script that:
 2. Performs the mechanical transformation (may produce multiple commits, e.g. "move files", "fix imports", "format")
 3. Diffs the final result against the PR's target commit
 4. Reports pass/fail
-5. Cleans up the worktree
+5. Leaves the worktree for inspection (prints cleanup command)
 
 If the move is already done, reverse-engineer the script by reading the before state (`git show <base>:<file>`) and the after state, then encode the transformation.
 
@@ -87,10 +87,10 @@ def main() -> None:
             print("\nPASS: transform reproduces the commit exactly.")
 
     finally:
-        print("[4/4] Cleaning up...")
-        run(f"git worktree remove --force {worktree_dir}", cwd=repo_root,
-            check=False)
-        run(f"git branch -D {branch_name}", cwd=repo_root, check=False)
+        print(f"\nWorktree left at: {worktree_dir}")
+        print(f"Branch: {branch_name}")
+        print("To clean up manually:")
+        print(f"  git worktree remove {worktree_dir} && git branch -D {branch_name}")
 
 def transform(worktree: str) -> None:
     """Perform the mechanical transformation and commit each step."""
