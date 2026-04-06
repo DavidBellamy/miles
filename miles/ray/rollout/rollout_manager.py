@@ -132,6 +132,26 @@ class RolloutManager:
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
 
+    def _get_rollout_data(self, rollout_id):
+        if self.args.load_debug_rollout_data:
+            data = load_debug_rollout_data(self.args, rollout_id=rollout_id)
+            metadata = {}  # save/load metadata into debug rollout data as well
+            metrics = None
+        else:
+            if self.use_experimental_refactor:
+                data = call_rollout_function(self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
+            else:
+                data = call_rollout_fn(
+                    self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False
+                )
+            metrics = data.metrics
+            data = data.samples
+            data, metadata = postprocess_rollout_data(
+                self.args, data, train_parallel_config=self.train_parallel_config
+            )
+
+        return data, metadata, metrics
+
     # -------------------------- offload/onload -----------------------------
 
     def offload(self, tags: list[str] | None = None):
@@ -250,26 +270,6 @@ class RolloutManager:
 
     def check_weights(self, action: str):
         return ray.get([engine.check_weights.remote(action=action) for engine in self.rollout_engines])
-
-    def _get_rollout_data(self, rollout_id):
-        if self.args.load_debug_rollout_data:
-            data = load_debug_rollout_data(self.args, rollout_id=rollout_id)
-            metadata = {}  # save/load metadata into debug rollout data as well
-            metrics = None
-        else:
-            if self.use_experimental_refactor:
-                data = call_rollout_function(self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
-            else:
-                data = call_rollout_fn(
-                    self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False
-                )
-            metrics = data.metrics
-            data = data.samples
-            data, metadata = postprocess_rollout_data(
-                self.args, data, train_parallel_config=self.train_parallel_config
-            )
-
-        return data, metadata, metrics
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
