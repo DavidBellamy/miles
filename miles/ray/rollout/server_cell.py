@@ -1,8 +1,7 @@
-import ray
-
-from pydantic import BaseModel, ConfigDict
-
 from dataclasses import dataclass
+
+import ray
+from pydantic import BaseModel, ConfigDict
 
 
 @dataclass(frozen=True)
@@ -14,6 +13,7 @@ class ServerCell:
     def __init__(self, config: ServerCellConfig):
         self.config = config
         TODO
+
 
 # ------------------------- states -----------------------------
 
@@ -39,4 +39,3 @@ class _StateAllocatedAlive(_StateAllocatedBase):
 
 
 CellState = _StateStopped | _StateAllocatedUninitialized | _StateAllocatedAlive
-
