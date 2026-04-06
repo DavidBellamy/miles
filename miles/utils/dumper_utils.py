@@ -112,6 +112,8 @@ class DumperMegatronUtil:
         # Only write dump files on effective DP rank 0 (covers both intra-DP
         # and indep-DP). Other DP ranks still participate in dumper collectives
         # (barrier, broadcast, allgather) but don't produce output files.
+        # TODO: optimize — non-DP-rank-0 ranks currently run full dumper logic
+        # (forward hooks, model iteration) without producing output.
         if get_parallel_state().effective_dp.rank != 0:
             merged["enable_output_file"] = False
             merged["enable_output_console"] = False
@@ -140,8 +142,11 @@ def _wrap_forward_step_with_stepping(forward_step_func: Callable) -> Callable:
 
 
 def _cleanup_dump_dir(dump_dir: Path) -> None:
-    if _get_rank() == 0 and dump_dir.is_dir():
-        shutil.rmtree(dump_dir, ignore_errors=True)
+    # Only cell 0's rank 0 deletes — avoids race when multiple cells' rank 0
+    # all see _get_rank()==0 and try to rmtree the same directory.
+    is_cell0 = get_parallel_state().indep_dp.rank == 0
+    if _get_rank() == 0 and is_cell0 and dump_dir.is_dir():
+        shutil.rmtree(dump_dir)
     if dist.is_initialized():
         dist.barrier()
     indep_dp_group = get_parallel_state().indep_dp.group
