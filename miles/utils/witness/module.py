@@ -21,13 +21,9 @@ def install_witness(
     model: nn.Module,
     *,
     buffer_size: int,
-    pre_process: bool = True,
-    post_process: bool = True,
 ) -> None:
-    if pre_process:
-        model.head_witness = _DataWitness(buffer_size=buffer_size)
-    if post_process:
-        model.tail_witness = _DataWitness(buffer_size=buffer_size)
+    model.head_witness = _DataWitness(buffer_size=buffer_size)
+    model.tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
 def witness_dump_and_clear_stale(
