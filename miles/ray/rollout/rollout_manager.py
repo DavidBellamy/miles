@@ -89,7 +89,7 @@ class RolloutManager:
     # -------------------------- lifecycle -----------------------------
     # TODO: may have a `async def init` here later
 
-    async def dispose(self):
+    def dispose(self):
         if self._metric_checker is not None:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
@@ -98,9 +98,6 @@ class RolloutManager:
     # -------------------------- data generation -----------------------------
 
     async def generate(self, rollout_id):
-        return await asyncio.to_thread(self._generate_sync, rollout_id)
-
-    def _generate_sync(self, rollout_id):
         start_time = time.time()
         self.rollout_id = rollout_id
         self._health_monitoring_resume()
@@ -119,38 +116,31 @@ class RolloutManager:
         return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
 
     async def eval(self, rollout_id):
-        await asyncio.to_thread(self._eval_sync, rollout_id)
-
-    def _eval_sync(self, rollout_id):
         if self.args.debug_train_only:
             # if debug train only, we don't generate evaluation data
             return
         self._health_monitoring_resume()
 
         if self.use_experimental_refactor:
-            result = call_rollout_function(self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
+            result = await asyncio.to_thread(call_rollout_function, self.eval_generate_rollout, RolloutFnEvalInput(rollout_id=rollout_id))
         else:
-            result = call_rollout_fn(
-                self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
-            )
+            result = await asyncio.to_thread(call_rollout_fn, self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True)
         data = result.data
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=True)
         metrics = log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
 
-    def _get_rollout_data(self, rollout_id):
+    async def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
             data = load_debug_rollout_data(self.args, rollout_id=rollout_id)
             metadata = {}  # save/load metadata into debug rollout data as well
             metrics = None
         else:
             if self.use_experimental_refactor:
-                data = call_rollout_function(self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
+                data = await asyncio.to_thread(call_rollout_function, self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
             else:
-                data = call_rollout_fn(
-                    self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False
-                )
+                data = await asyncio.to_thread(call_rollout_fn, self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False)
             metrics = data.metrics
             data = data.samples
             data, metadata = postprocess_rollout_data(
