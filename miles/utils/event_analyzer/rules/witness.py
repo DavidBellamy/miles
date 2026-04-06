@@ -72,20 +72,16 @@ def _filter_by_type(arr: list, ty: type) -> list:
 def _compute_zero_advantage_witness_ids(
     events: list[TrainLossComputationEvent],
 ) -> dict[tuple[int, int], set[int]]:
-    """Return witness_ids where ALL tokens have advantage == 0.0, keyed by (rollout_id, cell_index)."""
+    """Return witness_ids where per-sample abs-sum advantage == 0.0, keyed by (rollout_id, cell_index)."""
     result: dict[tuple[int, int], set[int]] = defaultdict(set)
 
     for event in events:
         if event.witness_ids is None:
             continue
 
-        advantages_by_wid: dict[int, list[float]] = defaultdict(list)
-        for adv, wid in zip(event.advantages, event.witness_ids, strict=True):
-            advantages_by_wid[wid].append(adv)
-
         key = (event.rollout_id, event.source.cell_index)
-        for wid, advs in advantages_by_wid.items():
-            if all(a == 0.0 for a in advs):
+        for adv, wid in zip(event.advantages, event.witness_ids, strict=True):
+            if adv == 0.0:
                 result[key].add(wid)
 
     return dict(result)

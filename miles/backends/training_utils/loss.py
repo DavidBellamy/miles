@@ -499,19 +499,24 @@ def icepop_function(
     return pg_loss, loss_masks, metrics
 
 
-def _log_train_loss_computation_event(batch: RolloutBatch, advantages: torch.Tensor) -> None:
+def _log_train_loss_computation_event(batch: RolloutBatch) -> None:
     if not is_event_logger_initialized():
         return
 
-    witness_ids: torch.Tensor | None = batch.get("witness_ids")
-    if witness_ids is None:
+    advantages_list: list[torch.Tensor] | None = batch.get("advantages")
+    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
+    if advantages_list is None or witness_ids_list is None:
         return
+
+    # Per-sample: scalar witness_id (constant per sample) and mean |advantage|
+    per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
+    per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
 
     get_event_logger().log(
         TrainLossComputationEvent,
         dict(
-            advantages=advantages.detach().flatten().tolist(),
-            witness_ids=witness_ids.detach().flatten().tolist(),
+            advantages=per_sample_advantages,
+            witness_ids=per_sample_witness_ids,
         ),
         print_log=False,
     )
@@ -707,7 +712,7 @@ def policy_loss_function(
         rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
         train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
 
-    _log_train_loss_computation_event(batch=batch, advantages=advantages)
+    _log_train_loss_computation_event(batch=batch)
 
     reported_loss = {
         "loss": loss.clone().detach(),
