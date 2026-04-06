@@ -175,7 +175,7 @@ class RolloutManager:
                 for engine in self._rollout_engines
                 if engine is not None
             ]
-            return list(await asyncio.gather(*handles)) if handles else []
+            return list(await asyncio.gather(*handles))
         for srv in self.servers.values():
             await srv.offload()
 
