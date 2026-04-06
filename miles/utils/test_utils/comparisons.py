@@ -17,13 +17,7 @@ def compare_dumps(
     target_dir: str,
     *,
     diff_threshold: float = 0.0085,
-    # Skipped: tensors that may exist on one side but not the other.
-    # - input_ids/positions/cu_seqlens/qkv_format: auxiliary tensors not always dumped
-    # - witness: only present in FT target (baseline has no witness module)
     allow_skipped_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format|.*witness.*",
-    # Failed: tensors present on both sides but with legitimately different values.
-    # - input_ids/positions/cu_seqlens/qkv_format: differ in real rollout mode
-    #   because each run produces different rollout data
     allow_failed_pattern: str = "input_ids|positions|cu_seqlens_q|cu_seqlens_kv|qkv_format",
     extra_args: list[str] | None = None,
 ) -> None:
