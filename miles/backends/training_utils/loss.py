@@ -500,11 +500,11 @@ def icepop_function(
 
 
 def _log_train_loss_computation_event(batch: RolloutBatch, advantages: torch.Tensor) -> None:
-    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
-    if witness_ids_list is None:
+    if not is_event_logger_initialized():
         return
 
-    if not is_event_logger_initialized():
+    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
+    if witness_ids_list is None:
         return
 
     get_event_logger().log(
