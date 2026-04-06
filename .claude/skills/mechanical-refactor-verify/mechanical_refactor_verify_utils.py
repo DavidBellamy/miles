@@ -4,7 +4,7 @@ Usage in transform.py (gist):
 
     import sys
     sys.path.append(".claude/skills/mechanical-refactor-verify")
-    from utils import MechanicalVerifier
+    from mechanical_refactor_verify_utils import MechanicalVerifier
 
     verifier = MechanicalVerifier(
         base_commit="<sha>",

@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from utils import MechanicalVerifier, RunFn
+from mechanical_refactor_verify_utils import MechanicalVerifier, RunFn
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
