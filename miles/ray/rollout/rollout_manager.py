@@ -152,6 +152,14 @@ class RolloutManager:
 
         return data, metadata, metrics
 
+    # -------------------------- checkpointing -----------------------------
+
+    def save(self, rollout_id):
+        self.data_source.save(rollout_id)
+
+    def load(self, rollout_id=None):
+        self.data_source.load(rollout_id)
+
     # -------------------------- offload/onload -----------------------------
 
     def offload(self, tags: list[str] | None = None):
@@ -159,7 +167,7 @@ class RolloutManager:
         if tags is not None:
             handles = [
                 engine.release_memory_occupation.remote(tags=tags)
-                for engine in self.rollout_engines
+                for engine in self._rollout_engines
                 if engine is not None
             ]
             return ray.get(handles) if handles else []
@@ -178,13 +186,41 @@ class RolloutManager:
         for srv in self.servers.values():
             srv.onload_kv()
 
-    # -------------------------- checkpointing -----------------------------
+    # -------------------------- engine management -----------------------------
 
-    def save(self, rollout_id):
-        self.data_source.save(rollout_id)
+    def get_updatable_engines_and_lock(self):
+        """Return engines eligible for weight updates."""
+        srv = self._get_updatable_server()
+        engines = srv.engines if srv else []
+        gpu_counts = srv.engine_gpu_counts if srv else []
+        gpu_offsets = srv.engine_gpu_offsets if srv else []
+        num_new = srv.num_new_engines if srv else 0
+        return engines, self.rollout_engine_lock, num_new, gpu_counts, gpu_offsets
 
-    def load(self, rollout_id=None):
-        self.data_source.load(rollout_id)
+    def clear_updatable_num_new_engines(self):
+        # when fault tolerance is not enabled, we need to manually clear num_new_engines after update_weights
+        srv = self._get_updatable_server()
+        if srv:
+            srv.num_new_engines = 0
+
+    def recover_updatable_engines(self) -> None:
+        """Restart any dead rollout engines and update num_new_engines for update_weights detection.
+
+        Recovers the updatable model (the one that receives weight
+        updates from training).
+        """
+        self._health_monitoring_pause()
+        srv = self._get_updatable_server()
+        if self.rollout_id == -1 or srv is None:
+            return
+
+        srv.recover()
+
+    def _get_updatable_server(self) -> RolloutServer | None:
+        for srv in self.servers.values():
+            if srv.update_weights:
+                return srv
+        return None
 
     # -------------------------- TODO -----------------------------
 
@@ -217,25 +253,10 @@ class RolloutManager:
             return None
         return next(iter(self.servers.values()))
 
-    def _get_updatable_server(self) -> RolloutServer | None:
-        for srv in self.servers.values():
-            if srv.update_weights:
-                return srv
-        return None
-
     @property
-    def rollout_engines(self):
+    def _rollout_engines(self):
         """All node-0 engines across all servers / models."""
         return [e for srv in self.servers.values() for e in srv.engines]
-
-    def get_updatable_engines_and_lock(self):
-        """Return engines eligible for weight updates."""
-        srv = self._get_updatable_server()
-        engines = srv.engines if srv else []
-        gpu_counts = srv.engine_gpu_counts if srv else []
-        gpu_offsets = srv.engine_gpu_offsets if srv else []
-        num_new = srv.num_new_engines if srv else 0
-        return engines, self.rollout_engine_lock, num_new, gpu_counts, gpu_offsets
 
     def get_num_rollout_per_epoch(self):
         assert self.args.rollout_global_dataset
@@ -249,27 +270,8 @@ class RolloutManager:
         for monitor in self._health_monitors:
             monitor.resume()
 
-    def recover_updatable_engines(self) -> None:
-        """Restart any dead rollout engines and update num_new_engines for update_weights detection.
-
-        Recovers the updatable model (the one that receives weight
-        updates from training).
-        """
-        self._health_monitoring_pause()
-        srv = self._get_updatable_server()
-        if self.rollout_id == -1 or srv is None:
-            return
-
-        srv.recover()
-
-    def clear_updatable_num_new_engines(self):
-        # when fault tolerance is not enabled, we need to manually clear num_new_engines after update_weights
-        srv = self._get_updatable_server()
-        if srv:
-            srv.num_new_engines = 0
-
     def check_weights(self, action: str):
-        return ray.get([engine.check_weights.remote(action=action) for engine in self.rollout_engines])
+        return ray.get([engine.check_weights.remote(action=action) for engine in self._rollout_engines])
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
