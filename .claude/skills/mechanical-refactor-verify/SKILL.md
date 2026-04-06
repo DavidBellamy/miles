@@ -67,9 +67,7 @@ def transform(root: Path) -> None:
     # <edit files>
     # git_add_and_commit("fix imports", cwd=str(root))
 
-    # --- Step 3: Format ---
-    # exec_command("ruff format .", cwd=str(root))
-    # git_add_and_commit("fmt", cwd=str(root))
+    # Note: formatting (ruff format) is handled automatically by verify_mechanical_refactor
 
 
 if __name__ == "__main__":

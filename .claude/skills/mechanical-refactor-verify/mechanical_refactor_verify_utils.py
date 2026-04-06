@@ -36,16 +36,20 @@ def verify_mechanical_refactor(
     branch_name = f"verify-mechanical-{base_commit[:8]}"
 
     try:
-        print(f"[1/3] Creating worktree at {base_commit[:8]}...")
+        print(f"[1/4] Creating worktree at {base_commit[:8]}...")
         exec_command(
             f"git worktree add -b {branch_name} {worktree_dir} {base_commit}",
             cwd=repo_root,
         )
 
-        print("[2/3] Running transformation...")
+        print("[2/4] Running transformation...")
         transform(Path(worktree_dir))
 
-        print(f"[3/3] Diffing against {target_commit[:8]}...")
+        print("[3/4] Formatting...")
+        exec_command("ruff format .", cwd=worktree_dir)
+        git_add_and_commit("fmt", cwd=worktree_dir)
+
+        print(f"[4/4] Diffing against {target_commit[:8]}...")
         diff = exec_command(
             f"git diff {target_commit} -- .",
             cwd=worktree_dir,
