@@ -9,12 +9,12 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.backends.sglang_utils.sglang_engine import SGLangEngine
 from miles.ray.rollout.addr_allocator import (
+    PortCursors,
     allocate_rollout_engine_addr_and_ports_external,
-    allocate_rollout_engine_addr_and_ports_normal, PortCursors,
+    allocate_rollout_engine_addr_and_ports_normal,
 )
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils import dumper_utils
-
 
 logger = logging.getLogger(__name__)
 
