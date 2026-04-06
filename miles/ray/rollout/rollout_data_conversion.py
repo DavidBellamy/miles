@@ -1,3 +1,9 @@
+import logging
+
+
+logger = logging.getLogger(__name__)
+
+
 def compute_dynamic_global_batch_size(num_samples: int) -> int:
     """Calculate dynamic global_batch_size to ensure only one training step.
 
