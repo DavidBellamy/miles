@@ -28,9 +28,10 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
-    # Real rollout with temperature>0 produces different samples across runs,
-    # causing ~1-2% metric drift. TODO: use temperature=0 or fixed seed to
-    # make rollout truly deterministic and tighten these tolerances.
+    # Real rollout has ~1-2% metric drift due to non-deterministic NCCL/cuBLAS ops.
+    # TODO: enable full determinism (--deterministic-mode, NCCL_ALGO=Ring,
+    # CUBLAS_WORKSPACE_CONFIG, NVTE_ALLOW_NONDETERMINISTIC_ALGO=0) per PR #370
+    # and tighten these tolerances.
     rtol = 3e-2 if mode.has_real_rollout else 1e-2
     atol = 1e-7 if mode.has_real_rollout else 1e-8
     compare_metrics(
