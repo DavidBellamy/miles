@@ -33,7 +33,10 @@ def compare_dumps(
         extra_args=extra_args,
     )
 
-    assert result.returncode == 0, f"Dump comparator failed (rc={result.returncode})\nstderr: {result.stderr[-2000:]}"
+    assert result.returncode == 0, (
+        f"Dump comparator failed (rc={result.returncode}). "
+        f"Report: {target_path / 'comparator_report.jsonl'}"
+    )
     print(f"Dump comparison passed: {baseline_path} vs {target_path}")
 
 
@@ -117,6 +120,16 @@ def _check_single_metric(
 ) -> list[str]:
     if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
         return []
+
+    import math
+
+    if math.isnan(baseline_val) or math.isnan(target_val):
+        return [f"Step {step_idx}, metric '{key}': NaN detected (baseline={baseline_val}, target={target_val})"]
+    if math.isinf(baseline_val) or math.isinf(target_val):
+        if baseline_val != target_val:
+            return [f"Step {step_idx}, metric '{key}': inf mismatch (baseline={baseline_val}, target={target_val})"]
+        return []
+
     if baseline_val == 0.0 and target_val == 0.0:
         return []
 

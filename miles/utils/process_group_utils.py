@@ -159,11 +159,10 @@ class _RawPGUtil(GeneralPGUtil):
         _check_wait(group.allreduce([tensor], opts), "allreduce")
 
     def reduce(self, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        # TODO: torchft doesn't implement reduce yet (no wrapper in ProcessGroupWrapper).
-        #  Use allreduce as workaround. Switch to real reduce once torchft adds support.
-        #  Safe because the only caller is MultiPGUtil.all_reduce which does reduce+broadcast,
-        #  so having all ranks hold the result after "reduce" is semantically equivalent.
-        #  WARNING: do NOT call this reduce for rank-0-only semantics with torchft PGs.
+        # torchft ProcessGroupWrapper doesn't override reduce() — calling it hits
+        # the base class which errors with "No backend type associated with device".
+        # allreduce is a safe substitute: the only caller is MultiPGUtil.all_reduce
+        # (reduce+broadcast), so all ranks holding the result is equivalent.
         self.all_reduce(tensor, group, op)
 
     def broadcast(self, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
