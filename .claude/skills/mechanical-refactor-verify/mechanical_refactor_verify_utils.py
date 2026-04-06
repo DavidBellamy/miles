@@ -10,8 +10,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Optional
 
-RunFn = Callable[..., str]
-
 
 def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str:
     print(f"  $ {cmd}", flush=True)
@@ -27,7 +25,7 @@ def exec_command(cmd: str, cwd: Optional[str] = None, check: bool = True) -> str
 def verify_mechanical_refactor(
     base_commit: str,
     target_commit: str,
-    transform: "Callable[[Path, RunFn], None]",
+    transform: "Callable[[Path], None]",
 ) -> None:
     repo_root = exec_command("git rev-parse --show-toplevel")
     worktree_dir = tempfile.mkdtemp(prefix="verify-mechanical-")
@@ -41,7 +39,7 @@ def verify_mechanical_refactor(
         )
 
         print("[2/3] Running transformation...")
-        transform(Path(worktree_dir), exec_command)
+        transform(Path(worktree_dir))
 
         print(f"[3/3] Diffing against {target_commit[:8]}...")
         diff = exec_command(

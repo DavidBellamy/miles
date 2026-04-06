@@ -32,18 +32,17 @@ import sys
 from pathlib import Path
 
 sys.path.append(".claude/skills/mechanical-refactor-verify")
-from mechanical_refactor_verify_utils import verify_mechanical_refactor, RunFn
+from mechanical_refactor_verify_utils import verify_mechanical_refactor, exec_command
 
 BASE_COMMIT = "<base_sha>"
 TARGET_COMMIT = "<pr_mechanical_move_final_sha>"
 
 
-def transform(root: Path, run: RunFn) -> None:
+def transform(root: Path) -> None:
     """Perform the mechanical transformation and commit each step.
 
     Args:
         root: Path to the worktree (checked out at BASE_COMMIT).
-        run: Helper to execute shell commands. Signature: run(cmd, cwd=None, check=True) -> str.
     """
     # --- Step 1: Split source file ---
     source = root / "path/to/source.py"
@@ -62,15 +61,15 @@ def transform(root: Path, run: RunFn) -> None:
     source.unlink()
     (root / "path/to/pkg/__init__.py").touch()
 
-    run("git add -A && git commit -m 'mechanical: split source.py'", cwd=str(root))
+    exec_command("git add -A && git commit -m 'mechanical: split source.py'", cwd=str(root))
 
     # --- Step 2: Fix imports ---
     # <edit files>
-    # run("git add -A && git commit -m 'fix imports'", cwd=str(root))
+    # exec_command("git add -A && git commit -m 'fix imports'", cwd=str(root))
 
     # --- Step 3: Format ---
-    # run("ruff format .", cwd=str(root))
-    # run("git add -A && git commit -m 'fmt'", cwd=str(root))
+    # exec_command("ruff format .", cwd=str(root))
+    # exec_command("git add -A && git commit -m 'fmt'", cwd=str(root))
 
 
 if __name__ == "__main__":
