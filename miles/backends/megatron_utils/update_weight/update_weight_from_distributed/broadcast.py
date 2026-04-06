@@ -65,9 +65,9 @@ class UpdateWeightFromDistributed(DistBucketedWeightUpdateMixin):
             self._group_name = f"miles-pp_{pp_rank}"
 
         if self._is_source:
-            if (x := self._model_update_groups) is not None:
+            if (g := self._model_update_groups) is not None:
                 disconnect_rollout_engines_from_distributed(
-                    self.args, self._group_name, x, self.rollout_engines
+                    self.args, self._group_name, g, self.rollout_engines
                 )
             self._model_update_groups = connect_rollout_engines_from_distributed(
                 self.args, self._group_name, rollout_engines
