@@ -135,8 +135,10 @@ def _record_and_log_witness_param(
     instance_id: str,
     stale_ids: list[int],
 ) -> None:
-    weight = witness.witness.weight.data
-    nonzero_witness_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
+    model_weight = witness.witness.weight
+    main_param = getattr(model_weight, "main_param", None)
+    check_weight = main_param.data if main_param is not None else model_weight.data
+    nonzero_witness_ids: list[int] = check_weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     get_event_logger().log(
         WitnessSnapshotParamEvent,

@@ -131,7 +131,6 @@ def _compare_snapshot(
     expected: set[int],
     rollout_id: int,
     cell_index: int,
-    missing_tolerance_ratio: float = 0.02,
 ) -> WitnessDataMismatchIssue | None:
     stale_set = set(event.stale_ids)
     filtered_expected = expected - stale_set
@@ -142,17 +141,6 @@ def _compare_snapshot(
 
     missing = filtered_expected - filtered_actual
     extra = filtered_actual - filtered_expected
-
-    # Tolerate a small fraction of missing witness IDs: with bf16 training and
-    # near-zero PG loss (e.g. GRPO with random rewards), some sequences' gradients
-    # may underflow to zero, leaving their witness embedding row unupdated.
-    max_missing = int(len(filtered_expected) * missing_tolerance_ratio)
-    if max_missing > 0 and len(missing) <= max_missing and not extra:
-        logger.warning(
-            f"Witness {event.instance_id}: {len(missing)} missing IDs within tolerance "
-            f"({max_missing}): {sorted(missing)}"
-        )
-        return None
 
     return WitnessDataMismatchIssue(
         rollout_id=rollout_id,
