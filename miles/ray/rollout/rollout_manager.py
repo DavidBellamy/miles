@@ -156,7 +156,7 @@ class RolloutManager:
         save_debug_rollout_data(self.args, data, rollout_id=rollout_id, evaluation=False)
         log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = convert_samples_to_train_data(self, data)
-        return split_train_data_by_dp(self, data, self.train_parallel_config["dp_size"])
+        return split_train_data_by_dp(self.args, data, self.train_parallel_config["dp_size"])
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:

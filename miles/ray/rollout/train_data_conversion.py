@@ -6,14 +6,14 @@ from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import Sample
 
 
-def convert_samples_to_train_data(samples: list[Sample] | list[list[Sample]]):
+def convert_samples_to_train_data(args, samples: list[Sample] | list[list[Sample]]):
     """
     Convert inference generated samples to training data.
     """
     if self.custom_convert_samples_to_train_data_func is not None:
         return self.custom_convert_samples_to_train_data_func(args, samples)
 
-    raw_rewards, rewards = _post_process_rewards(samples)
+    raw_rewards, rewards = _post_process_rewards(args, samples)
 
     assert len(raw_rewards) == len(samples)
     assert len(rewards) == len(samples)
@@ -77,7 +77,7 @@ def convert_samples_to_train_data(samples: list[Sample] | list[list[Sample]]):
     return train_data
 
 
-def _post_process_rewards(samples: list[Sample] | list[list[Sample]]):
+def _post_process_rewards(args, samples: list[Sample] | list[list[Sample]]):
     if self.custom_reward_post_process_func is not None:
         return self.custom_reward_post_process_func(args, samples)
 
@@ -105,7 +105,7 @@ def _post_process_rewards(samples: list[Sample] | list[list[Sample]]):
     return raw_rewards, raw_rewards
 
 
-def split_train_data_by_dp(data, dp_size):
+def split_train_data_by_dp(args, data, dp_size):
     """Split the train data by data parallel size."""
     rollout_data = {}
 
