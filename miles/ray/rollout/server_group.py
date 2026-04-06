@@ -172,9 +172,7 @@ class ServerGroup:
         dead_of_this_group = [i for i, engine in enumerate(self.all_engines) if engine is None]
 
         port_cursors = PortCursors.empty()
-        all_handles = self.start_engines(port_cursors)
-        if all_handles:
-            await asyncio.gather(*all_handles)
+        await asyncio.gather(*self.start_engines(port_cursors))
 
         release_handles = []
         all_resume_engines = []
