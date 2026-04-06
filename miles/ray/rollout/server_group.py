@@ -53,7 +53,7 @@ class ServerGroup:
         """Node-0 engines only (for multi-node serving)."""
         return self.all_engines[:: self.nodes_per_engine]
 
-    async def start_engines(self, port_cursors: PortCursors) -> None:
+    def start_engines(self, port_cursors: PortCursors) -> list:
         """Create Ray actors, allocate ports, and fire ``engine.init()`` without waiting.
 
         Returns ``(init_handles, port_cursors)`` where *init_handles* is a list
@@ -61,7 +61,7 @@ class ServerGroup:
         """
         if self.args.debug_train_only or self.worker_type == "placeholder":
             self.num_new_engines = 0
-            return
+            return []
 
         num_gpu_per_engine = min(self.num_gpus_per_engine, self.args.num_gpus_per_node)
 
@@ -123,7 +123,7 @@ class ServerGroup:
         self.num_new_engines = len(rollout_engines)
 
         if self.num_new_engines == 0:
-            return
+            return []
 
         if self.args.rollout_external:
             addr_and_ports = allocate_rollout_engine_addr_and_ports_external(
@@ -149,7 +149,7 @@ class ServerGroup:
             )
             for rank, engine in rollout_engines
         ]
-        await asyncio.gather(*init_handles)
+        return init_handles
 
     def stop_engines(self, rollout_engine_id: int):
         logger.info(f"Killing server group {rollout_engine_id}...")
@@ -173,7 +173,7 @@ class ServerGroup:
     async def recover(self, port_cursors: PortCursors):
         dead_indices = [i for i, engine in enumerate(self.all_engines) if engine is None]
 
-        await self.start_engines(port_cursors)
+        await asyncio.gather(*self.start_engines(port_cursors))
 
         release_handles = []
         all_resume_engines = []

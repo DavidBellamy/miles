@@ -8,12 +8,11 @@ from miles.backends.sglang_utils.sglang_config import ModelConfig, ServerGroupCo
 from miles.ray.rollout.addr_allocator import PortCursors
 from miles.ray.rollout.router_manager import start_router
 from miles.ray.rollout.server_group import ServerGroup
-from miles.utils.async_utils import eager_create_task
 
 logger = logging.getLogger(__name__)
 
 
-async def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
+def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
     """Start rollout servers: one per model, each with its own router.
 
     Returns a dict mapping model name -> ``RolloutServer``.
@@ -38,7 +37,7 @@ async def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
             args.sglang_router_port = router_port
 
         server_groups: list[ServerGroup] = []
-        all_init_tasks: list = []
+        all_init_handles: list = []
         port_cursors = PortCursors.empty()
 
         for group_cfg in model_cfg.server_groups:
@@ -72,15 +71,15 @@ async def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
                 router_port=router_port,
                 update_weights=model_cfg.update_weights,
             )
-            task = eager_create_task(group.start_engines(port_cursors))
-            all_init_tasks.append(task)
+            handles = group.start_engines(port_cursors)
+            all_init_handles.extend(handles)
             server_groups.append(group)
 
             engine_offset += num_engines
             gpu_offset += group_cfg.num_gpus
 
-        if all_init_tasks:
-            await asyncio.gather(*all_init_tasks)
+        if all_init_handles:
+            ray.get(all_init_handles)
 
         servers[model_cfg.name] = RolloutServer(
             server_groups=server_groups,
