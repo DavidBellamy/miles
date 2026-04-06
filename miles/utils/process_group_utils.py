@@ -186,10 +186,17 @@ class _RawPGUtil(GeneralPGUtil):
         gather_list: list[torch.Tensor] | None,
         group: dist.ProcessGroup,
     ) -> None:
-        output = [gather_list] if gather_list is not None else []
-        opts = dist.GatherOptions()
-        opts.rootRank = 0
-        _check_wait(group.gather(output, [input_tensor], opts), "gather")
+        # TODO(torchft): switch to real gather once torchft adds it to ProcessGroupWrapper.
+        # torchft ProcessGroupWrapper doesn't override gather() — calling it hits
+        # the base class which errors with "No backend type associated with device".
+        # allgather is a safe substitute: rank 0 extracts its gather_list from the
+        # full allgather result, other ranks discard.
+        group_size = self.get_size(group)
+        all_tensors = [torch.empty_like(input_tensor) for _ in range(group_size)]
+        self.all_gather(all_tensors, input_tensor, group)
+        if gather_list is not None:
+            for i in range(group_size):
+                gather_list[i].copy_(all_tensors[i])
 
     def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
         _gather_object_via_util(self, obj, object_gather_list, group)
