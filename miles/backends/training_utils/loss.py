@@ -503,15 +503,15 @@ def _log_train_loss_computation_event(batch: RolloutBatch, advantages: torch.Ten
     if not is_event_logger_initialized():
         return
 
-    witness_ids_list: list[torch.Tensor] | None = batch.get("witness_ids")
-    if witness_ids_list is None:
+    witness_ids: torch.Tensor | None = batch.get("witness_ids")
+    if witness_ids is None:
         return
 
     get_event_logger().log(
         TrainLossComputationEvent,
         dict(
-            advantages=advantages.detach().tolist(),
-            witness_ids=torch.cat(witness_ids_list, dim=0).tolist(),
+            advantages=advantages.detach().flatten().tolist(),
+            witness_ids=witness_ids.detach().flatten().tolist(),
         ),
         print_log=False,
     )
