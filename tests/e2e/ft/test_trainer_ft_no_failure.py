@@ -28,13 +28,11 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
-    rtol = 1e-2
-    atol = 1e-8
     compare_metrics(
         baseline_dir=f"{dump_dir}/baseline",
         target_dir=f"{dump_dir}/target",
-        rtol=rtol,
-        atol=atol,
+        rtol=1e-2,
+        atol=1e-8,
         key_prefixes=["train/"],
     )
 
