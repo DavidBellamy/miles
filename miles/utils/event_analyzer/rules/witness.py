@@ -139,16 +139,13 @@ def _compare_snapshot(
     if filtered_expected == filtered_actual:
         return None
 
-    missing = filtered_expected - filtered_actual
-    extra = filtered_actual - filtered_expected
-
     return WitnessDataMismatchIssue(
         rollout_id=rollout_id,
         cell_index=cell_index,
         description=(
             f"Witness data mismatch for instance {event.instance_id}: "
-            f"missing={sorted(missing)}, "
-            f"extra={sorted(extra)}"
+            f"missing={sorted(filtered_expected - filtered_actual)}, "
+            f"extra={sorted(filtered_actual - filtered_expected)}"
         ),
         expected_witness_ids=sorted(filtered_expected),
         actual_witness_ids=sorted(filtered_actual),
