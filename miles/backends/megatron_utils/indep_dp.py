@@ -99,6 +99,10 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
 
+    if allreduce_success and pg.errored() is not None:
+        allreduce_success = False
+        logger.error("indep_dp PG has async error: %s", pg.errored())
+
     # Intra-cell consensus: if ANY rank's allreduce failed, ALL ranks discard.
     # get_gloo_group() is cell-local (created from the default world PG).
     return collective_bool_and(value=allreduce_success, group=get_gloo_group())
