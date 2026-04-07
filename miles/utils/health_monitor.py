@@ -149,7 +149,7 @@ class RolloutHealthMonitor:
             return
 
         try:
-            ray.get(engine.health_generate.remote(timeout=self._check_timeout))
+            ray.get(engine.actor_handle.health_generate.remote(timeout=self._check_timeout))
         except Exception as e:
             logger.error(
                 f"Health check failed for rollout engine {rollout_engine_id} (ray timeout or error). Killing actor. Exception: {e}"

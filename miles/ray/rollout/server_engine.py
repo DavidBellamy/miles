@@ -37,7 +37,7 @@ class ServerEngine:
         new_state: _State,
     ) -> None:
         logger.info(f"{debug_name} start old={self._state}")
-        assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
+        assert isinstance(self._state, old_state_cls), f"{self._state=}"
         self._state = new_state
         logger.info(f"{debug_name} end new={self._state}")
 
