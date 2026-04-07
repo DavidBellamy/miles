@@ -149,9 +149,8 @@ class RayTrainCell:
         )
 
     def _mark_as_errored(self) -> None:
-        # NOTE: do NOT kill actors here — surviving actors may still be in NCCL
-        # collectives with peer cells. Killing them prematurely would cause
-        # peer ranks to hang. Actors are cleaned up when the cell is stopped.
+        # NOTE: do NOT kill actors here — external ft controller may need the actors
+        # to be still there for stacktrace diagnostics before calling stop() to kill them
         self._change_state(
             "_mark_as_errored",
             (StateAllocatedAlive, StateAllocatedErrored),
