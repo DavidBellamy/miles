@@ -1605,13 +1605,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Port of the standalone session server. Auto-allocated if not set.",
             )
             parser.add_argument(
-                "--session-record-log-dir",
-                type=str,
-                default=None,
-                help="Directory to write session records as JSONL files (one file per session). "
-                "Disabled when not set.",
-            )
-            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
@@ -1932,6 +1925,7 @@ def miles_validate_args(args):
     if args.dump_details is not None:
         args.save_debug_rollout_data = f"{args.dump_details}/rollout_data/{{rollout_id}}.pt"
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
+        args.session_record_log_dir = f"{args.dump_details}/session_records"
 
     if args.load_debug_rollout_data is not None:
         logger.info(
