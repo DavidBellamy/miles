@@ -15,6 +15,7 @@ ray[default]
 ring_flash_attn
 sglang-router>=0.2.3
 tensorboard
+nvidia-resiliency-ext
 torchft-nightly==2026.4.3
 transformers
 wandb
