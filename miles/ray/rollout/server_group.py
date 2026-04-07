@@ -33,6 +33,7 @@ class ServerGroup:
     pg: Any  # (placement_group, reordered_bundle_indices, reordered_gpu_ids)
     all_engines: list
     num_gpus_per_engine: int
+    # NOTE: this may have risk when recovering engines parallelly; may use source of truth (all_engines) later
     has_new_engines: bool
     worker_type: str = "regular"  # "regular", "prefill", or "decode"
     rank_offset: int = 0
