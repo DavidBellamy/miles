@@ -660,15 +660,17 @@ class MegatronTrainRayActor(TrainRayActor):
 
         assert not self.args.keep_old_actor
 
+        logger.info("save_ckpt_to_ray: starting save_to_memory")
         state_dict = save_to_memory(
             iteration=self._last_rollout_id,
             model=self.model,
             optimizer=self.optimizer,
             opt_param_scheduler=self.opt_param_scheduler,
         )
+        logger.info("save_ckpt_to_ray: save_to_memory done, starting ray.put")
         payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
         ref = ray.put(payload)
-        logger.info("Saved checkpoint to Ray object store (iteration=%s)", self._last_rollout_id)
+        logger.info("save_ckpt_to_ray: ray.put done (iteration=%s)", self._last_rollout_id)
         return ref
 
 
