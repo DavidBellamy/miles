@@ -204,8 +204,52 @@ class _PGWorker:
                 "elapsed_s": round(time.monotonic() - start, 2),
             }
 
+    def run_continuous_allreduce(self, *, tensor_size: int, duration_s: float) -> dict:
+        """Run continuous allreduce for duration_s, then return status.
+
+        Used to keep both ranks in-flight during crash tests.
+        """
+        import torch
+        import torch.distributed as dist
+
+        tensor = torch.ones(tensor_size, device=self._device) * (self._rank + 1.0)
+        opts = dist.AllreduceOptions()
+        opts.reduceOp = dist.ReduceOp.SUM
+        start = time.monotonic()
+        count = 0
+
+        try:
+            while time.monotonic() - start < duration_s:
+                work = self._pg.allreduce([tensor], opts)
+                work.wait()
+                count += 1
+
+            elapsed = time.monotonic() - start
+            return {
+                "rank": self._rank,
+                "status": "completed",
+                "count": count,
+                "elapsed_s": round(elapsed, 2),
+                "errored_after": str(self._pg.errored()),
+            }
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            errored_after = None
+            try:
+                errored_after = self._pg.errored()
+            except Exception:
+                errored_after = "errored() failed"
+            return {
+                "rank": self._rank,
+                "status": "exception",
+                "error": f"{type(e).__name__}: {e}",
+                "count": count,
+                "elapsed_s": round(elapsed, 2),
+                "errored_after": str(errored_after),
+            }
+
     def run_allreduce_then_die(self, *, tensor_size: int, die_after_s: float) -> None:
-        """Start a large allreduce, then os._exit after a delay.
+        """Start continuous allreduce, then os._exit after a delay.
 
         This simulates a crash DURING an in-flight allreduce — the key scenario
         that causes ncclCommAbort to hang in production (NVLink DMA residuals).
@@ -459,25 +503,20 @@ def run_inflight(
     for r in results:
         print(f"  {r}")
 
-    # Step 2: start continuous allreduce on both, rank 0 will die mid-flight
-    print(f"\n--- Step 2: Start continuous allreduce, rank 0 dies after {die_after_s}s ---")
+    # Step 2: start concurrent continuous allreduce on BOTH ranks
+    # Rank 0 will die mid-flight; rank 1 keeps going and should detect the failure
+    print(f"\n--- Step 2: Both ranks start continuous allreduce ---")
+    print(f"  Rank 0 will os._exit after {die_after_s}s")
+    print(f"  Rank 1 runs for {die_after_s + timeout_s + 30}s (covers timeout + abort)")
+    start = time.monotonic()
 
+    survivor_duration = die_after_s + timeout_s + 30
     victim_ref = workers[0].run_allreduce_then_die.remote(
         tensor_size=tensor_size, die_after_s=die_after_s,
     )
-    # Give rank 0 time to start the allreduce loop
-    time.sleep(0.5)
-
-    # Survivor also starts allreduce (will block when peer dies)
-    print("  Survivor starting allreduce...")
-    start = time.monotonic()
-
-    if wait_style == _WaitStyle.BLOCKING:
-        survivor_ref = workers[1].run_allreduce_blocking_wait.remote()
-    elif wait_style == _WaitStyle.MANAGER:
-        survivor_ref = workers[1].run_allreduce_manager_style.remote()
-    else:
-        survivor_ref = workers[1].run_allreduce_poll.remote(timeout_s=min(15.0, timeout_s))
+    survivor_ref = workers[1].run_continuous_allreduce.remote(
+        tensor_size=tensor_size, duration_s=survivor_duration,
+    )
 
     # Wait for victim to confirm death
     try:
