@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 #         def init(): _allocate_engine(); _mark_allocated(); _init_engine(); _mark_alive()
 #         def stop(): _kill_engine(); _mark_stopped()
 #       and external code cannot directly mutate the engines
-#       this makes it more encapsulated and easier to reason about
+#       this makes it more encapsulated, easier to reason about, and prevents state-resource inconsistency
 class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
