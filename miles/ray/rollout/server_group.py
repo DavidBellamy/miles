@@ -157,8 +157,10 @@ class ServerGroup:
         return init_handles, new_engine_indices
 
     # 1. Deliberately make it non-async here to avoid introducing two states
-    #    like "stopping (but not stopped)" vs "stopped, since single-thread async code will not yield
+    #    like "stopping (but not stopped)" vs "stopped", since single-thread async code will not yield
     #    without an await point
+    #    it has the drawback of freezing the whole async thread, which may be avoided later by
+    #    moving `shutdown` mainly to local code
     # 2. It is still unsafe to be called in another thread (e.g. traditional RolloutHealthMonitor)
     #    because engine may be observed as non-stopped while being shutdown,
     #    but that is same as the original code
