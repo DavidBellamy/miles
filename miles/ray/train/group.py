@@ -265,9 +265,9 @@ class RayTrainGroup:
     async def _execute_all_alive_and_catch(self, fn_name: str, *args, **kwargs):
         snapshot_alive_cells = [c for c in self._cells if c.is_alive]
         assert snapshot_alive_cells, "No alive cells"
-        # NOTE: we intentionally use a plain gather here and do not add timeouts
-        # or kill straggling cells.  If a cell hangs indefinitely, the external
-        # FT controller (e.g. keel) will detect the problem and handle it.
+        # NOTE: no timeout here. If a cell hangs, the external FT controller
+        # detects stale heartbeat via cell_status(), calls cell.stop() to kill
+        # actors, which unblocks this gather with ActorDiedError.
         outputs = await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in snapshot_alive_cells],
             return_exceptions=True,
