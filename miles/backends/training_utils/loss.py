@@ -458,8 +458,8 @@ def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
     get_event_logger().log(
         TrainAdvantageComputationEvent,
         dict(
-            advantages=[adv.tolist() for adv in rollout_data["advantages"]],
-            witness_ids=[int(wid[0]) for wid in rollout_data["witness_ids"]],
+            advantages=[x.tolist() for x in rollout_data["advantages"]],
+            witness_ids=[x.tolist() for x in rollout_data["witness_ids"]],
         ),
         print_log=False,
     )

@@ -67,7 +67,7 @@ class TrainGroupStepEndEvent(EventBase):
 class TrainAdvantageComputationEvent(_ActorTrainEventBase):
     type: Literal["train_advantage_computation"] = "train_advantage_computation"
     advantages: list[list[float]]
-    witness_ids: list[int] | None = None
+    witness_ids: list[list[int]] | None = None
 
 
 class MetricEvent(EventBase):

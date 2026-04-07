@@ -87,7 +87,7 @@ class TestWitnessCheck:
         events: list[Event] = [
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
-            _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11]),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[[10], [11]]),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
@@ -141,8 +141,8 @@ class TestWitnessCheck:
         events: list[Event] = [
             _make_rollout_completed(rollout_id=0, sample_indices=[0, 1]),
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
-            _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11], cell_index=0),
-            _make_snapshot(rollout_id=0, nonzero_witness_ids=[10, 11], cell_index=1),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[[10], [11]], cell_index=0),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=[[10], [11]], cell_index=1),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL], 1: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
@@ -167,7 +167,7 @@ class TestWitnessCheck:
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
             _make_rollout_completed(rollout_id=1, sample_indices=[1]),
             _make_allocate(rollout_id=1, witness_id_to_sample_index={11: 1}),
-            _make_snapshot(rollout_id=1, nonzero_witness_ids=[10, 11]),
+            _make_snapshot(rollout_id=1, nonzero_witness_ids=[[10], [11]]),
             _make_step_end(rollout_id=1, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
@@ -273,7 +273,7 @@ class TestWitnessEventSerialization:
 def _make_loss_computation(
     rollout_id: int,
     advantages: list[list[float]],
-    witness_ids: list[int],
+    witness_ids: list[list[int]],
     cell_index: int = 0,
     attempt: int = 0,
 ) -> TrainAdvantageComputationEvent:
@@ -292,7 +292,7 @@ class TestZeroAdvantageExclusion:
         """Witness ID with zero advantage should not cause a mismatch when missing from actual."""
         events: list[Event] = [
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
-            _make_loss_computation(rollout_id=0, advantages=[[0.0, 0.0], [2.0, 3.0]], witness_ids=[10, 11]),
+            _make_loss_computation(rollout_id=0, advantages=[[0.0, 0.0], [2.0, 3.0]], witness_ids=[[10], [11]]),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[11]),  # 10 missing but zero-adv
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
@@ -302,7 +302,7 @@ class TestZeroAdvantageExclusion:
         """Witness ID with nonzero advantage must still appear — missing produces an issue."""
         events: list[Event] = [
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
-            _make_loss_computation(rollout_id=0, advantages=[[5.0], [3.0]], witness_ids=[10, 11]),
+            _make_loss_computation(rollout_id=0, advantages=[[5.0], [3.0]], witness_ids=[[10], [11]]),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),  # 11 missing, nonzero adv
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
@@ -326,10 +326,10 @@ class TestZeroAdvantageExclusion:
         events: list[Event] = [
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             # Cell 0: sample 10 has zero advantage
-            _make_loss_computation(rollout_id=0, advantages=[[0.0, 0.0], [5.0]], witness_ids=[10, 11], cell_index=0),
+            _make_loss_computation(rollout_id=0, advantages=[[0.0, 0.0], [5.0]], witness_ids=[[10], [11]], cell_index=0),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[11], cell_index=0),  # OK: 10 excluded
             # Cell 1: sample 10 has nonzero advantage
-            _make_loss_computation(rollout_id=0, advantages=[[3.0], [5.0]], witness_ids=[10, 11], cell_index=1),
+            _make_loss_computation(rollout_id=0, advantages=[[3.0], [5.0]], witness_ids=[[10], [11]], cell_index=1),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[11], cell_index=1),  # FAIL: 10 required
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL], 1: [TrainStepOutcome.NORMAL]}),
         ]
