@@ -346,12 +346,19 @@ class RayTrainGroup:
                 c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        # When alive cells exist, one serves as checkpoint source for pending cells.
-        # When ALL cells are pending (full restart), each loads from disk (no inter-cell transfer).
-        if snapshotted_alive_indices:
+        # When alive cells exist, one serves as checkpoint source for pending cells
+        # via in-memory transfer (requires non_persistent_ckpt_type='local').
+        # When ALL cells are pending (full restart) or in-memory ckpt is not configured,
+        # each cell loads from disk (no inter-cell transfer).
+        can_send_ckpt = getattr(self.args, "non_persistent_ckpt_type", None) == "local"
+        if snapshotted_alive_indices and can_send_ckpt:
             src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
             src_alive_rank = will_alive_indices.index(src_cell_index)
             ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
+        elif snapshotted_alive_indices:
+            src_cell_index = snapshotted_alive_indices[0]
+            src_alive_rank = None
+            ckpt_dst_alive_ranks = []
         else:
             src_cell_index = None
             src_alive_rank = None
@@ -367,7 +374,7 @@ class RayTrainGroup:
                     if c.cell_index in snapshotted_alive_indices
                     else c.prepare_indep_dp_mode_healing(
                         indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        recv_ckpt_src_rank=None,
+                        recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
                     )
                 )
                 for c in self._cells
