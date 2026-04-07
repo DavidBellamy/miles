@@ -2,7 +2,7 @@ import ray
 from pydantic import BaseModel, ConfigDict
 
 
-class ServerEngine:
+class EngineWrapper:
     def __init__(self):
         self._state = _StateStopped()
         TODO
