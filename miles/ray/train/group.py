@@ -323,7 +323,7 @@ class RayTrainGroup:
         snapshotted_pending_indices = [c.cell_index for c in self._cells if c.is_pending]
         snapshotted_alive_indices = [c.cell_index for c in self._cells if c.is_alive]
         will_alive_indices = sorted(list(set(snapshotted_pending_indices + snapshotted_alive_indices)))
-        assert len(snapshotted_alive_indices) > 0, "Cannot recover when all cells are dead"
+        assert len(will_alive_indices) > 0, "Cannot recover when all cells are dead or stopped"
 
         # Step 0: Determine whether need to reconfigure
         exists_alive_cell_changed_config = any(
@@ -346,9 +346,16 @@ class RayTrainGroup:
                 c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        src_alive_rank = will_alive_indices.index(src_cell_index)
-        ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
+        # When alive cells exist, one serves as checkpoint source for pending cells.
+        # When ALL cells are pending (full restart), each loads from disk (no inter-cell transfer).
+        if snapshotted_alive_indices:
+            src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
+            src_alive_rank = will_alive_indices.index(src_cell_index)
+            ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
+        else:
+            src_cell_index = None
+            src_alive_rank = None
+            ckpt_dst_alive_ranks = []
 
         coop_prepare_outputs = await asyncio.gather(
             *[
@@ -360,7 +367,7 @@ class RayTrainGroup:
                     if c.cell_index in snapshotted_alive_indices
                     else c.prepare_indep_dp_mode_healing(
                         indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
+                        recv_ckpt_src_rank=None,
                     )
                 )
                 for c in self._cells
