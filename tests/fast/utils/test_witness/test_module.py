@@ -1,13 +1,16 @@
-"""Tests for miles.utils.witness.module: _DataWitness, install_witness, _record_and_log_witness_param, clear_witness_stale_rows."""
+"""Tests for miles.utils.witness.module."""
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 import torch
 import torch.nn as nn
 
 from miles.utils.witness.allocator import WitnessInfo
 from miles.utils.witness.module import (
+    _AbsBroadcastAdd,
     _DataWitness,
+    _abs_broadcast_add,
     _record_and_log_witness_param,
     _zero_witness_rows,
     install_witness,
@@ -414,10 +417,6 @@ class TestWitnessDumpAndClearStale:
             mock_logger.log.assert_called_once()
             partial = mock_logger.log.call_args[0][1]
             assert partial["stale_ids"] == [8, 9]
-import pytest
-import torch
-
-from miles.utils.witness.module import _AbsBroadcastAdd, _abs_broadcast_add
 
 
 class TestAbsBroadcastAddForward:
