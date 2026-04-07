@@ -174,7 +174,7 @@ class ServerGroup:
             self.all_engines[i].mark_stopped()
 
     async def recover(self, port_cursors: PortCursors):
-        dead_indices = [i for i, engine in enumerate(self.all_engines) if engine is None]
+        dead_indices = [i for i, engine in enumerate(self.all_engines) if not engine.is_allocated]
 
         handles, curr_num_new_engines = self.start_engines(port_cursors)
         await asyncio.gather(*handles)
@@ -185,7 +185,7 @@ class ServerGroup:
         assert curr_num_new_engines == len(dead_indices), "curr_num_new_engines does not match dead_indices length"
         if self.needs_offload and dead_indices:
             new_engines = [self.all_engines[i] for i in dead_indices]
-            release_handles.extend(engine.release_memory_occupation.remote() for engine in new_engines)
+            release_handles.extend(engine.actor_handle.release_memory_occupation.remote() for engine in new_engines)
             if self.update_weights or self.model_path:
                 all_resume_engines.extend(new_engines)
 
@@ -194,7 +194,7 @@ class ServerGroup:
             if all_resume_engines:
                 await asyncio.gather(
                     *[
-                        engine.resume_memory_occupation.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS])
+                        engine.actor_handle.resume_memory_occupation.remote(tags=[GPU_MEMORY_TYPE_WEIGHTS])
                         for engine in all_resume_engines
                     ]
                 )
@@ -202,22 +202,22 @@ class ServerGroup:
     def offload(self):
         if not self.needs_offload:
             return []
-        return [engine.release_memory_occupation.remote() for engine in self.engines if engine is not None]
+        return [engine.actor_handle.release_memory_occupation.remote() for engine in self.engines if engine.is_allocated]
 
     def onload(self, tags: list[str] | None = None):
         if not self.needs_offload:
             return []
-        return [engine.resume_memory_occupation.remote(tags=tags) for engine in self.engines if engine is not None]
+        return [engine.actor_handle.resume_memory_occupation.remote(tags=tags) for engine in self.engines if engine.is_allocated]
 
     def onload_weights_from_disk(self):
         """Reload weights from ``model_path`` for non-updatable groups."""
         if not self.needs_offload or not self.model_path:
             return []
         return [
-            engine.update_weights_from_disk.remote(self.model_path) for engine in self.engines if engine is not None
+            engine.actor_handle.update_weights_from_disk.remote(self.model_path) for engine in self.engines if engine.is_allocated
         ]
 
     async def check_weights(self, action: str):
         return await asyncio.gather(
-            *[engine.check_weights.remote(action=action) for engine in self.engines if engine is not None]
+            *[engine.actor_handle.check_weights.remote(action=action) for engine in self.engines if engine.is_allocated]
         )
