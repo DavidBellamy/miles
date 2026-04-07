@@ -339,17 +339,9 @@ class RayTrainGroup:
                 c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        # One alive cell serves as checkpoint source for pending cells.
-        # In-memory transfer requires non_persistent_ckpt_type='local'; otherwise
-        # healing cells fall back to loading from disk.
-        can_send_ckpt = getattr(self.args, "non_persistent_ckpt_type", None) == "local"
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        if can_send_ckpt:
-            src_alive_rank = will_alive_indices.index(src_cell_index)
-            ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
-        else:
-            src_alive_rank = None
-            ckpt_dst_alive_ranks = []
+        src_alive_rank = will_alive_indices.index(src_cell_index)
+        ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
 
         coop_prepare_outputs = await asyncio.gather(
             *[
