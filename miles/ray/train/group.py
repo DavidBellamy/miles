@@ -122,8 +122,6 @@ class RayTrainGroup:
         run_analysis_from_args(self.args)
 
         async def _fn(attempt: int):
-            self._restart_all_errored_if_none_alive()
-
             witness_info = self._allocate_witness_info(
                 rollout_id=rollout_id,
                 attempt=attempt,
@@ -314,22 +312,11 @@ class RayTrainGroup:
 
     # ------------------------ internals for stop/start ------------------------
 
-    def _restart_all_errored_if_none_alive(self) -> None:
-        has_alive_or_pending = any(c.is_alive or c.is_pending for c in self._cells)
-        if has_alive_or_pending:
-            return
-
-        logger.warning("All cells are dead — restarting all errored cells for retry")
-        for cell in self._cells:
-            if cell.is_errored:
-                cell.stop()
-                cell.mark_as_pending()
-
     async def _refresh_cells(self) -> None:
         snapshotted_pending_indices = [c.cell_index for c in self._cells if c.is_pending]
         snapshotted_alive_indices = [c.cell_index for c in self._cells if c.is_alive]
         will_alive_indices = sorted(list(set(snapshotted_pending_indices + snapshotted_alive_indices)))
-        assert len(will_alive_indices) > 0, "Cannot recover when all cells are dead or stopped"
+        assert len(snapshotted_alive_indices) > 0, "Cannot recover when all cells are dead"
 
         # Step 0: Determine whether need to reconfigure
         exists_alive_cell_changed_config = any(
@@ -352,21 +339,15 @@ class RayTrainGroup:
                 c.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        # When alive cells exist, one serves as checkpoint source for pending cells
-        # via in-memory transfer (requires non_persistent_ckpt_type='local').
-        # When ALL cells are pending (full restart) or in-memory ckpt is not configured,
-        # each cell loads from disk (no inter-cell transfer).
+        # One alive cell serves as checkpoint source for pending cells.
+        # In-memory transfer requires non_persistent_ckpt_type='local'; otherwise
+        # healing cells fall back to loading from disk.
         can_send_ckpt = getattr(self.args, "non_persistent_ckpt_type", None) == "local"
-        if snapshotted_alive_indices and can_send_ckpt:
-            src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        if can_send_ckpt:
             src_alive_rank = will_alive_indices.index(src_cell_index)
             ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
-        elif snapshotted_alive_indices:
-            src_cell_index = snapshotted_alive_indices[0]
-            src_alive_rank = None
-            ckpt_dst_alive_ranks = []
         else:
-            src_cell_index = None
             src_alive_rank = None
             ckpt_dst_alive_ranks = []
 
