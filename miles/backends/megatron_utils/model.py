@@ -658,78 +658,76 @@ def train(
             ft_actor_executor=ft_actor_executor,
         )
 
-        if train_step_outcome != TrainStepOutcome.NORMAL:
-            break
+        if train_step_outcome == TrainStepOutcome.NORMAL:
+            if step_id == 0:
+                # Enable forward pre-hook after training step has successfully run. All subsequent
+                # forward passes will use the forward pre-hook / `param_sync_func` in
+                # `forward_backward_func`.
+                if should_disable_forward_pre_hook(args):
+                    enable_forward_pre_hook(model)
+                    config.param_sync_func = param_sync_func
+                    pre_hook_enabled = True
 
-        if step_id == 0:
-            # Enable forward pre-hook after training step has successfully run. All subsequent
-            # forward passes will use the forward pre-hook / `param_sync_func` in
-            # `forward_backward_func`.
-            if should_disable_forward_pre_hook(args):
-                enable_forward_pre_hook(model)
-                config.param_sync_func = param_sync_func
-                pre_hook_enabled = True
-
-        if args.enable_mtp_training:
-            from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
-
-            mtp_loss_scale = 1 / num_microbatches[step_id]
-            tracker = MTPLossLoggingHelper.tracker
-            if "values" in tracker:
-                values = tracker["values"]
-                if tracker.get("reduce_group") is not None:
-                    torch.distributed.all_reduce(values, group=tracker.get("reduce_group"))
-                if tracker.get("avg_group") is not None:
-                    torch.distributed.all_reduce(values, group=tracker["avg_group"], op=torch.distributed.ReduceOp.AVG)
-                # here we assume only one mtp layer
-                mtp_losses = (tracker["values"] * mtp_loss_scale).item()
-                MTPLossLoggingHelper.clean_loss_in_tracker()
-
-                # CI check: verify MTP loss is within expected bounds
-                if args.ci_test:
-                    from miles.backends.megatron_utils.ci_utils import check_mtp_loss
-
-                    check_mtp_loss(mtp_losses)
-
-        # per train step log.
-        if is_first_replica_megatron_main_rank():
-            accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
-            role = getattr(model[0], "role", "actor")
-            role_tag = "" if role == "actor" else f"{role}-"
-
-            extra_metrics = {}
             if args.enable_mtp_training:
-                extra_metrics["mtp_loss"] = mtp_losses
+                from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 
-            for param_group_id, param_group in enumerate(optimizer.param_groups):
-                extra_metrics[f"lr-pg_{param_group_id}"] = opt_param_scheduler.get_lr(param_group)
+                mtp_loss_scale = 1 / num_microbatches[step_id]
+                tracker = MTPLossLoggingHelper.tracker
+                if "values" in tracker:
+                    values = tracker["values"]
+                    if tracker.get("reduce_group") is not None:
+                        torch.distributed.all_reduce(values, group=tracker.get("reduce_group"))
+                    if tracker.get("avg_group") is not None:
+                        torch.distributed.all_reduce(values, group=tracker["avg_group"], op=torch.distributed.ReduceOp.AVG)
+                    # here we assume only one mtp layer
+                    mtp_losses = (tracker["values"] * mtp_loss_scale).item()
+                    MTPLossLoggingHelper.clean_loss_in_tracker()
 
-            log_dict = log_train_step(
-                args=args,
-                loss_dict=loss_dict,
-                grad_norm=grad_norm,
-                rollout_id=rollout_id,
-                step_id=step_id,
-                num_steps_per_rollout=num_steps_per_rollout,
-                role=role,
-                extra_metrics=extra_metrics,
-                should_log=True,
-            )
+                    # CI check: verify MTP loss is within expected bounds
+                    if args.ci_test:
+                        from miles.backends.megatron_utils.ci_utils import check_mtp_loss
 
-            if args.ci_test and not args.ci_disable_kl_checker:
-                check_kl(args, log_dict, step_id, accumulated_step_id)
+                        check_mtp_loss(mtp_losses)
 
-            logger.info(f"{role_tag}step {accumulated_step_id}: {log_dict}")
+            # per train step log.
+            if is_first_replica_megatron_main_rank():
+                accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+                role = getattr(model[0], "role", "actor")
+                role_tag = "" if role == "actor" else f"{role}-"
 
-            if args.ci_test:
-                check_grad_norm(
+                extra_metrics = {}
+                if args.enable_mtp_training:
+                    extra_metrics["mtp_loss"] = mtp_losses
+
+                for param_group_id, param_group in enumerate(optimizer.param_groups):
+                    extra_metrics[f"lr-pg_{param_group_id}"] = opt_param_scheduler.get_lr(param_group)
+
+                log_dict = log_train_step(
                     args=args,
+                    loss_dict=loss_dict,
                     grad_norm=grad_norm,
                     rollout_id=rollout_id,
                     step_id=step_id,
+                    num_steps_per_rollout=num_steps_per_rollout,
                     role=role,
-                    rank=parallel_state.effective_dp.rank,
+                    extra_metrics=extra_metrics,
+                    should_log=True,
                 )
+
+                if args.ci_test and not args.ci_disable_kl_checker:
+                    check_kl(args, log_dict, step_id, accumulated_step_id)
+
+                logger.info(f"{role_tag}step {accumulated_step_id}: {log_dict}")
+
+                if args.ci_test:
+                    check_grad_norm(
+                        args=args,
+                        grad_norm=grad_norm,
+                        rollout_id=rollout_id,
+                        step_id=step_id,
+                        role=role,
+                        rank=parallel_state.effective_dp.rank,
+                    )
 
     # Close out pre-hooks if using distributed optimizer and overlapped param gather.
     if pre_hook_enabled:
