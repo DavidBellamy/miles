@@ -61,7 +61,7 @@ class ServerGroup:
         """
         if self.args.debug_train_only or self.worker_type == "placeholder":
             self.has_new_engines = False
-            return []
+            return [], 0
 
         num_gpu_per_engine = min(self.num_gpus_per_engine, self.args.num_gpus_per_node)
 
@@ -124,7 +124,7 @@ class ServerGroup:
         self.has_new_engines |= curr_num_new_engines > 0
 
         if curr_num_new_engines == 0:
-            return []
+            return [], 0
 
         if self.args.rollout_external:
             addr_and_ports = allocate_rollout_engine_addr_and_ports_external(
