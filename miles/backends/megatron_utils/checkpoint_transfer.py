@@ -42,6 +42,17 @@ def send_ckpt(
 
     payload = {"iteration": iteration, "state_dict": state_dict}
     transport = _create_transport(indep_dp, timeout)
+    # Warm up the PG connection before P2P transfer.
+    # Gloo/NCCL P2P requires the communicator to be established first.
+    import torch.distributed as dist
+
+    logger.info("send_ckpt: warming up PG connection via allreduce")
+    warmup_t = torch.ones(1, device="cpu")
+    opts = dist.AllreduceOptions()
+    opts.reduceOp = dist.ReduceOp.SUM
+    indep_dp.gloo_group.allreduce([warmup_t], opts).wait()
+    logger.info("send_ckpt: warmup allreduce done (value=%s)", warmup_t.item())
+
     logger.info("send_ckpt: starting send_checkpoint to dst_rank=%d (pg=%s)", dst_rank, type(indep_dp.gloo_group).__name__)
     t1 = _time.monotonic()
     transport.send_checkpoint(
@@ -75,6 +86,16 @@ def recv_ckpt(
         InMemoryCheckpointManager with state_dict loaded, ready for
         initialize_model_and_optimizer to consume.
     """
+    # Warm up the PG connection before P2P transfer.
+    import torch.distributed as dist
+
+    logger.info("recv_ckpt: warming up PG connection via allreduce")
+    warmup_t = torch.ones(1, device="cpu")
+    opts = dist.AllreduceOptions()
+    opts.reduceOp = dist.ReduceOp.SUM
+    indep_dp.gloo_group.allreduce([warmup_t], opts).wait()
+    logger.info("recv_ckpt: warmup allreduce done (value=%s)", warmup_t.item())
+
     transport = _create_transport(indep_dp, timeout)
     payload = transport.recv_checkpoint(
         src_rank=src_rank,
