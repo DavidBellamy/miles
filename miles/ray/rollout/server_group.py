@@ -156,6 +156,12 @@ class ServerGroup:
         ]
         return init_handles, new_engine_indices
 
+    # 1. Deliberately make it non-async here to avoid introducing two states
+    #    like "stopping (but not stopped)" vs "stopped, since single-thread async code will not yield
+    #    without an await point
+    # 2. It is still unsafe to be called in another thread (e.g. traditional RolloutHealthMonitor)
+    #    because engine may be observed as non-stopped while being shutdown, but that is consistent with
+    #    the original code
     def stop_engines(self, rollout_engine_id: int):
         logger.info(f"Killing server group {rollout_engine_id}...")
         for i in range(
@@ -166,8 +172,6 @@ class ServerGroup:
             if engine.is_allocated:
                 logger.info(f"Shutting down and killing engine at index {i}")
                 try:
-                    # Deliberately make it non-async here to avoid introducing
-                    # two states like "stopping (but not stopped)" vs "stopped
                     ray.get(engine.actor_handle.shutdown.remote())
                     ray.kill(engine.actor_handle)
                     logger.info(f"Successfully killed engine at index {i}")
