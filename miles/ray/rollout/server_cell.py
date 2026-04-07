@@ -9,7 +9,7 @@ class CellIndexer(NamedTuple):
     engine_indices: list[int]
 
 
-def _get_cell_id_to_indexer_map(servers: dict[str, RolloutServer]) -> list[CellIndexer]:
+def _get_cell_indexer_of_id_map(servers: dict[str, RolloutServer]) -> list[CellIndexer]:
     result: list[CellIndexer] = []
     for srv_key, srv in servers.items():
         for group_index, group in enumerate(srv.server_groups):
@@ -27,10 +27,10 @@ def _get_cell_id_to_indexer_map(servers: dict[str, RolloutServer]) -> list[CellI
 
 
 def get_cell_indexer_from_id(servers: dict[str, RolloutServer], cell_id: int) -> CellIndexer:
-    mapping = _get_cell_id_to_indexer_map(servers)
+    mapping = _get_cell_indexer_of_id_map(servers)
     assert 0 <= cell_id < len(mapping)
     return mapping[cell_id]
 
 
 def get_num_cells(servers: dict[str, RolloutServer]) -> int:
-    return len(_get_cell_id_to_indexer_map(servers))
+    return len(_get_cell_indexer_of_id_map(servers))
