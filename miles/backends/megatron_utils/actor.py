@@ -3,6 +3,7 @@ import random
 import socket
 from argparse import Namespace
 from contextlib import nullcontext
+from typing import TYPE_CHECKING
 
 import ray
 import torch
@@ -41,6 +42,9 @@ from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed.broadcast import UpdateWeightFromDistributed
 from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
 from .update_weight.update_weight_from_tensor import UpdateWeightFromTensor
+
+if TYPE_CHECKING:
+    from miles.ray.rollout.rollout_manager import EnginesAndLock
 
 logging.getLogger("megatron").setLevel(logging.WARNING)
 
@@ -494,19 +498,17 @@ class MegatronTrainRayActor(TrainRayActor):
                 ray.get(self.rollout_manager.recover_updatable_engines.remote())
             dist.barrier(group=get_gloo_group())
 
-        rollout_engines, rollout_engine_lock, has_new_engines, engine_gpu_counts, engine_gpu_offsets = ray.get(
-            self.rollout_manager.get_updatable_engines_and_lock.remote()
-        )
+        info: EnginesAndLock = ray.get(self.rollout_manager.get_updatable_engines_and_lock.remote())
 
         if self.args.offload_train:
             reload_process_groups()
 
-        if has_new_engines:
+        if info.has_new_engines:
             self.weight_updater.connect_rollout_engines(
-                rollout_engines,
-                rollout_engine_lock,
-                engine_gpu_counts=engine_gpu_counts,
-                engine_gpu_offsets=engine_gpu_offsets,
+                info.rollout_engines,
+                info.rollout_engine_lock,
+                engine_gpu_counts=info.engine_gpu_counts,
+                engine_gpu_offsets=info.engine_gpu_offsets,
             )
             dist.barrier(group=get_gloo_group())
             if dist.get_rank() == 0:
@@ -524,8 +526,8 @@ class MegatronTrainRayActor(TrainRayActor):
             self.weight_updater.update_weights()
             print_memory("after update_weights")
 
-            if self.args.ci_test and len(rollout_engines) > 0 and not is_lora_enabled(self.args):
-                engine = random.choice(rollout_engines)
+            if self.args.ci_test and len(info.rollout_engines) > 0 and not is_lora_enabled(self.args):
+                engine = random.choice(info.rollout_engines)
                 engine_version = ray.get(engine.get_weight_version.remote())
                 if str(engine_version) != str(self.weight_updater.weight_version):
                     raise RuntimeError(

@@ -2,6 +2,7 @@ import logging
 import os
 import random
 from argparse import Namespace
+from typing import TYPE_CHECKING
 
 import ray
 import torch
@@ -35,6 +36,9 @@ from . import checkpoint
 from .lr_scheduler import get_lr_scheduler
 from .parallel import create_fsdp_parallel_state
 from .update_weight_utils import UpdateWeightFromDistributed, UpdateWeightFromTensor
+
+if TYPE_CHECKING:
+    from miles.ray.rollout.rollout_manager import EnginesAndLock
 
 logger = logging.getLogger(__name__)
 
@@ -553,15 +557,14 @@ class FSDPTrainRayActor(TrainRayActor):
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 
-        rollout_engines, rollout_engine_lock, has_new_engines, engine_gpu_counts, engine_gpu_offsets = ray.get(
-            self.rollout_manager.get_updatable_engines_and_lock.remote()
-        )
-        if has_new_engines:
+        info: EnginesAndLock = ray.get(self.rollout_manager.get_updatable_engines_and_lock.remote())
+
+        if info.has_new_engines:
             self.weight_updater.connect_rollout_engines(
-                rollout_engines,
-                rollout_engine_lock,
-                engine_gpu_counts=engine_gpu_counts,
-                engine_gpu_offsets=engine_gpu_offsets,
+                info.rollout_engines,
+                info.rollout_engine_lock,
+                engine_gpu_counts=info.engine_gpu_counts,
+                engine_gpu_offsets=info.engine_gpu_offsets,
             )
             dist.barrier(group=get_gloo_group())
             if dist.get_rank() == 0:
@@ -569,8 +572,8 @@ class FSDPTrainRayActor(TrainRayActor):
 
         self.weight_updater.update_weights()
 
-        if self.args.ci_test and len(rollout_engines) > 0:
-            engine = random.choice(rollout_engines)
+        if self.args.ci_test and len(info.rollout_engines) > 0:
+            engine = random.choice(info.rollout_engines)
             engine_version = ray.get(engine.get_weight_version.remote())
             if str(engine_version) != str(self.weight_updater.weight_version):
                 raise RuntimeError(
