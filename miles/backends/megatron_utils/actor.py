@@ -36,8 +36,7 @@ from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollou
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values, _log_train_advantage_computation_event
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint
-from .checkpoint_transfer import recv_ckpt
-from .checkpoint_transfer import send_ckpt as _send_ckpt
+from .in_memory_checkpoint import InMemoryCheckpointManager, save_to_memory
 from .indep_dp import reconfigure_indep_dp_group
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
@@ -62,6 +61,7 @@ class MegatronTrainRayActor(TrainRayActor):
         *,
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
+        ckpt_ref: object | None = None,
         indep_dp_info: IndepDPInfo,
     ) -> int | None:
         """Initialize the actor.
@@ -70,8 +70,8 @@ class MegatronTrainRayActor(TrainRayActor):
             args: Runtime arguments.
             role: Logical role ("actor" or "critic").
             with_ref: Whether to load a reference model.
-            recv_ckpt_src_rank: If not None, receive checkpoint from this alive_rank
-                via PGTransport instead of loading from disk.
+            recv_ckpt_src_rank: DEPRECATED. Use ckpt_ref instead.
+            ckpt_ref: Ray ObjectRef containing checkpoint state_dict from alive cell.
             indep_dp_info: Independent DP configuration (cell identity, alive rank/size, quorum ID).
         """
         monkey_patch_torch_dist()
@@ -135,12 +135,15 @@ class MegatronTrainRayActor(TrainRayActor):
                 m.enable_check_replay_result = m.enabled and self.args.ci_test
 
         checkpointing_context = None
-        if recv_ckpt_src_rank is not None:
-            ckpt_manager = recv_ckpt(
-                indep_dp=get_parallel_state().indep_dp,
-                src_rank=recv_ckpt_src_rank,
-            )
+        if ckpt_ref is not None:
+            import ray
+
+            logger.info("Receiving checkpoint from Ray object store")
+            payload = ray.get(ckpt_ref)
+            ckpt_manager = InMemoryCheckpointManager()
+            ckpt_manager.save(payload["state_dict"], iteration=payload["iteration"])
             checkpointing_context = {"local_checkpoint_manager": ckpt_manager}
+            logger.info("Checkpoint loaded from Ray (iteration=%s)", payload["iteration"])
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role, checkpointing_context=checkpointing_context
@@ -651,18 +654,22 @@ class MegatronTrainRayActor(TrainRayActor):
             group_name=group_name,
         )
 
-    def send_ckpt(self, dst_rank: int) -> None:
-        # These states are not handled
+    def save_ckpt_to_ray(self) -> object:
+        """Save checkpoint to Ray object store and return the ObjectRef."""
+        import ray
+
         assert not self.args.keep_old_actor
 
-        _send_ckpt(
-            indep_dp=get_parallel_state().indep_dp,
+        state_dict = save_to_memory(
+            iteration=self._last_rollout_id,
             model=self.model,
             optimizer=self.optimizer,
             opt_param_scheduler=self.opt_param_scheduler,
-            iteration=self._last_rollout_id,
-            dst_rank=dst_rank,
         )
+        payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
+        ref = ray.put(payload)
+        logger.info("Saved checkpoint to Ray object store (iteration=%s)", self._last_rollout_id)
+        return ref
 
     def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
         reconfigure_indep_dp_group(

@@ -55,15 +55,26 @@ class RayTrainCell:
         *,
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None = None,
+        ckpt_refs: list | None = None,
     ):
         self._mark_as_alive(indep_dp_info=indep_dp_info)
-        results = await self.execute(
-            "init",
+        actor_handles = self._get_actor_handles()
+
+        init_kwargs: dict = dict(
             args=self.args,
             role=self.role,
             with_ref=self.with_ref,
             indep_dp_info=indep_dp_info,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
+        )
+        if ckpt_refs is not None:
+            assert len(ckpt_refs) == len(actor_handles), (
+                f"ckpt_refs length mismatch: {len(ckpt_refs)} vs {len(actor_handles)}"
+            )
+
+        results = await self._execute_raw(
+            "init",
+            compute_args=lambda _: (),
+            compute_kwargs=lambda i: {**init_kwargs, "ckpt_ref": ckpt_refs[i] if ckpt_refs is not None else None},
         )
         await self.health_checker.start()
         return results
@@ -86,22 +97,22 @@ class RayTrainCell:
     async def prepare_indep_dp_mode_alive(
         self,
         indep_dp_info: IndepDPInfo,
-        send_ckpt_dst_ranks: list[int],
+        should_save_ckpt: bool = False,
     ):
         await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
         self._update_indep_dp_info(indep_dp_info)
 
-        for dst_rank in send_ckpt_dst_ranks:
-            await self.execute("send_ckpt", dst_rank=dst_rank)
+        if should_save_ckpt:
+            return await self.execute("save_ckpt_to_ray")
 
     async def prepare_indep_dp_mode_healing(
         self,
         indep_dp_info: IndepDPInfo,
-        recv_ckpt_src_rank: int | None,
+        ckpt_refs: list | None = None,
     ):
         await self.init(
             indep_dp_info=indep_dp_info,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
+            ckpt_refs=ckpt_refs,
         )
 
         await self.set_rollout_manager()

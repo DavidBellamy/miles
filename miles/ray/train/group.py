@@ -308,31 +308,45 @@ class RayTrainGroup:
             if c.cell_index in snapshotted_pending_indices:
                 c.allocate_for_pending()
 
-        # Step 3: Cooperatively prepare
+        # Step 3: Cooperatively prepare (two-phase for healing)
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        src_alive_rank = will_alive_indices.index(src_cell_index)
-        ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
+        needs_ckpt_transfer = len(snapshotted_pending_indices) > 0
 
-        coop_prepare_outputs = await asyncio.gather(
+        # Phase 3a: Reconfigure alive cells + save checkpoint to Ray object store
+        alive_outputs = await asyncio.gather(
             *[
-                (
-                    c.prepare_indep_dp_mode_alive(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if c.cell_index == src_cell_index else [],
-                    )
-                    if c.cell_index in snapshotted_alive_indices
-                    else c.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
-                    )
+                c.prepare_indep_dp_mode_alive(
+                    indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
+                    should_save_ckpt=(needs_ckpt_transfer and c.cell_index == src_cell_index),
                 )
                 for c in self._cells
-                if c.cell_index in will_alive_indices
+                if c.cell_index in snapshotted_alive_indices
             ],
             return_exceptions=True,
         )
-        # No need to do anything else - cells with exceptions will auto mark itself as errored
-        AsyncioGatherUtils.log_error(coop_prepare_outputs, debug_name="refresh_cells#cooperatively_prepare")
+        AsyncioGatherUtils.log_error(alive_outputs, debug_name="refresh_cells#prepare_alive")
+
+        # Phase 3b: Initialize healing cells with checkpoint from Ray object store
+        ckpt_refs = None
+        if needs_ckpt_transfer and not AsyncioGatherUtils.has_error(alive_outputs):
+            src_cell = next(c for c in self._cells if c.cell_index == src_cell_index)
+            src_idx = [c.cell_index for c in self._cells if c.cell_index in snapshotted_alive_indices].index(src_cell_index)
+            ckpt_refs = alive_outputs[src_idx]  # list of ObjectRefs from save_ckpt_to_ray
+
+        healing_outputs = await asyncio.gather(
+            *[
+                c.prepare_indep_dp_mode_healing(
+                    indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
+                    ckpt_refs=ckpt_refs,
+                )
+                for c in self._cells
+                if c.cell_index in snapshotted_pending_indices
+            ],
+            return_exceptions=True,
+        )
+        AsyncioGatherUtils.log_error(healing_outputs, debug_name="refresh_cells#prepare_healing")
+
+        coop_prepare_outputs = alive_outputs + healing_outputs
 
         if not AsyncioGatherUtils.has_error(coop_prepare_outputs):
             assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
