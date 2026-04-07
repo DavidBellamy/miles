@@ -156,12 +156,14 @@ class ServerGroup:
         ]
         return init_handles, new_engine_indices
 
-    # 1. Deliberately make it non-async here to avoid introducing two states
+    # 1. For future callers (RolloutManager.stop_cell, main thread, async),
+    #    deliberately make this function non-async here to avoid introducing two states
     #    like "stopping (but not stopped)" vs "stopped", since single-thread async code will not yield
     #    without an await point
     #    it has the drawback of freezing the whole async thread, which may be avoided later by
     #    moving `shutdown` mainly to local code
-    # 2. It is still unsafe to be called in another thread (e.g. traditional RolloutHealthMonitor)
+    # 2. For legacy callers (RolloutHealthMonitor, another thread, sync)
+    #    it is still unsafe to be called in another thread
     #    because engine may be observed as non-stopped while being shutdown,
     #    but that is same as the original code
     def stop_engines(self, rollout_engine_id: int):
