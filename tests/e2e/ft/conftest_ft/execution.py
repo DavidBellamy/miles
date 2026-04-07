@@ -144,6 +144,7 @@ def get_ft_args(mode: FTTestMode) -> str:
         "--control-server-port 0 "
         "--non-persistent-ckpt-type local "
         "--non-persistent-local-ckpt-algo fully_parallel "
+        "--local-ckpt-dir /tmp/ft_local_ckpt "
     )
 
 
