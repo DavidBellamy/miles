@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Sequence
+from types import SimpleNamespace
 
 import torch
 import torch.nn as nn
@@ -85,26 +86,19 @@ class _DataWitness(nn.Module):
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
     ) -> dict:
-        # Ref: Megatron-LM/megatron/core/transformer/utils.py::sharded_state_dict_default
-        # (the `else` branch for non-MegatronModule).
-        # Differences from upstream:
-        #   - pp_prefix: embeds PP rank to avoid key collision across pipeline stages
-        #   - tp_group: explicitly passed (upstream defaults to the same value)
         pp_rank = mpu.get_pipeline_model_parallel_rank()
         # Embed PP rank in the checkpoint key so each pipeline stage has a unique
         # key (e.g. local_head_witness_pp0.witness.weight vs _pp1.witness.weight).
         # Without this, PP>1 causes a sharding validation error because multiple
         # stages register the same key with identical replica_id.
-        pp_prefix = f"{prefix.rstrip('.')}_pp{pp_rank}."
-        metadata = ensure_metadata_has_dp_cp_group(metadata)
-        module_sd = self.state_dict(prefix="", keep_vars=True)
-        return make_sharded_tensors_for_checkpoint(
-            module_sd,
-            pp_prefix,
-            {},
-            sharded_offsets,
-            tp_group=mpu.get_tensor_model_parallel_group(),
-            dp_cp_group=metadata["dp_cp_group"],
+        prefix_with_pp = f"{prefix.rstrip('.')}_pp{pp_rank}."
+
+        return sharded_state_dict_default(
+            module=SimpleNamespace(state_dict=self.state_dict),
+            prefix=prefix_with_pp,
+            sharded_offsets=sharded_offsets,
+            metadata=metadata,
+            tp_group=WHAT_TO_PUT_HERE,
         )
 
 
