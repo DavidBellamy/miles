@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from megatron.core import tensor_parallel
 from megatron.core import parallel_state as mpu
-from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group, make_sharded_tensors_for_checkpoint
+from megatron.core.transformer.utils import sharded_state_dict_default
 from torch import Tensor
 
 from miles.utils.event_logger.logger import get_event_logger
@@ -93,12 +93,15 @@ class _DataWitness(nn.Module):
         # stages register the same key with identical replica_id.
         prefix_with_pp = f"{prefix.rstrip('.')}_pp{pp_rank}."
 
+        # Delegate to Megatron's sharded_state_dict_default (utils.py).
+        # Use SimpleNamespace so it takes the `else` branch (no sharded_state_dict attr)
+        # instead of recursing back into this method.
         return sharded_state_dict_default(
             module=SimpleNamespace(state_dict=self.state_dict),
             prefix=prefix_with_pp,
             sharded_offsets=sharded_offsets,
             metadata=metadata,
-            tp_group=WHAT_TO_PUT_HERE,
+            tp_group=mpu.get_tensor_model_parallel_group(),
         )
 
 
