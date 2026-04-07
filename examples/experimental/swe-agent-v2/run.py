@@ -50,7 +50,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     router_external_host: str = os.environ.get("MILES_ROUTER_EXTERNAL_HOST", socket.gethostname())  # public IP
     # Prefer explicit MILES_HOST_IP; else MASTER_ADDR when set (avoids unresolvable pod hostnames on workers).
     miles_host_ip: str = (
-        os.environ.get("MILES_HOST_IP") or (os.environ.get("MASTER_ADDR") or "").strip() or socket.gethostname()
+        os.environ.get("MILES_HOST_IP") or os.environ.get("MASTER_ADDR", "").strip() or socket.gethostname()
     )
 
     # W&B settings
