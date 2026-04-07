@@ -8,10 +8,12 @@ from pydantic import BaseModel, ConfigDict
 logger = logging.getLogger(__name__)
 
 
-# NOTE: currently it is almost a dataclass without encapsulation to minimize code diff;
+# NOTE: currently it is almost a dataclass without encapsulation to minimize code diff
+#       (logic is batched currently while may be non-batched in the future)
 #       ideally, it may encapsulate all actions and states, and ensure state transition
 #       only happens after internal actions, while no external code can touch its internals
 #       for example:
+#         def __init__(...configs...)
 #         def init(): _allocate_engine(); _mark_allocated(); _init_engine(); _mark_alive()
 #         def stop(): _kill_engine(); _mark_stopped()
 #       and external code cannot directly mutate the engines
