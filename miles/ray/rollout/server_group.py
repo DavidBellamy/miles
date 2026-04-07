@@ -58,7 +58,7 @@ class ServerGroup:
     def start_engines(self, port_cursors: PortCursors) -> tuple[list, list[int]]:
         """Create Ray actors, allocate ports, and fire ``engine.init()`` without waiting.
 
-        Returns ``(init_handles, curr_num_new_engines)`` where *init_handles* is a list
+        Returns ``(init_handles, new_engine_indices)`` where *init_handles* is a list
         of Ray ObjectRefs and *port_cursors* maps node index -> next free port.
         """
         if self.args.debug_train_only or self.worker_type == "placeholder":
