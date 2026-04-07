@@ -469,6 +469,7 @@ def train_one_step(
 
     # Forward pass.
     forward_backward_func = get_forward_backward_func()
+    logger.info("forward_backward_step starting")
     losses_reduced = forward_backward_func(
         forward_step_func=forward_step,
         data_iterator=data_iterator,
@@ -479,6 +480,7 @@ def train_one_step(
         decoder_seq_length=args.decoder_seq_length,
         forward_only=False,
     )
+    logger.info("forward_backward_step completed")
 
     outcome = TrainStepOutcome.NORMAL
     grad_norm = None

@@ -88,6 +88,8 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)
 
+    logger.info("Starting gradient allreduce across replicas (indep_dp)")
+
     allreduce_success = True
     try:
         for model_chunk in model:
@@ -99,10 +101,15 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
 
+    logger.info("Gradient allreduce done, success=%s", allreduce_success)
+
     if (e := pg.errored()) is not None:
         allreduce_success = False
         logger.error("indep_dp PG has async error: %s", e)
 
+    logger.info("Starting intra-cell consensus (collective_bool_and)")
     # Intra-cell consensus: if ANY rank's allreduce failed, ALL ranks discard.
     # get_gloo_group() is cell-local (created from the default world PG).
-    return collective_bool_and(value=allreduce_success, group=get_gloo_group())
+    result = collective_bool_and(value=allreduce_success, group=get_gloo_group())
+    logger.info("Intra-cell consensus done, result=%s", result)
+    return result
