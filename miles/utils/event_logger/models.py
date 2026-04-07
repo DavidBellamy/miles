@@ -65,8 +65,8 @@ class TrainGroupStepEndEvent(EventBase):
 
 
 class TrainAdvantageComputationEvent(_ActorTrainEventBase):
-    type: Literal["train_loss_computation"] = "train_loss_computation"
-    advantages: list[float]
+    type: Literal["train_advantage_computation"] = "train_advantage_computation"
+    advantages: list[list[float]]
     witness_ids: list[int] | None = None
 
 

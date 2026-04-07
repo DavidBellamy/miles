@@ -80,8 +80,8 @@ def _compute_zero_advantage_witness_ids(
             continue
 
         key = (event.rollout_id, event.source.cell_index)
-        for adv, wid in zip(event.advantages, event.witness_ids, strict=True):
-            if adv == 0.0:
+        for adv_tokens, wid in zip(event.advantages, event.witness_ids, strict=True):
+            if all(v == 0.0 for v in adv_tokens):
                 result[key].add(wid)
 
     return dict(result)

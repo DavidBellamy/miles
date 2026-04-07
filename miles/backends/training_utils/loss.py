@@ -459,7 +459,7 @@ def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
         return
 
     per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
-    per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
+    per_sample_advantages = [adv.tolist() for adv in advantages_list]
 
     get_event_logger().log(
         TrainAdvantageComputationEvent,
