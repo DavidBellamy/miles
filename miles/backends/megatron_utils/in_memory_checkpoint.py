@@ -19,7 +19,7 @@ class InMemoryCheckpointManager:
         self._state_dict: object = None
         self.local_ckpt_dir: str = "<in-memory>"
 
-        _assert_args_for_in_memory_checkpoint(get_args())
+        _ensure_args_for_in_memory_checkpoint(get_args())
 
     def save(self, state_dict: object, iteration: int, is_async: bool = False) -> None:
         """Store state_dict object reference in memory."""
@@ -66,8 +66,13 @@ def save_to_memory(
     return state_dict
 
 
-def _assert_args_for_in_memory_checkpoint(args: Any) -> None:
-    assert args.non_persistent_ckpt_type == "local", (
-        f"Expected non_persistent_ckpt_type='local', " f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
-    )
-    assert args.non_persistent_local_ckpt_algo is not None, "args.non_persistent_local_ckpt_algo must be set"
+def _ensure_args_for_in_memory_checkpoint(args: Any) -> None:
+    if args.non_persistent_ckpt_type != "local":
+        logger.info(
+            "Setting non_persistent_ckpt_type='local' (was %r) for in-memory checkpoint",
+            args.non_persistent_ckpt_type,
+        )
+        args.non_persistent_ckpt_type = "local"
+    if args.non_persistent_local_ckpt_algo is None:
+        logger.info("Setting non_persistent_local_ckpt_algo='fully_parallel' for in-memory checkpoint")
+        args.non_persistent_local_ckpt_algo = "fully_parallel"
