@@ -27,32 +27,30 @@ def send_ckpt(
     dst_rank: int,
     timeout: timedelta = _DEFAULT_TIMEOUT,
 ) -> None:
-    """Send in-memory checkpoint to a destination cell via torchft PGTransport.
+    """Send in-memory checkpoint to a destination cell via torchft PGTransport."""
+    import time as _time
 
-    Args:
-        indep_dp: Independent DP group info (provides the torchft PG).
-        model: Megatron model chunks.
-        optimizer: Megatron optimizer.
-        opt_param_scheduler: LR scheduler.
-        iteration: Current training iteration / rollout_id.
-        dst_rank: Destination alive_rank in the indep_dp process group.
-        timeout: Timeout for the NCCL send operation.
-    """
+    logger.info("send_ckpt: starting save_to_memory")
+    t0 = _time.monotonic()
     state_dict = save_to_memory(
         iteration=iteration,
         model=model,
         optimizer=optimizer,
         opt_param_scheduler=opt_param_scheduler,
     )
+    logger.info("send_ckpt: save_to_memory done (%.1fs)", _time.monotonic() - t0)
 
     payload = {"iteration": iteration, "state_dict": state_dict}
     transport = _create_transport(indep_dp, timeout)
+    logger.info("send_ckpt: starting send_checkpoint to dst_rank=%d (pg=%s)", dst_rank, type(indep_dp.gloo_group).__name__)
+    t1 = _time.monotonic()
     transport.send_checkpoint(
         dst_ranks=[dst_rank],
         step=0,
         state_dict=payload,
         timeout=timeout,
     )
+    logger.info("send_ckpt: send_checkpoint done (%.1fs)", _time.monotonic() - t1)
     transport.disallow_checkpoint()
     logger.info(f"Sent checkpoint (iteration={iteration}) to alive_rank={dst_rank}")
 
