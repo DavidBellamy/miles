@@ -450,12 +450,6 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
 
 
 def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
-    """Log per-sample advantages and witness_ids for the witness verifier.
-
-    Must be called BEFORE get_batch packs witness_ids into a single tensor.
-    At this point both rollout_data["advantages"] and rollout_data["witness_ids"]
-    are list[Tensor] (one per sample).
-    """
     if not is_event_logger_initialized():
         return
 
