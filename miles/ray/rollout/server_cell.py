@@ -11,7 +11,8 @@ class CellIndexer(NamedTuple):
 
 def get_cell_indexer_of_id_map(servers: dict[str, RolloutServer]) -> list[CellIndexer]:
     result: list[CellIndexer] = []
-    for srv_key, srv in servers.items():
+    for srv_key in sorted(servers):
+        srv = servers[srv_key]
         for group_index, group in enumerate(srv.server_groups):
             for local_cell in range(len(group.engines)):
                 result.append(
