@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from collections.abc import Iterator
+from typing import NamedTuple
 
 from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -13,6 +14,11 @@ from miles.utils.event_logger.models import (
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class _RolloutCellKey(NamedTuple):
+    rollout_id: int
+    cell_index: int
 
 
 class WitnessDataMismatchIssue(FrozenStrictBaseModel):
@@ -71,15 +77,15 @@ def _filter_by_type(arr: list, ty: type) -> list:
 
 def _compute_zero_advantage_witness_ids(
     events: list[TrainAdvantageComputationEvent],
-) -> dict[tuple[int, int], set[int]]:
-    """Return witness_ids where per-sample abs-sum advantage == 0.0, keyed by (rollout_id, cell_index)."""
-    result: dict[tuple[int, int], set[int]] = defaultdict(set)
+) -> dict[_RolloutCellKey, set[int]]:
+    """Return witness_ids where all per-token advantages == 0.0, keyed by (rollout_id, cell_index)."""
+    result: dict[_RolloutCellKey, set[int]] = defaultdict(set)
 
     for event in events:
         if event.witness_ids is None:
             continue
 
-        key = (event.rollout_id, event.source.cell_index)
+        key = _RolloutCellKey(event.rollout_id, event.source.cell_index)
         for adv_tokens, wid_tokens in zip(event.advantages, event.witness_ids, strict=True):
             if all(v == 0.0 for v in adv_tokens):
                 result[key].add(wid_tokens[0])
@@ -138,7 +144,7 @@ def _find_mismatches(
                 )
                 continue
 
-            zero_adv_ids = zero_adv_witness_ids_by_key.get((rollout_id, cell_index), set())
+            zero_adv_ids = zero_adv_witness_ids_by_key.get(_RolloutCellKey(rollout_id, cell_index), set())
 
             for event in witness_events_of_cell:
                 issue = _compare_snapshot(
