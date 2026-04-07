@@ -3,6 +3,8 @@ from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
+from megatron.core import parallel_state as mpu
+from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group, make_sharded_tensors_for_checkpoint
 from torch import Tensor
 
 from miles.utils.event_logger.logger import get_event_logger
@@ -34,8 +36,6 @@ def witness_dump_and_clear_stale(
     optimizer: torch.optim.Optimizer,
 ) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
-    from megatron.core import parallel_state as mpu
-
     pp_rank = mpu.get_pipeline_model_parallel_rank()
 
     for chunk_index, chunk in enumerate(model):
@@ -128,10 +128,6 @@ class _DataWitness(nn.Module):
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
     ) -> dict:
-        from megatron.core import parallel_state as mpu
-        from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group
-        from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
-
         pp_rank = mpu.get_pipeline_model_parallel_rank()
         # Embed PP rank in the checkpoint key so each pipeline stage has a unique
         # key (e.g. local_head_witness_pp0.witness.weight vs _pp1.witness.weight).
