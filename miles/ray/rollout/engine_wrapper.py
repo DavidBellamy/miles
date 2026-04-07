@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ray
 from pydantic import BaseModel, ConfigDict
 
@@ -8,6 +10,18 @@ class EngineWrapper:
     def __init__(self):
         self._state = _StateStopped()
         TODO
+
+    # TODO: unify w/ trainer `change_state`
+    def _change_state(
+        self,
+        debug_name: str,
+        old_state_cls: type[_State] | tuple[type[_State], ...],
+        new_state: _State,
+    ) -> None:
+        logger.info(f"{debug_name} start old={self._state}")
+        assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
+        self._state = new_state
+        logger.info(f"{debug_name} end new={self._state}")
 
 
 # ------------------------- states -----------------------------
@@ -33,4 +47,4 @@ class _StateAllocatedAlive(_StateAllocatedBase):
     pass
 
 
-CellState = _StateStopped | _StateAllocatedUninitialized | _StateAllocatedAlive
+_State = _StateStopped | _StateAllocatedUninitialized | _StateAllocatedAlive
