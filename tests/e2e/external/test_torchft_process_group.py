@@ -556,5 +556,80 @@ def run_inflight(
     print()
 
 
+@app.command()
+def run_p2p(
+    timeout_s: Annotated[float, typer.Option(help="torchft PG timeout")] = 30.0,
+) -> None:
+    """Test P2P send/recv on torchft ProcessGroupGloo — used by PGTransport for ckpt transfer."""
+    from torch.distributed import TCPStore
+
+    ray.init(ignore_reinit_error=True)
+
+    store = TCPStore(host_name="localhost", port=0, is_master=True, wait_for_workers=False)
+    store_addr = f"localhost:{store.port}/p2p"
+
+    print(f"\n{'='*70}")
+    print(f"  P2P SEND/RECV TEST (Gloo)  timeout={timeout_s}s")
+    print(f"{'='*70}\n")
+
+    @ray.remote(num_gpus=1)
+    class _P2PWorker:
+        def init(self, *, store_addr: str, rank: int, timeout_s: float) -> dict:
+            import torch
+            from torchft.process_group import ProcessGroupGloo
+
+            self._rank = rank
+            self._pg = ProcessGroupGloo(timeout=timedelta(seconds=timeout_s))
+            self._pg.configure(store_addr=store_addr, replica_id=str(rank), rank=rank, world_size=2, quorum_id=0)
+            return {"rank": rank, "status": "configured"}
+
+        def send_tensor(self, dst_rank: int) -> dict:
+            import torch
+
+            t = torch.tensor([42.0, 43.0])
+            start = time.monotonic()
+            try:
+                work = self._pg.send([t], dst_rank, tag=100)
+                work.wait()
+                return {"rank": self._rank, "status": "sent", "elapsed_s": round(time.monotonic() - start, 2)}
+            except Exception as e:
+                return {"rank": self._rank, "status": "send_error", "error": str(e), "elapsed_s": round(time.monotonic() - start, 2)}
+
+        def recv_tensor(self, src_rank: int) -> dict:
+            import torch
+
+            t = torch.zeros(2)
+            start = time.monotonic()
+            try:
+                work = self._pg.recv([t], src_rank, tag=100)
+                work.wait()
+                return {"rank": self._rank, "status": "received", "value": t.tolist(), "elapsed_s": round(time.monotonic() - start, 2)}
+            except Exception as e:
+                return {"rank": self._rank, "status": "recv_error", "error": str(e), "elapsed_s": round(time.monotonic() - start, 2)}
+
+    workers = [_P2PWorker.remote() for _ in range(2)]
+    results = ray.get([w.init.remote(store_addr=store_addr, rank=i, timeout_s=timeout_s) for i, w in enumerate(workers)])
+    for r in results:
+        print(f"  {r}")
+
+    print("\n--- P2P: rank 0 sends to rank 1 ---")
+    send_ref = workers[0].send_tensor.remote(dst_rank=1)
+    recv_ref = workers[1].recv_tensor.remote(src_rank=0)
+    for ref, label in [(send_ref, "send"), (recv_ref, "recv")]:
+        try:
+            result = ray.get(ref, timeout=timeout_s + 30)
+            print(f"  {label}: {result}")
+        except Exception as e:
+            print(f"  {label}: FAILED — {e}")
+
+    for w in workers:
+        try:
+            ray.kill(w, no_restart=True)
+        except Exception:
+            pass
+    del store
+    print()
+
+
 if __name__ == "__main__":
     app()
