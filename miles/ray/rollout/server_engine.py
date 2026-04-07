@@ -19,7 +19,9 @@ class ServerEngine:
         self._change_state("mark_allocated", _StateStopped, _StateAllocatedUninitialized(actor_handle=actor_handle))
 
     def mark_alive(self):
-        self._change_state("mark_alive", _StateAllocatedUninitialized, _StateAllocatedAlive(actor_handle=self.actor_handle))
+        self._change_state(
+            "mark_alive", _StateAllocatedUninitialized, _StateAllocatedAlive(actor_handle=self.actor_handle)
+        )
 
     def mark_stopped(self):
         self._change_state("mark_stopped", (_StateStopped, _StateAllocatedBase), _StateStopped())
