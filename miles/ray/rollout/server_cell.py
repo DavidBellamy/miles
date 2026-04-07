@@ -13,12 +13,12 @@ def _get_cell_id_to_indexer_map(servers: dict[str, RolloutServer]) -> list[CellI
     result: list[CellIndexer] = []
     for srv_key, srv in servers.items():
         for group_index, group in enumerate(srv.server_groups):
-            npe = group.nodes_per_engine
             for local_cell in range(len(group.engines)):
                 result.append(CellIndexer(
                     srv_key=srv_key,
                     group_index=group_index,
-                    engine_indices=list(range(local_cell * npe, (local_cell + 1) * npe)),
+                    engine_indices=list(
+                        range(local_cell * group.nodes_per_engine, (local_cell + 1) * group.nodes_per_engine)),
                 ))
     return result
 
