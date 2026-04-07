@@ -506,6 +506,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=False,
                 help="Whether to enable the fault tolerance function during rollout.",
             )
+            # TODO may unify arg name later
+            parser.add_argument(
+                "--ft-rollout-allow-partial",
+                action="store_true",
+                default=False,
+                help="Allow some rollout engines to be stopped and not participated in a step, instead of waiting for all engines to ready before starting a rollout step",
+            )
             parser.add_argument(
                 "--rollout-health-check-interval",
                 type=float,
