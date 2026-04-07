@@ -58,38 +58,6 @@ def witness_dump_and_clear_stale(
 # ---------------------------------------------------------------------------
 
 
-class _AbsBroadcastAdd(torch.autograd.Function):
-    """Broadcast-add a low-dim addend to a high-dim tensor, using abs-reduced gradient for the addend.
-
-    Forward: ``hidden_states + addend`` (standard broadcast).
-    Backward for ``hidden_states``: pass-through.
-    Backward for ``addend``: ``grad.abs().sum(dim=-1, keepdim=True)`` instead of ``grad.sum(dim=-1, keepdim=True)``.
-
-    This avoids gradient cancellation when the upstream gradient has mixed signs
-    across the last dimension.  The witness embedding only needs to detect
-    *whether* gradient flowed (nonzero), not the exact magnitude, so using
-    ``abs`` is acceptable.
-    """
-
-    @staticmethod
-    def forward(ctx: torch.autograd.function.FunctionCtx, hidden_states: Tensor, addend: Tensor) -> Tensor:
-        assert addend.shape[-1] == 1, f"addend last dim must be 1, got {addend.shape}"
-        assert hidden_states.shape[:-1] == addend.shape[:-1], (
-            f"hidden_states and addend must match on all dims except last, "
-            f"got {hidden_states.shape} vs {addend.shape}"
-        )
-        return hidden_states + addend
-
-    @staticmethod
-    def backward(ctx: torch.autograd.function.FunctionCtx, grad: Tensor) -> tuple[Tensor, Tensor]:
-        grad_addend = grad.abs().sum(dim=-1, keepdim=True)
-        return grad, grad_addend
-
-
-def _abs_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
-    return _AbsBroadcastAdd.apply(hidden_states, addend)
-
-
 class _DataWitness(nn.Module):
     def __init__(
         self,
@@ -133,6 +101,38 @@ class _DataWitness(nn.Module):
             tp_group=mpu.get_tensor_model_parallel_group(),
             dp_cp_group=metadata["dp_cp_group"],
         )
+
+
+def _abs_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
+    return _AbsBroadcastAdd.apply(hidden_states, addend)
+
+
+class _AbsBroadcastAdd(torch.autograd.Function):
+    """Broadcast-add a low-dim addend to a high-dim tensor, using abs-reduced gradient for the addend.
+
+    Forward: ``hidden_states + addend`` (standard broadcast).
+    Backward for ``hidden_states``: pass-through.
+    Backward for ``addend``: ``grad.abs().sum(dim=-1, keepdim=True)`` instead of ``grad.sum(dim=-1, keepdim=True)``.
+
+    This avoids gradient cancellation when the upstream gradient has mixed signs
+    across the last dimension.  The witness embedding only needs to detect
+    *whether* gradient flowed (nonzero), not the exact magnitude, so using
+    ``abs`` is acceptable.
+    """
+
+    @staticmethod
+    def forward(ctx: torch.autograd.function.FunctionCtx, hidden_states: Tensor, addend: Tensor) -> Tensor:
+        assert addend.shape[-1] == 1, f"addend last dim must be 1, got {addend.shape}"
+        assert hidden_states.shape[:-1] == addend.shape[:-1], (
+            f"hidden_states and addend must match on all dims except last, "
+            f"got {hidden_states.shape} vs {addend.shape}"
+        )
+        return hidden_states + addend
+
+    @staticmethod
+    def backward(ctx: torch.autograd.function.FunctionCtx, grad: Tensor) -> tuple[Tensor, Tensor]:
+        grad_addend = grad.abs().sum(dim=-1, keepdim=True)
+        return grad, grad_addend
 
 
 # ---------------------------------------------------------------------------
