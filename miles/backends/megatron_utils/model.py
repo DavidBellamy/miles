@@ -533,7 +533,7 @@ def train_one_step(
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
     if outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
-        return {}, grad_norm, outcome
+        return {}, None, outcome
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced)
