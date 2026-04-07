@@ -11,6 +11,13 @@ class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
 
+    def mark_allocated(self, actor_handle: ray.actor.ActorHandle):
+        self._change_state("mark_allocated", _StateStopped, _StateAllocatedUninitialized(actor_handle=actor_handle))
+
+    @property
+    def is_allocated(self) -> bool:
+        return isinstance(self._state, _StateAllocatedBase)
+
     # TODO: unify w/ trainer `change_state`
     def _change_state(
         self,

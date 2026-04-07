@@ -73,7 +73,7 @@ class ServerGroup:
 
         new_engines = []
         for i in range(len(self.all_engines)):
-            if self.all_engines[i] is not None:
+            if self.all_engines[i].is_allocated:
                 continue
 
             global_rank = self.rank_offset + i
@@ -120,7 +120,7 @@ class ServerGroup:
             )
 
             new_engines.append((global_rank, rollout_engine))
-            self.all_engines[i] = rollout_engine
+            self.all_engines[i].mark_allocated(rollout_engine)
 
         curr_num_new_engines = len(new_engines)
         self.has_new_engines |= curr_num_new_engines > 0
