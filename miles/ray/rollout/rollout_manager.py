@@ -189,7 +189,8 @@ class RolloutManager:
     async def get_updatable_engines_and_lock(self):
         """Return engines eligible for weight updates."""
         srv = self._get_updatable_server()
-        await srv.wait_all_engines_alive()
+        if srv:
+            await srv.wait_all_engines_alive()
         engines = [e.actor_handle for e in srv.engines] if srv else []
         gpu_counts = srv.engine_gpu_counts if srv else []
         gpu_offsets = srv.engine_gpu_offsets if srv else []
