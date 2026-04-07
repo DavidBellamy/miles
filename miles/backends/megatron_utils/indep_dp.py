@@ -88,13 +88,18 @@ def _poll_work_until_complete(work: dist._Work, pg: dist.ProcessGroup, timeout: 
     On timeout, calls ``pg.shutdown()`` (non-blocking, avoids ``ncclCommAbort``
     which can hang on NVLink) and raises ``TimeoutError``.
     """
+    # torchft's _WorkAcceleratorTimeout wraps the real NCCL Work but doesn't
+    # override is_completed(). Access the inner work for correct polling.
+    inner_work = getattr(work, "_work", work)
+
     deadline = time.monotonic() + timeout
-    while not work.is_completed():
+    while inner_work is not None and not inner_work.is_completed():
         if time.monotonic() > deadline:
             logger.error("indep_dp allreduce timed out after %.0fs, shutting down PG (no abort)", timeout)
             pg.shutdown()
             raise TimeoutError(f"indep_dp allreduce timed out after {timeout}s")
         time.sleep(_INDEP_DP_ALLREDUCE_POLL_INTERVAL)
+    # Final wait to propagate any errors from the completed operation
     success = work.wait()
     if not success:
         raise RuntimeError("indep_dp allreduce failed (wait returned False)")
