@@ -97,13 +97,12 @@ class RayTrainCell:
     async def prepare_indep_dp_mode_alive(
         self,
         indep_dp_info: IndepDPInfo,
-        should_save_ckpt: bool = False,
     ):
         await self.execute("reconfigure_indep_dp", indep_dp_info=indep_dp_info)
         self._update_indep_dp_info(indep_dp_info)
 
-        if should_save_ckpt:
-            return await self.execute("save_ckpt_to_ray")
+    async def save_ckpt_to_ray(self) -> list:
+        return await self.execute("save_ckpt_to_ray")
 
     async def prepare_indep_dp_mode_healing(
         self,

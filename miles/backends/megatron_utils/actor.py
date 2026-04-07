@@ -671,6 +671,7 @@ class MegatronTrainRayActor(TrainRayActor):
         logger.info("Saved checkpoint to Ray object store (iteration=%s)", self._last_rollout_id)
         return ref
 
+
     def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
         reconfigure_indep_dp_group(
             parallel_state=get_parallel_state(),
