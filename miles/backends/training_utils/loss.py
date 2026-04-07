@@ -452,20 +452,14 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
 def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
     if not is_event_logger_initialized():
         return
-
-    advantages_list: list[torch.Tensor] | None = rollout_data.get("advantages")
-    witness_ids_list: list[torch.Tensor] | None = rollout_data.get("witness_ids")
-    if advantages_list is None or witness_ids_list is None:
+    if rollout_data.get("advantages") is None or rollout_data.get("witness_ids") is None:
         return
-
-    per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
-    per_sample_advantages = [adv.tolist() for adv in advantages_list]
 
     get_event_logger().log(
         TrainAdvantageComputationEvent,
         dict(
-            advantages=per_sample_advantages,
-            witness_ids=per_sample_witness_ids,
+            advantages=[adv.tolist() for adv in rollout_data["advantages"]],
+            witness_ids=[int(wid[0]) for wid in rollout_data["witness_ids"]],
         ),
         print_log=False,
     )
