@@ -193,8 +193,12 @@ class RolloutManager:
         if not srv:
             return [], self.rollout_engine_lock, False, [], []
 
-        await srv.wait_all_engines_alive()
-        engines = [e.actor_handle for e in srv.engines]
+        if not self.args.ft_rollout_allow_partial:
+            await srv.wait_all_engines_alive()
+        engines = [e.actor_handle if e.is_alive else None for e in srv.engines]
+        if not self.args.ft_rollout_allow_partial:
+            assert all(e is not None for e in engines)
+
         gpu_counts = srv.engine_gpu_counts
         gpu_offsets = srv.engine_gpu_offsets
         has_new = srv.has_new_engines
