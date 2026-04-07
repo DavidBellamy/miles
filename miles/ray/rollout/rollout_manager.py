@@ -195,7 +195,7 @@ class RolloutManager:
             return EnginesAndLock(
                 rollout_engines=[],
                 rollout_engine_lock=self.rollout_engine_lock,
-                has_new_engines=False,
+                needs_reconnect_rollout_engines=False,
                 engine_gpu_counts=[],
                 engine_gpu_offsets=[],
             )
@@ -204,7 +204,7 @@ class RolloutManager:
         return EnginesAndLock(
             rollout_engines=[e.actor_handle for e in srv.engines],
             rollout_engine_lock=self.rollout_engine_lock,
-            has_new_engines=srv.has_new_engines,
+            needs_reconnect_rollout_engines=srv.has_new_engines,
             engine_gpu_counts=srv.engine_gpu_counts,
             engine_gpu_offsets=srv.engine_gpu_offsets,
         )
@@ -307,6 +307,6 @@ class RolloutManager:
 class EnginesAndLock:
     rollout_engines: list[ray.actor.ActorHandle]
     rollout_engine_lock: ray.actor.ActorHandle
-    has_new_engines: bool
+    needs_reconnect_rollout_engines: bool
     engine_gpu_counts: list[int]
     engine_gpu_offsets: list[int]

@@ -495,7 +495,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         rollout_engines = info.rollout_engines
         rollout_engine_lock = info.rollout_engine_lock
-        has_new_engines = info.has_new_engines
+        needs_reconnect_rollout_engines = info.needs_reconnect_rollout_engines
         engine_gpu_counts = info.engine_gpu_counts
         engine_gpu_offsets = info.engine_gpu_offsets
         del info
@@ -503,7 +503,7 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.args.offload_train:
             reload_process_groups()
 
-        if has_new_engines:
+        if needs_reconnect_rollout_engines:
             self.weight_updater.connect_rollout_engines(
                 rollout_engines,
                 rollout_engine_lock,
