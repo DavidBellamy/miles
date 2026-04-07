@@ -4,6 +4,9 @@ import ray
 from pydantic import BaseModel, ConfigDict
 
 
+# NOTE: currently it is almost a dataclass without encapsulation;
+#       ideally, it may encapsulate all logic and ensure state transition only happens after internal actions,
+#       and no external code can touch its internals
 class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
