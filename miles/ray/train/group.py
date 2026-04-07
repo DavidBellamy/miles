@@ -265,43 +265,13 @@ class RayTrainGroup:
     async def _execute_all_alive_and_catch(self, fn_name: str, *args, **kwargs):
         snapshot_alive_cells = [c for c in self._cells if c.is_alive]
         assert snapshot_alive_cells, "No alive cells"
-
-        tasks = [
-            asyncio.create_task(cell.execute(fn_name, *args, **kwargs))
-            for cell in snapshot_alive_cells
-        ]
-
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-
-        if pending:
-            has_error = any(not t.cancelled() and t.exception() is not None for t in done)
-            if has_error:
-                # Give surviving cells time to detect peer failure via non-blocking
-                # poll timeout and return DISCARDED_SHOULD_RETRY on their own.
-                grace_done, still_pending = await asyncio.wait(pending, timeout=90)
-                done = done | grace_done
-                if still_pending:
-                    for cell, task in zip(snapshot_alive_cells, tasks):
-                        if task in still_pending and cell.is_alive:
-                            logger.warning(
-                                "Killing cell %d (still stuck after grace period) in %s",
-                                cell.cell_index, fn_name,
-                            )
-                            cell._mark_as_errored()
-                    await asyncio.wait(still_pending, timeout=30)
-                pending = still_pending
-            else:
-                await asyncio.wait(pending)
-
-        outputs: list = []
-        for task in tasks:
-            if task.cancelled():
-                outputs.append(RuntimeError("Task cancelled after peer failure"))
-            elif task.exception() is not None:
-                outputs.append(task.exception())
-            else:
-                outputs.append(task.result())
-
+        # NOTE: we intentionally use a plain gather here and do not add timeouts
+        # or kill straggling cells.  If a cell hangs indefinitely, the external
+        # FT controller (e.g. keel) will detect the problem and handle it.
+        outputs = await asyncio.gather(
+            *[cell.execute(fn_name, *args, **kwargs) for cell in snapshot_alive_cells],
+            return_exceptions=True,
+        )
         AsyncioGatherUtils.log_error(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
         return snapshot_alive_cells, outputs
 
