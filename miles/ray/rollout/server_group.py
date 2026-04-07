@@ -57,7 +57,7 @@ class ServerGroup:
     def start_engines(self, port_cursors: PortCursors) -> tuple[list, int]:
         """Create Ray actors, allocate ports, and fire ``engine.init()`` without waiting.
 
-        Returns ``(init_handles, port_cursors)`` where *init_handles* is a list
+        Returns ``(init_handles, curr_num_new_engines)`` where *init_handles* is a list
         of Ray ObjectRefs and *port_cursors* maps node index -> next free port.
         """
         if self.args.debug_train_only or self.worker_type == "placeholder":
@@ -181,7 +181,7 @@ class ServerGroup:
         release_handles = []
         all_resume_engines = []
         logger.info(f"Recovered {curr_num_new_engines} dead rollout engines (worker_type={self.worker_type})")
-        assert curr_num_new_engines == len(dead_indices), "num_new_engines does not match dead_indices length"
+        assert curr_num_new_engines == len(dead_indices), "curr_num_new_engines does not match dead_indices length"
         if self.needs_offload and dead_indices:
             new_engines = [self.all_engines[i] for i in dead_indices]
             release_handles.extend(engine.release_memory_occupation.remote() for engine in new_engines)
