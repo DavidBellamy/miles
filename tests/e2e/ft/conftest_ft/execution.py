@@ -138,7 +138,13 @@ def get_common_train_args(
 
 
 def get_ft_args(mode: FTTestMode) -> str:
-    return "--use-fault-tolerance " "--ft-components train " "--control-server-port 0 "
+    return (
+        "--use-fault-tolerance "
+        "--ft-components train "
+        "--control-server-port 0 "
+        "--non-persistent-ckpt-type local "
+        "--non-persistent-local-ckpt-algo fully_parallel "
+    )
 
 
 # Required for reproducibility (ref: https://github.com/THUDM/slime/pull/370)
