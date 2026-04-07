@@ -60,8 +60,14 @@ def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = Tr
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
-    # Skip metric comparison: crash recovery + retry changes event count/ordering.
-    # Dump comparison is the authoritative check for model state correctness.
+    compare_metrics(
+        baseline_dir=f"{dump_dir}/baseline/phase_b",
+        target_dir=f"{dump_dir}/target/phase_b",
+        rtol=5e-2,
+        atol=1e-7,
+        key_prefixes=["train/"],
+        allow_extra_target_events=True,
+    )
     compare_dumps(
         baseline_dir=f"{dump_dir}/baseline/phase_b",
         target_dir=f"{dump_dir}/target/phase_b",
