@@ -149,11 +149,9 @@ class RayTrainCell:
         )
 
     def _mark_as_errored(self) -> None:
-        for actor in self._state.actor_handles:
-            try:
-                ray.kill(actor, no_restart=True)
-            except Exception:
-                pass
+        # NOTE: do NOT kill actors here — surviving actors may still be in NCCL
+        # collectives with peer cells. Killing them prematurely would cause
+        # peer ranks to hang. Actors are cleaned up when the cell is stopped.
         self._change_state(
             "_mark_as_errored",
             (StateAllocatedAlive, StateAllocatedErrored),

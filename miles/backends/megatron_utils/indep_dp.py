@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import torch
 import torch.distributed as dist
 
 from miles.utils.indep_dp import IndepDPInfo
@@ -123,7 +124,13 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
         logger.exception("Gradient allreduce across replicas failed")
 
     try:
-        return collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)
+        cross_cell_ok = collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)
     except Exception:
         logger.exception("collective_bool_and for gradient allreduce failed (peer cell likely dead)")
-        return False
+        cross_cell_ok = False
+
+    # Synchronize within the cell: if ANY rank in this cell detected failure,
+    # ALL ranks must return False so the entire cell discards this step.
+    ok_tensor = torch.tensor([1 if cross_cell_ok else 0], dtype=torch.int32, device="cuda")
+    dist.all_reduce(ok_tensor, op=dist.ReduceOp.MIN)
+    return bool(ok_tensor.item())
