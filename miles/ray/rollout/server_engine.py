@@ -4,9 +4,7 @@ import ray
 from pydantic import BaseModel, ConfigDict
 
 
-# NOTE: better name may be `ServerEngine`, but we explicitly name it `wrapper` here to
-#       avoid confusion w/ the old `engine`s which are indeed ray `ActorHandle`s
-class EngineWrapper:
+class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
 
