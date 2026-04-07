@@ -74,7 +74,8 @@ def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
                 router_port=router_port,
                 update_weights=model_cfg.update_weights,
             )
-            handles, _ = group.start_engines(port_cursors)
+            handles, new_engine_indices = group.start_engines(port_cursors)
+            group.mark_alive(engine_indices=new_engine_indices)
             all_init_handles.extend(handles)
             server_groups.append(group)
 
