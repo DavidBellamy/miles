@@ -278,14 +278,20 @@ class RayTrainGroup:
         if pending:
             has_error = any(not t.cancelled() and t.exception() is not None for t in done)
             if has_error:
-                for cell, task in zip(snapshot_alive_cells, tasks):
-                    if task in pending and cell.is_alive:
-                        logger.warning(
-                            "Killing cell %d to unblock after peer failure in %s",
-                            cell.cell_index, fn_name,
-                        )
-                        cell._mark_as_errored()
-                await asyncio.wait(pending, timeout=60)
+                # Give surviving cells time to detect peer failure via non-blocking
+                # poll timeout and return DISCARDED_SHOULD_RETRY on their own.
+                grace_done, still_pending = await asyncio.wait(pending, timeout=90)
+                done = done | grace_done
+                if still_pending:
+                    for cell, task in zip(snapshot_alive_cells, tasks):
+                        if task in still_pending and cell.is_alive:
+                            logger.warning(
+                                "Killing cell %d (still stuck after grace period) in %s",
+                                cell.cell_index, fn_name,
+                            )
+                            cell._mark_as_errored()
+                    await asyncio.wait(still_pending, timeout=30)
+                pending = still_pending
             else:
                 await asyncio.wait(pending)
 

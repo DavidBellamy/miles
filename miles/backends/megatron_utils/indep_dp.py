@@ -1,4 +1,5 @@
 import logging
+import time
 from collections.abc import Sequence
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -14,6 +15,9 @@ if TYPE_CHECKING:
     from megatron.core.distributed import DistributedDataParallel as DDP
 
 logger = logging.getLogger(__name__)
+
+_INDEP_DP_ALLREDUCE_POLL_INTERVAL: float = 0.05  # 50ms
+_INDEP_DP_ALLREDUCE_TIMEOUT: float = 60.0  # seconds
 
 
 def create_indep_dp_group(
@@ -77,6 +81,24 @@ def reconfigure_indep_dp_group(
     logger.info(f"Reconfigured indep_dp PG with quorum_id={indep_dp_info.quorum_id}")
 
 
+def _poll_work_until_complete(work: dist._Work, pg: dist.ProcessGroup, timeout: float) -> None:
+    """Poll a non-blocking NCCL work until completion or timeout.
+
+    On timeout, calls ``pg.shutdown()`` (non-blocking, avoids ``ncclCommAbort``
+    which can hang on NVLink) and raises ``TimeoutError``.
+    """
+    deadline = time.monotonic() + timeout
+    while not work.is_completed():
+        if time.monotonic() > deadline:
+            logger.error("indep_dp allreduce timed out after %.0fs, shutting down PG (no abort)", timeout)
+            pg.shutdown()
+            raise TimeoutError(f"indep_dp allreduce timed out after {timeout}s")
+        time.sleep(_INDEP_DP_ALLREDUCE_POLL_INTERVAL)
+    success = work.wait()
+    if not success:
+        raise RuntimeError("indep_dp allreduce failed (wait returned False)")
+
+
 def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_state: ParallelState) -> bool:
     assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
     assert parallel_state.intra_dp.size == 1, (
@@ -85,7 +107,6 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
     )
 
     pg = parallel_state.indep_dp.group
-    util = GeneralPGUtil.create(pg)
 
     allreduce_success = True
     try:
@@ -93,7 +114,10 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
             # mimic: DistributedDataParallel.start_grad_sync
             for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
                 for bucket in bucket_group.buckets:
-                    util.all_reduce(bucket.grad_data, pg, op=dist.ReduceOp.SUM)
+                    opts = dist.AllreduceOptions()
+                    opts.reduceOp = dist.ReduceOp.SUM
+                    work = pg.allreduce([bucket.grad_data], opts)
+                    _poll_work_until_complete(work, pg, timeout=_INDEP_DP_ALLREDUCE_TIMEOUT)
     except Exception:
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
