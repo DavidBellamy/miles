@@ -4,14 +4,9 @@ import ray
 from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True)
-class ServerCellConfig:
-    TODO
-
-
-class ServerCell:
-    def __init__(self, config: ServerCellConfig):
-        self.config = config
+class ServerEngine:
+    def __init__(self):
+        self._state = _StateStopped()
         TODO
 
 
@@ -27,7 +22,7 @@ class _StateStopped(_StateBase):
 
 
 class _StateAllocatedBase(_StateBase):
-    actor_handles: list[ray.actor.ActorHandle]
+    actor_handle: ray.actor.ActorHandle
 
 
 class _StateAllocatedUninitialized(_StateAllocatedBase):
