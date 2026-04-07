@@ -4,7 +4,6 @@ import threading
 import ray
 
 from miles.ray.rollout.server_group import ServerGroup
-from miles.utils.async_utils import run
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +154,6 @@ class RolloutHealthMonitor:
             logger.error(
                 f"Health check failed for rollout engine {rollout_engine_id} (ray timeout or error). Killing actor. Exception: {e}"
             )
-            run(self._server_group.stop_engines(rollout_engine_id=rollout_engine_id))
+            self._server_group.stop_engines(rollout_engine_id=rollout_engine_id)
         else:
             logger.debug(f"Health check passed for rollout engine {rollout_engine_id}")

@@ -156,7 +156,7 @@ class ServerGroup:
         ]
         return init_handles, new_engine_indices
 
-    async def stop_engines(self, rollout_engine_id: int):
+    def stop_engines(self, rollout_engine_id: int):
         logger.info(f"Killing server group {rollout_engine_id}...")
         for i in range(
             rollout_engine_id * self.nodes_per_engine,
@@ -166,7 +166,9 @@ class ServerGroup:
             if engine.is_allocated:
                 logger.info(f"Shutting down and killing engine at index {i}")
                 try:
-                    await engine.actor_handle.shutdown.remote()
+                    # Deliberately make it non-async here to avoid introducing
+                    # two states like "stopping (but not stopped)" vs "stopped
+                    ray.get(engine.actor_handle.shutdown.remote())
                     ray.kill(engine.actor_handle)
                     logger.info(f"Successfully killed engine at index {i}")
                 except Exception as e:
