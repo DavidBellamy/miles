@@ -10,7 +10,7 @@ from miles.ray.rollout.metrics import log_eval_rollout_data, log_rollout_data
 from miles.ray.rollout.rollout_data_conversion import postprocess_rollout_data
 from miles.ray.rollout.rollout_server import RolloutServer, start_rollout_servers
 from miles.ray.rollout.router_manager import start_session_server
-from miles.ray.rollout.server_cell import get_cell_indexer_from_id
+from miles.ray.rollout.server_cell import get_cell_indexer_of_id_map
 from miles.ray.rollout.train_data_conversion import convert_samples_to_train_data, split_train_data_by_dp
 from miles.ray.utils import Lock
 from miles.rollout.base_types import (
@@ -232,8 +232,8 @@ class RolloutManager:
     #     pass
 
     async def stop_cell(self, cell_id: int):
-        indexer = get_cell_indexer_from_id(self.servers, cell_id)
-        group = self.servers[indexer.srv_key].server_groups[indexer.group_index]
+        idx = get_cell_indexer_of_id_map(self.servers)[cell_id]
+        group = self.servers[idx.srv_key].server_groups[idx.group_index]
         group.stop_engines(TODO_translate)
 
     # -------------------------- misc APIs -----------------------------
