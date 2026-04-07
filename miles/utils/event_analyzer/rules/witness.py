@@ -16,11 +16,6 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 logger = logging.getLogger(__name__)
 
 
-class _RolloutCellKey(NamedTuple):
-    rollout_id: int
-    cell_index: int
-
-
 class WitnessDataMismatchIssue(FrozenStrictBaseModel):
     rollout_id: int
     cell_index: int
@@ -73,6 +68,11 @@ def check(events: list[Event]) -> list[WitnessIssue]:
 
 def _filter_by_type(arr: list, ty: type) -> list:
     return [x for x in arr if isinstance(x, ty)]
+
+
+class _RolloutCellKey(NamedTuple):
+    rollout_id: int
+    cell_index: int
 
 
 def _compute_zero_advantage_witness_ids(
