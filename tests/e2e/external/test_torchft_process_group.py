@@ -204,6 +204,31 @@ class _PGWorker:
                 "elapsed_s": round(time.monotonic() - start, 2),
             }
 
+    def run_allreduce_then_die(self, *, tensor_size: int, die_after_s: float) -> None:
+        """Start a large allreduce, then os._exit after a delay.
+
+        This simulates a crash DURING an in-flight allreduce — the key scenario
+        that causes ncclCommAbort to hang in production (NVLink DMA residuals).
+        """
+        import threading
+
+        import torch
+        import torch.distributed as dist
+
+        def _delayed_exit() -> None:
+            time.sleep(die_after_s)
+            logger.warning("rank %d: os._exit after %.1fs (mid-allreduce kill)", self._rank, die_after_s)
+            os._exit(1)
+
+        threading.Thread(target=_delayed_exit, daemon=True).start()
+
+        tensor = torch.ones(tensor_size, device=self._device) * (self._rank + 1.0)
+        opts = dist.AllreduceOptions()
+        opts.reduceOp = dist.ReduceOp.SUM
+        while True:
+            work = self._pg.allreduce([tensor], opts)
+            work.wait()
+
     def die_os_exit(self) -> None:
         os._exit(1)
 
@@ -385,6 +410,111 @@ def run_all(
                     )
                 except Exception as e:
                     print(f"  TEST FAILED: {e}\n")
+
+
+@app.command()
+def run_inflight(
+    timeout_s: Annotated[float, typer.Option(help="torchft PG timeout in seconds")] = 30.0,
+    tensor_size: Annotated[int, typer.Option(help="Tensor size for allreduce (larger = longer)")] = 100_000_000,
+    die_after_s: Annotated[float, typer.Option(help="Kill rank 0 after this many seconds")] = 2.0,
+    wait_style: Annotated[_WaitStyle, typer.Option(help="How survivor waits")] = _WaitStyle.BLOCKING,
+) -> None:
+    """Test in-flight allreduce crash — simulates the miles production scenario.
+
+    Both ranks start a continuous allreduce loop with a large tensor.
+    Rank 0 os._exit's after die_after_s while allreduce is in progress.
+    This tests whether ncclCommAbort hangs when NCCL kernels are in-flight on NVLink.
+    """
+    from torch.distributed import TCPStore
+
+    ray.init(ignore_reinit_error=True)
+
+    store = TCPStore(
+        host_name="localhost",
+        port=0,
+        is_master=True,
+        wait_for_workers=False,
+    )
+    store_addr = f"localhost:{store.port}/inflight"
+
+    print(f"\n{'='*70}")
+    print(f"  IN-FLIGHT CRASH TEST: tensor_size={tensor_size}  die_after={die_after_s}s"
+          f"  timeout={timeout_s}s  wait={wait_style.value}")
+    print(f"{'='*70}\n")
+
+    workers = [_PGWorker.remote() for _ in range(2)]
+    init_results = ray.get([
+        w.init.remote(
+            store_addr=store_addr, rank=i, world_size=2,
+            backend="nccl", timeout_s=timeout_s,
+        )
+        for i, w in enumerate(workers)
+    ])
+    for r in init_results:
+        print(f"  init: {r}")
+
+    # Step 1: sanity allreduce
+    print("\n--- Step 1: Sanity allreduce ---")
+    results = ray.get([w.run_allreduce_blocking_wait.remote() for w in workers])
+    for r in results:
+        print(f"  {r}")
+
+    # Step 2: start continuous allreduce on both, rank 0 will die mid-flight
+    print(f"\n--- Step 2: Start continuous allreduce, rank 0 dies after {die_after_s}s ---")
+
+    victim_ref = workers[0].run_allreduce_then_die.remote(
+        tensor_size=tensor_size, die_after_s=die_after_s,
+    )
+    # Give rank 0 time to start the allreduce loop
+    time.sleep(0.5)
+
+    # Survivor also starts allreduce (will block when peer dies)
+    print("  Survivor starting allreduce...")
+    start = time.monotonic()
+
+    if wait_style == _WaitStyle.BLOCKING:
+        survivor_ref = workers[1].run_allreduce_blocking_wait.remote()
+    elif wait_style == _WaitStyle.MANAGER:
+        survivor_ref = workers[1].run_allreduce_manager_style.remote()
+    else:
+        survivor_ref = workers[1].run_allreduce_poll.remote(timeout_s=min(15.0, timeout_s))
+
+    # Wait for victim to confirm death
+    try:
+        ray.get(victim_ref, timeout=die_after_s + 10)
+    except Exception as e:
+        elapsed = time.monotonic() - start
+        print(f"  Rank 0 confirmed dead after {elapsed:.1f}s: {type(e).__name__}")
+
+    # Step 3: wait for survivor result
+    print(f"\n--- Step 3: Waiting for survivor (timeout={timeout_s + 90}s) ---")
+    try:
+        result = ray.get(survivor_ref, timeout=timeout_s + 90)
+        elapsed = time.monotonic() - start
+        print(f"  Survivor result after {elapsed:.1f}s: {result}")
+    except ray.exceptions.GetTimeoutError:
+        elapsed = time.monotonic() - start
+        print(f"  TIMEOUT: survivor hung for {elapsed:.0f}s — ABORT HANG CONFIRMED")
+    except ray.exceptions.RayActorError as e:
+        elapsed = time.monotonic() - start
+        print(f"  ACTOR DIED after {elapsed:.0f}s: {e}")
+
+    # Step 4: check survivor
+    print("\n--- Step 4: Survivor status ---")
+    try:
+        status = ray.get(workers[1].get_status.remote(), timeout=10)
+        print(f"  {status}")
+    except Exception as e:
+        print(f"  Cannot reach survivor: {type(e).__name__}: {e}")
+
+    # Cleanup
+    for w in workers:
+        try:
+            ray.kill(w, no_restart=True)
+        except Exception:
+            pass
+    del store
+    print()
 
 
 if __name__ == "__main__":
