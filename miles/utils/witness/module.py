@@ -85,6 +85,11 @@ class _DataWitness(nn.Module):
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
     ) -> dict:
+        # Ref: Megatron-LM/megatron/core/transformer/utils.py::sharded_state_dict_default
+        # (the `else` branch for non-MegatronModule).
+        # Differences from upstream:
+        #   - pp_prefix: embeds PP rank to avoid key collision across pipeline stages
+        #   - tp_group: explicitly passed (upstream defaults to the same value)
         pp_rank = mpu.get_pipeline_model_parallel_rank()
         # Embed PP rank in the checkpoint key so each pipeline stage has a unique
         # key (e.g. local_head_witness_pp0.witness.weight vs _pp1.witness.weight).
