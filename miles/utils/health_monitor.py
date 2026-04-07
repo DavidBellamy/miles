@@ -154,11 +154,12 @@ class RolloutHealthMonitor:
             logger.error(
                 f"Health check failed for rollout engine {rollout_engine_id} (ray timeout or error). Killing actor. Exception: {e}"
             )
+            nodes_per_engine = self._server_group.nodes_per_engine
             self._server_group.stop_engines(
                 engine_indices=list(
                     range(
-                        rollout_engine_id * self.nodes_per_engine,
-                        (rollout_engine_id + 1) * self.nodes_per_engine,
+                        rollout_engine_id * nodes_per_engine,
+                        (rollout_engine_id + 1) * nodes_per_engine,
                     )
                 )
             )
