@@ -51,18 +51,12 @@ def compare_metrics(
     atol: float,
     key_prefixes: list[str] | None = None,
     exclude_keys: list[str] | None = None,
-    allow_extra_target_events: bool = False,
 ) -> None:
     if key_prefixes is None:
         key_prefixes = ["train/"]
 
     baseline_events = _read_metric_events(Path(baseline_dir))
     target_events = _read_metric_events(Path(target_dir))
-
-    if allow_extra_target_events and len(target_events) > len(baseline_events):
-        target_events = [
-            e for e in target_events if any(k.startswith(p) for k in e.metrics for p in key_prefixes)
-        ][: len(baseline_events)]
 
     issues: list[str] = []
     issues += _check_event_counts(baseline_events, target_events, baseline_dir, target_dir)
