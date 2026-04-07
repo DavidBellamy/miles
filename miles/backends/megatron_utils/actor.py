@@ -489,7 +489,7 @@ class MegatronTrainRayActor(TrainRayActor):
             destroy_process_groups()
 
     @timer
-    def update_weights(self, info: EnginesAndLock) -> None:
+    def update_weights(self, info: "EnginesAndLock") -> None:
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 
