@@ -3,6 +3,7 @@ from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
+from megatron.core import tensor_parallel
 from megatron.core import parallel_state as mpu
 from megatron.core.transformer.utils import ensure_metadata_has_dp_cp_group, make_sharded_tensors_for_checkpoint
 from torch import Tensor
@@ -109,20 +110,13 @@ class _DataWitness(nn.Module):
         nn.init.zeros_(self.witness.weight)
 
     def forward(self, witness_ids: Tensor, hidden_states: Tensor) -> Tensor:
-        """Inject witness signal into hidden_states and return the modified tensor.
-
-        1. Embedding lookup → zero-forward / identity-backward trick
-        2. Transpose from [b, s, 1] to [s, b, 1] (Megatron SBH layout)
-        3. Scatter along seq dim when sequence-parallel is active
-        4. Add to hidden_states (abs-reduced gradient for tail witnesses)
-        """
         w = self.witness(witness_ids)  # [b, s, 1]
         out = w - w.detach()  # forward: bitwise 0, backward: d/dw = I
+
         out = out.transpose(0, 1).contiguous()  # [s, b, 1]
         if self._sequence_parallel:
-            from megatron.core import tensor_parallel
-
             out = tensor_parallel.scatter_to_sequence_parallel_region(out)
+
         return _AbsBroadcastAdd.apply(hidden_states, out)
 
     def sharded_state_dict(
