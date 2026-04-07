@@ -62,7 +62,7 @@ def execute():
         "--adam-beta2 0.98 "
     )
 
-    sglang_args = "--rollout-num-gpus-per-engine 1 " "--sglang-enable-metrics "
+    sglang_args = "--rollout-num-gpus-per-engine 1 " "--sglang-enable-metrics " "--sglang-sampling-defaults openai "
 
     misc_args = (
         "--actor-num-nodes 1 "

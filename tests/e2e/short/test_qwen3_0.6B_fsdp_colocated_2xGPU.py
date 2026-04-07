@@ -60,7 +60,12 @@ def execute():
         "--adam-beta2 0.98 "
     )
 
-    sglang_args = "--rollout-num-gpus-per-engine 2 " "--sglang-decode-log-interval 1000 " "--sglang-enable-metrics "
+    sglang_args = (
+        "--rollout-num-gpus-per-engine 2 "
+        "--sglang-decode-log-interval 1000 "
+        "--sglang-enable-metrics "
+        "--sglang-sampling-defaults openai "
+    )
 
     fsdp_args = (
         # Set to true for FULL_STATE_DICT mode, false for SHARDED_STATE_DICT mode (default)

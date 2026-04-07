@@ -79,6 +79,7 @@ def execute():
         "--rollout-num-gpus-per-engine 1 "
         f"--sglang-mem-fraction-static {0.6 if TIGHT_DEVICE_MEMORY else 0.7} "
         "--sglang-enable-metrics "
+        "--sglang-sampling-defaults openai "
     )
 
     ci_args = (
