@@ -656,7 +656,7 @@ class MegatronTrainRayActor(TrainRayActor):
         assert not self.args.keep_old_actor
 
         _send_ckpt(
-            indep_dp=self.parallel_state.indep_dp,
+            indep_dp=get_parallel_state().indep_dp,
             model=self.model,
             optimizer=self.optimizer,
             opt_param_scheduler=self.opt_param_scheduler,
@@ -666,7 +666,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
     def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
         reconfigure_indep_dp_group(
-            parallel_state=self.parallel_state,
+            parallel_state=get_parallel_state(),
             store_addr=self._indep_dp_store_addr,
             indep_dp_info=indep_dp_info,
             megatron_rank=dist.get_rank(),
