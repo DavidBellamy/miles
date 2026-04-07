@@ -15,13 +15,13 @@ def get_cell_indexer_of_id_map(servers: dict[str, RolloutServer]) -> list[CellIn
         srv = servers[srv_key]
         for group_index, group in enumerate(srv.server_groups):
             assert len(group.all_engines) == len(group.engines) * group.nodes_per_engine
-            for local_cell in range(len(group.engines)):
+            for local_index in range(len(group.engines)):
                 result.append(
                     CellIndexer(
                         srv_key=srv_key,
                         group_index=group_index,
                         engine_indices=list(
-                            range(local_cell * group.nodes_per_engine, (local_cell + 1) * group.nodes_per_engine)
+                            range(local_index * group.nodes_per_engine, (local_index + 1) * group.nodes_per_engine)
                         ),
                     )
                 )
