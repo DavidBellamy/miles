@@ -59,7 +59,9 @@ def start_rollout_servers(args, pg) -> dict[str, "RolloutServer"]:
             group = ServerGroup(
                 args=args,
                 pg=pg,
-                all_engines=[ServerEngine() for _ in range(num_engines)] if group_cfg.worker_type != "placeholder" else [],
+                all_engines=(
+                    [ServerEngine() for _ in range(num_engines)] if group_cfg.worker_type != "placeholder" else []
+                ),
                 num_gpus_per_engine=gpus_per_engine,
                 has_new_engines=False,
                 worker_type=group_cfg.worker_type,

@@ -202,22 +202,34 @@ class ServerGroup:
     def offload(self):
         if not self.needs_offload:
             return []
-        return [engine.actor_handle.release_memory_occupation.remote() for engine in self.engines if engine.is_allocated]
+        return [
+            engine.actor_handle.release_memory_occupation.remote() for engine in self.engines if engine.is_allocated
+        ]
 
     def onload(self, tags: list[str] | None = None):
         if not self.needs_offload:
             return []
-        return [engine.actor_handle.resume_memory_occupation.remote(tags=tags) for engine in self.engines if engine.is_allocated]
+        return [
+            engine.actor_handle.resume_memory_occupation.remote(tags=tags)
+            for engine in self.engines
+            if engine.is_allocated
+        ]
 
     def onload_weights_from_disk(self):
         """Reload weights from ``model_path`` for non-updatable groups."""
         if not self.needs_offload or not self.model_path:
             return []
         return [
-            engine.actor_handle.update_weights_from_disk.remote(self.model_path) for engine in self.engines if engine.is_allocated
+            engine.actor_handle.update_weights_from_disk.remote(self.model_path)
+            for engine in self.engines
+            if engine.is_allocated
         ]
 
     async def check_weights(self, action: str):
         return await asyncio.gather(
-            *[engine.actor_handle.check_weights.remote(action=action) for engine in self.engines if engine.is_allocated]
+            *[
+                engine.actor_handle.check_weights.remote(action=action)
+                for engine in self.engines
+                if engine.is_allocated
+            ]
         )

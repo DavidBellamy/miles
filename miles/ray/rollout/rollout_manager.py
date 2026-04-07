@@ -260,7 +260,11 @@ class RolloutManager:
         # Only inject fault once
         self._ci_fault_injection_pending = False
 
-        if self._server and self._server.server_groups[0].all_engines and self._server.server_groups[0].all_engines[0].is_allocated:
+        if (
+            self._server
+            and self._server.server_groups[0].all_engines
+            and self._server.server_groups[0].all_engines[0].is_allocated
+        ):
             logger.info("CI Fault Injection: Simulating crash on engine 0 during generate")
             try:
                 # This will cause the ray actor to exit

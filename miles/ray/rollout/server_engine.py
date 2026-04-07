@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
 
+
 # NOTE: currently it is almost a dataclass without encapsulation;
 #       ideally, it may encapsulate all logic and ensure state transition only happens after internal actions,
 #       and no external code can touch its internals
