@@ -15,7 +15,7 @@ class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
 
-    def mark_allocated(self, actor_handle: ray.actor.ActorHandle):
+    def mark_allocated_uninitialized(self, actor_handle: ray.actor.ActorHandle):
         self._change_state("mark_allocated", _StateStopped, _StateAllocatedUninitialized(actor_handle=actor_handle))
 
     def mark_stopped(self):

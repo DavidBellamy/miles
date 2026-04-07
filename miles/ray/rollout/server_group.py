@@ -120,7 +120,7 @@ class ServerGroup:
             )
 
             new_engines.append((global_rank, rollout_engine))
-            self.all_engines[i].mark_allocated(rollout_engine)
+            self.all_engines[i].mark_allocated_uninitialized(rollout_engine)
 
         curr_num_new_engines = len(new_engines)
         self.has_new_engines |= curr_num_new_engines > 0
