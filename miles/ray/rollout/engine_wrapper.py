@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict
 class EngineWrapper:
     def __init__(self):
         self._state = _StateStopped()
-        TODO
 
     # TODO: unify w/ trainer `change_state`
     def _change_state(
