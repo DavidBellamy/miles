@@ -302,6 +302,7 @@ class RolloutManager:
             except Exception as e:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
+
 @dataclass(frozen=True)
 class EnginesAndLock:
     rollout_engines: list[ray.actor.ActorHandle]
