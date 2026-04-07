@@ -639,6 +639,8 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
+    if parallel_state.indep_dp.size > 1:
+        assert num_steps_per_rollout == 1, "indep_dp is incompatible with num_steps_per_rollout>1 currently"
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
