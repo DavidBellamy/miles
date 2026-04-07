@@ -41,6 +41,25 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+# ── SWE-bench auto-detection ────────────────────────────────────────────
+def _is_swebench_instance(metadata: dict) -> bool:
+    """Return True if metadata looks like a SWE-bench instance."""
+    return all(metadata.get(k) for k in ("repo", "version", "base_commit", "test_patch"))
+
+
+def _swebench_docker_image(instance_id: str) -> str:
+    """Derive the pre-built SWE-bench Docker image from instance_id.
+
+    Image naming convention (xingyaoww registry):
+        instance_id:  getmoto__moto-7365
+        image:        xingyaoww/sweb.eval.x86_64.getmoto_s_moto-7365:latest
+
+    The ``__`` in the instance_id maps to ``_s_`` in the image name.
+    """
+    slug = instance_id.replace("__", "_s_")
+    return f"xingyaoww/sweb.eval.x86_64.{slug}:latest"
+
+
 def _get_instruction(metadata: dict) -> str:
     for key in ("problem_statement", "instruction", "prompt"):
         val = metadata.get(key, "")
@@ -83,13 +102,18 @@ def _create_task_dir(
     env_dir = task_dir / "environment"
     env_dir.mkdir(exist_ok=True)
 
-    docker_image = metadata.get("docker_image", "ubuntu:24.04")
+    # Auto-detect SWE-bench instances and derive the correct Docker image
+    if not metadata.get("docker_image") and _is_swebench_instance(metadata):
+        docker_image = _swebench_docker_image(instance_id)
+        logger.debug(f"SWE-bench auto-detected: {instance_id} -> {docker_image}")
+    else:
+        docker_image = metadata.get("docker_image", "ubuntu:24.04")
     setup_cmds = metadata.get("setup_commands", "")
     if isinstance(setup_cmds, list):
         setup_cmds = " && ".join(setup_cmds)
     setup_block = f"RUN {setup_cmds}\n" if setup_cmds else ""
 
-    (env_dir / "Dockerfile").write_text(f"FROM {docker_image}\n{setup_block}")
+    (env_dir / "Dockerfile").write_text(f"FROM {docker_image}\nWORKDIR /testbed\nRUN mkdir -p /logs\n{setup_block}")
 
     if docker_network:
         compose_yaml = textwrap.dedent(
