@@ -481,6 +481,7 @@ def train_one_step(
     )
 
     outcome = TrainStepOutcome.NORMAL
+    grad_norm = None
     valid_step = True
 
     if parallel_state.indep_dp.size > 1:
@@ -532,13 +533,13 @@ def train_one_step(
         if args.enable_witness:
             witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
 
-    if outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
-        return {}, None, outcome
+    if outcome == TrainStepOutcome.NORMAL:
+        if mpu.is_pipeline_last_stage(ignore_virtual=True):
+            loss_reduced = aggregate_train_losses(losses_reduced)
+            return loss_reduced, grad_norm, outcome
+        return {}, grad_norm, outcome
 
-    if mpu.is_pipeline_last_stage(ignore_virtual=True):
-        loss_reduced = aggregate_train_losses(losses_reduced)
-        return loss_reduced, grad_norm, outcome
-    return {}, grad_norm, outcome
+    return {}, None, outcome
 
 
 def finalize_model_grads_with_empty_cache(*args, **kwargs):
@@ -659,8 +660,8 @@ def train(
             ft_actor_executor=ft_actor_executor,
         )
 
-        if train_step_outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
-            return train_step_outcome
+        if train_step_outcome != TrainStepOutcome.NORMAL:
+            break
 
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
