@@ -209,3 +209,10 @@ class RolloutServer:
 
     async def check_weights(self, action: str):
         return await asyncio.gather(*[g.check_weights(action=action) for g in self.server_groups])
+
+    async def wait_all_engines_alive(self):
+        while True:
+            if all(e.is_alive for g in self.server_groups for e in g.all_engines):
+                return
+            await asyncio.sleep(2)
+            logger.info("wait_all_engines_alive looping...")
