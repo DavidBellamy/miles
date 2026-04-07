@@ -222,14 +222,6 @@ class _PGWorker:
         return {"rank": self._rank, "alive": True, "errored": str(errored)}
 
 
-def _get_free_port() -> int:
-    import socket
-
-    with socket.socket() as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
 class _WaitStyle(str, Enum):
     MANAGER = "manager"
     BLOCKING = "blocking"
@@ -245,8 +237,15 @@ def _run_test(
     poll_timeout_s: float,
     world_size: int,
 ) -> None:
-    port = _get_free_port()
-    store_addr = f"localhost:{port}/test"
+    from torch.distributed import TCPStore
+
+    store = TCPStore(
+        host_name="localhost",
+        port=0,
+        is_master=True,
+        wait_for_workers=False,
+    )
+    store_addr = f"localhost:{store.port}/test"
 
     print(f"\n{'='*70}")
     print(f"  backend={backend}  failure={failure_mode.value}  timeout={timeout_s}s"
@@ -328,6 +327,14 @@ def _run_test(
             print(f"  {status}")
         except Exception as e:
             print(f"  Cannot reach survivor: {type(e).__name__}: {e}")
+
+    # Cleanup: kill all remaining actors to free GPU memory for next test
+    for w in survivors:
+        try:
+            ray.kill(w, no_restart=True)
+        except Exception:
+            pass
+    del store
 
     print()
 
