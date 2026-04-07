@@ -85,8 +85,9 @@ def reconfigure_indep_dp_group(
 def _poll_work_until_complete(work: dist._Work, pg: dist.ProcessGroup, timeout: float) -> None:
     """Poll a non-blocking NCCL work until completion or timeout.
 
-    On timeout, calls ``pg.shutdown()`` (non-blocking, avoids ``ncclCommAbort``
-    which can hang on NVLink) and raises ``TimeoutError``.
+    On timeout, raises ``TimeoutError`` without calling ``abort()`` (which hangs
+    on NVLink). The stale NCCL operation is abandoned; the PG will be
+    reconfigured on the next quorum change.
     """
     # torchft's _WorkAcceleratorTimeout wraps the real NCCL Work but doesn't
     # override is_completed(). Access the inner work for correct polling.
@@ -95,8 +96,7 @@ def _poll_work_until_complete(work: dist._Work, pg: dist.ProcessGroup, timeout: 
     deadline = time.monotonic() + timeout
     while inner_work is not None and not inner_work.is_completed():
         if time.monotonic() > deadline:
-            logger.error("indep_dp allreduce timed out after %.0fs, shutting down PG (no abort)", timeout)
-            pg.shutdown()
+            logger.error("indep_dp allreduce timed out after %.0fs (abandoning, no abort)", timeout)
             raise TimeoutError(f"indep_dp allreduce timed out after {timeout}s")
         time.sleep(_INDEP_DP_ALLREDUCE_POLL_INTERVAL)
     # Final wait to propagate any errors from the completed operation
