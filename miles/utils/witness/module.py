@@ -86,12 +86,7 @@ class _AbsBroadcastAdd(torch.autograd.Function):
         return grad, grad_addend
 
 
-def witness_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
-    """Add witness output to hidden states with abs-reduced gradient for the addend.
-
-    Use this instead of ``hidden_states + tail_out`` for tail witnesses
-    to prevent gradient cancellation across the hidden dimension.
-    """
+def _abs_broadcast_add(hidden_states: Tensor, addend: Tensor) -> Tensor:
     return _AbsBroadcastAdd.apply(hidden_states, addend)
 
 
@@ -117,7 +112,7 @@ class _DataWitness(nn.Module):
         if self._sequence_parallel:
             out = tensor_parallel.scatter_to_sequence_parallel_region(out)
 
-        return _AbsBroadcastAdd.apply(hidden_states, out)
+        return _abs_broadcast_add(hidden_states, out)
 
     def sharded_state_dict(
         self, prefix: str = "", sharded_offsets: tuple = (), metadata: object = None
