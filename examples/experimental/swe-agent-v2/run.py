@@ -38,7 +38,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     hf_checkpoint: str = "zai-org/GLM-4.7-Flash"
     ref_load: str = "/root/GLM-4.7-Flash_torch_dist"
     save_dir: str = "/root/GLM-4.7-Flash_agent_v2/"
-    max_seq_len: int = 16384
+    max_seq_len: int = 64000
     prompt_data: str = "/root/swe_train.jsonl"
 
     # Agent settings
@@ -107,7 +107,7 @@ def execute(args: ScriptArgs):
         "--rollout-batch-size 2 "
         "--n-samples-per-prompt 4 "
         "--rollout-temperature 0.8 "
-        "--rollout-max-response-len 8192 "
+        "--rollout-max-response-len 16384 "
         f"--max-seq-len {args.max_seq_len} "
         "--global-batch-size 8 "
         "--balance-data "
@@ -150,13 +150,24 @@ def execute(args: ScriptArgs):
     )
 
     sglang_args = (
-        "--rollout-num-gpus-per-engine 1 "
         "--sglang-mem-fraction-static 0.7 "
         "--sglang-tool-call-parser glm47 "
         "--sglang-reasoning-parser glm45 "
         "--use-miles-router "
         "--sglang-router-port 31000 "
-        # TODO: speculative decoding has issue, need to fix later
+        # Agent tasks can run long (complex CoT + multi-step tool calls);
+        # default 1800s may not be enough for the hardest instances.
+        "--miles-router-timeout 3600 "
+        "--rollout-num-gpus-per-engine 8 "
+        "--sglang-data-parallel-size 8 "
+        "--sglang-enable-dp-attention "
+        "--sglang-speculative-algorithm EAGLE "
+        "--sglang-speculative-num-steps 2 "
+        "--sglang-speculative-eagle-topk 1 "
+        "--sglang-speculative-num-draft-tokens 3 "
+        # "--sglang-expert-parallel-size 8 "
+        # "--sglang-moe-dense-tp-size 1 "
+        # "--sglang-enable-dp-lm-head "
     )
 
     agent_args = (

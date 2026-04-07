@@ -29,7 +29,7 @@ class SessionServer:
         self.backend_url = backend_url
         self.app = FastAPI()
 
-        timeout = getattr(args, "miles_router_timeout", 600.0)
+        timeout = getattr(args, "miles_router_timeout", 1800.0)
         self.client = httpx.AsyncClient(
             limits=httpx.Limits(max_connections=1024),
             timeout=httpx.Timeout(timeout),
