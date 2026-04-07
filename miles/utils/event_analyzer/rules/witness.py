@@ -82,9 +82,6 @@ def _compute_zero_advantage_witness_ids(
     result: dict[_RolloutCellKey, set[int]] = defaultdict(set)
 
     for event in events:
-        if event.witness_ids is None:
-            continue
-
         key = _RolloutCellKey(event.rollout_id, event.source.cell_index)
         for adv_tokens, wid_tokens in zip(event.advantages, event.witness_ids, strict=True):
             if all(v == 0.0 for v in adv_tokens):

@@ -337,18 +337,12 @@ class TestZeroAdvantageExclusion:
         assert len(issues) == 1
         assert issues[0].cell_index == 1
 
-    def test_witness_ids_none_in_loss_event_is_skipped(self) -> None:
-        """TrainAdvantageComputationEvent with witness_ids=None should not affect verification."""
+    def test_no_advantage_event_means_no_exclusion(self) -> None:
+        """Without TrainAdvantageComputationEvent at all, no zero-adv exclusion — missing ID is caught."""
         events: list[Event] = [
-            _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
-            TrainAdvantageComputationEvent(
-                timestamp=_FIXED_TS,
-                source=_make_source(),
-                rollout_id=0,
-                advantages=[[5.0]],
-                witness_ids=None,
-            ),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
-        assert check(events) == []
+        issues = check(events)
+        assert len(issues) == 1
