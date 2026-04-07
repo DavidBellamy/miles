@@ -548,7 +548,7 @@ class FSDPTrainRayActor(TrainRayActor):
         return log_dict
 
     @timer
-    def update_weights(self) -> None:  # type: ignore[override]
+    def update_weights(self, info: EnginesAndLock) -> None:  # type: ignore[override]
         """Synchronize actor weights to rollout engines.
 
         Handles both colocated and distributed update modes. In offload mode,
@@ -557,7 +557,6 @@ class FSDPTrainRayActor(TrainRayActor):
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 
-        info: EnginesAndLock = ray.get(self.rollout_manager.get_updatable_engines_and_lock.remote())
         rollout_engines = info.rollout_engines
         rollout_engine_lock = info.rollout_engine_lock
         has_new_engines = info.has_new_engines
