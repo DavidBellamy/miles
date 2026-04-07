@@ -144,7 +144,7 @@ class RolloutHealthMonitor:
             self._check_engine_health(rollout_engine_id, engine)
 
     def _check_engine_health(self, rollout_engine_id, engine) -> None:
-        if engine is None:
+        if not engine.is_allocated:
             logger.info(f"Skipping health check for engine {rollout_engine_id} (None)")
             return
 
