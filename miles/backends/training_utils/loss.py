@@ -452,14 +452,17 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
 def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
     if not is_event_logger_initialized():
         return
-    if rollout_data.get("advantages") is None or rollout_data.get("witness_ids") is None:
+
+    advantages = rollout_data.get("advantages")
+    witness_ids = rollout_data.get("witness_ids")
+    if advantages is None or witness_ids is None:
         return
 
     get_event_logger().log(
         TrainAdvantageComputationEvent,
         dict(
-            advantages=[x.tolist() for x in rollout_data["advantages"]],
-            witness_ids=[x.tolist() for x in rollout_data["witness_ids"]],
+            advantages=[x.tolist() for x in advantages],
+            witness_ids=[x.tolist() for x in witness_ids],
         ),
         print_log=False,
     )
