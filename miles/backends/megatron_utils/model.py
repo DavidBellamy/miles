@@ -658,9 +658,6 @@ def train(
             ft_actor_executor=ft_actor_executor,
         )
 
-        if train_step_outcome != TrainStepOutcome.NORMAL:
-            break
-
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
             # forward passes will use the forward pre-hook / `param_sync_func` in
@@ -692,7 +689,7 @@ def train(
                     check_mtp_loss(mtp_losses)
 
         # per train step log.
-        if is_first_replica_megatron_main_rank():
+        if (train_step_outcome == TrainStepOutcome.NORMAL) and is_first_replica_megatron_main_rank():
             accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
             role = getattr(model[0], "role", "actor")
             role_tag = "" if role == "actor" else f"{role}-"
