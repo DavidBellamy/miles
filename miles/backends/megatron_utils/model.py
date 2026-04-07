@@ -659,6 +659,9 @@ def train(
             ft_actor_executor=ft_actor_executor,
         )
 
+        if train_step_outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
+            return train_step_outcome
+
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
             # forward passes will use the forward pre-hook / `param_sync_func` in
