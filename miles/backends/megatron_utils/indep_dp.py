@@ -31,11 +31,15 @@ def create_indep_dp_group(
     except ImportError as e:
         raise ImportError("torchft is required for indep_dp. Install with: pip install torchft") from e
 
+    _OPERATION_TIMEOUT = timedelta(seconds=120)
+    # configure() needs a long timeout because it waits for ALL cells to reach
+    # the same configure call (NCCL/Gloo handshake). During healing, the new
+    # cell does a full Megatron init before reaching configure, which can take
+    # several minutes. After configure, we reset to the shorter operation timeout.
+    _CONFIGURE_TIMEOUT = timedelta(seconds=600)
+
     def _create(pg_cls: type, backend_name: str) -> dist.ProcessGroup:
-        # Must be large enough to tolerate cross-cell step-time skew (~30s observed),
-        # but not so large that a truly dead cell takes minutes to detect.
-        # TODO: tune this value based on production workload profiling.
-        pg = pg_cls(timeout=timedelta(seconds=120))
+        pg = pg_cls(timeout=_CONFIGURE_TIMEOUT)
         pg.configure(
             store_addr=f"{store_addr}/indep_dp/{backend_name}/{indep_dp_info.quorum_id}/{megatron_rank}",
             replica_id=str(indep_dp_info.cell_index),
@@ -45,6 +49,7 @@ def create_indep_dp_group(
             group_rank=megatron_rank,
             group_world_size=megatron_world_size,
         )
+        pg.set_timeout(_OPERATION_TIMEOUT)
         return pg
 
     nccl_pg = _create(ProcessGroupNCCL, "nccl")
