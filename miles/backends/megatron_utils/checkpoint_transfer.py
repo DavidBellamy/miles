@@ -95,7 +95,7 @@ def recv_ckpt(
 
 def _create_transport(indep_dp: GroupInfo, timeout: timedelta) -> PGTransport:
     return PGTransport(
-        pg=indep_dp.group,
+        pg=indep_dp.gloo_group,
         timeout=timeout,
-        device=torch.device("cuda"),
+        device=torch.device("cpu"),
     )
