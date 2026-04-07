@@ -449,6 +449,34 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     rollout_data["returns"] = returns
 
 
+def log_train_loss_computation_event(rollout_data: RolloutBatch) -> None:
+    """Log per-sample advantages and witness_ids for the witness verifier.
+
+    Must be called BEFORE get_batch packs witness_ids into a single tensor.
+    At this point both rollout_data["advantages"] and rollout_data["witness_ids"]
+    are list[Tensor] (one per sample).
+    """
+    if not is_event_logger_initialized():
+        return
+
+    advantages_list: list[torch.Tensor] | None = rollout_data.get("advantages")
+    witness_ids_list: list[torch.Tensor] | None = rollout_data.get("witness_ids")
+    if advantages_list is None or witness_ids_list is None:
+        return
+
+    per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
+    per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
+
+    get_event_logger().log(
+        TrainLossComputationEvent,
+        dict(
+            advantages=per_sample_advantages,
+            witness_ids=per_sample_witness_ids,
+        ),
+        print_log=False,
+    )
+
+
 def vanilla_tis_function(
     args,
     *,
@@ -497,34 +525,6 @@ def icepop_function(
     }
     pg_loss = pg_loss * ice_weight
     return pg_loss, loss_masks, metrics
-
-
-def log_train_loss_computation_event(rollout_data: RolloutBatch) -> None:
-    """Log per-sample advantages and witness_ids for the witness verifier.
-
-    Must be called BEFORE get_batch packs witness_ids into a single tensor.
-    At this point both rollout_data["advantages"] and rollout_data["witness_ids"]
-    are list[Tensor] (one per sample).
-    """
-    if not is_event_logger_initialized():
-        return
-
-    advantages_list: list[torch.Tensor] | None = rollout_data.get("advantages")
-    witness_ids_list: list[torch.Tensor] | None = rollout_data.get("witness_ids")
-    if advantages_list is None or witness_ids_list is None:
-        return
-
-    per_sample_witness_ids = [int(wid[0].item()) for wid in witness_ids_list]
-    per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
-
-    get_event_logger().log(
-        TrainLossComputationEvent,
-        dict(
-            advantages=per_sample_advantages,
-            witness_ids=per_sample_witness_ids,
-        ),
-        print_log=False,
-    )
 
 
 def policy_loss_function(
