@@ -1605,6 +1605,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Port of the standalone session server. Auto-allocated if not set.",
             )
             parser.add_argument(
+                "--session-record-log-dir",
+                type=str,
+                default=None,
+                help="Directory to write session records as JSONL files (one file per session). "
+                "Disabled when not set.",
+            )
+            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
