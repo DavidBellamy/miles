@@ -14,6 +14,7 @@ from miles.ray.rollout.addr_allocator import (
     allocate_rollout_engine_addr_and_ports_external,
     allocate_rollout_engine_addr_and_ports_normal,
 )
+from miles.ray.rollout.server_engine import ServerEngine
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils import dumper_utils
 
@@ -31,7 +32,7 @@ class ServerGroup:
 
     args: Any
     pg: Any  # (placement_group, reordered_bundle_indices, reordered_gpu_ids)
-    all_engines: list
+    all_engines: list[ServerEngine]
     num_gpus_per_engine: int
     # NOTE: this may have risk when recovering engines parallelly; may use source of truth (all_engines) later
     has_new_engines: bool
@@ -50,7 +51,7 @@ class ServerGroup:
         return max(1, self.num_gpus_per_engine // self.args.num_gpus_per_node)
 
     @property
-    def engines(self):
+    def engines(self) -> list[ServerEngine]:
         """Node-0 engines only (for multi-node serving)."""
         return self.all_engines[:: self.nodes_per_engine]
 
