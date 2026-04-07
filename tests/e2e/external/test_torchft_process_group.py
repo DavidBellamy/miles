@@ -631,5 +631,112 @@ def run_p2p(
     print()
 
 
+@app.command()
+def run_p2p_after_reconfig(
+    timeout_s: Annotated[float, typer.Option(help="torchft PG timeout")] = 30.0,
+) -> None:
+    """Test P2P after PG reconfigure — simulates healing ckpt transfer scenario."""
+    from torch.distributed import TCPStore
+
+    ray.init(ignore_reinit_error=True)
+
+    store = TCPStore(host_name="localhost", port=0, is_master=True, wait_for_workers=False)
+    store_addr = f"localhost:{store.port}/p2p_reconfig"
+
+    print(f"\n{'='*70}")
+    print(f"  P2P AFTER RECONFIG TEST (Gloo)  timeout={timeout_s}s")
+    print(f"{'='*70}\n")
+
+    @ray.remote(num_gpus=1)
+    class _ReconfigP2PWorker:
+        def init(self, *, store_addr: str, rank: int, timeout_s: float) -> dict:
+            from torchft.process_group import ProcessGroupGloo
+
+            self._rank = rank
+            self._store_addr = store_addr
+            self._timeout_s = timeout_s
+            self._pg = ProcessGroupGloo(timeout=timedelta(seconds=timeout_s))
+            self._pg.configure(store_addr=f"{store_addr}/q0", replica_id=str(rank), rank=rank, world_size=2, quorum_id=0)
+            return {"rank": rank, "status": "configured_q0"}
+
+        def do_allreduce(self) -> dict:
+            import torch
+            import torch.distributed as dist
+
+            t = torch.tensor([self._rank + 1.0])
+            opts = dist.AllreduceOptions()
+            opts.reduceOp = dist.ReduceOp.SUM
+            work = self._pg.allreduce([t], opts)
+            work.wait()
+            return {"rank": self._rank, "value": t.item()}
+
+        def shutdown_and_reconfigure(self) -> dict:
+            from torchft.process_group import ProcessGroupGloo
+
+            self._pg.shutdown()
+            self._pg = ProcessGroupGloo(timeout=timedelta(seconds=self._timeout_s))
+            self._pg.configure(store_addr=f"{self._store_addr}/q1", replica_id=str(self._rank), rank=self._rank, world_size=2, quorum_id=1)
+            return {"rank": self._rank, "status": "reconfigured_q1"}
+
+        def send_tensor(self, dst_rank: int) -> dict:
+            import torch
+
+            t = torch.tensor([99.0, 100.0])
+            start = time.monotonic()
+            try:
+                work = self._pg.send([t], dst_rank, tag=200)
+                work.wait()
+                return {"rank": self._rank, "status": "sent", "elapsed_s": round(time.monotonic() - start, 2)}
+            except Exception as e:
+                return {"rank": self._rank, "status": "send_error", "error": str(e), "elapsed_s": round(time.monotonic() - start, 2)}
+
+        def recv_tensor(self, src_rank: int) -> dict:
+            import torch
+
+            t = torch.zeros(2)
+            start = time.monotonic()
+            try:
+                work = self._pg.recv([t], src_rank, tag=200)
+                work.wait()
+                return {"rank": self._rank, "status": "received", "value": t.tolist(), "elapsed_s": round(time.monotonic() - start, 2)}
+            except Exception as e:
+                return {"rank": self._rank, "status": "recv_error", "error": str(e), "elapsed_s": round(time.monotonic() - start, 2)}
+
+    workers = [_ReconfigP2PWorker.remote() for _ in range(2)]
+
+    print("--- Step 1: Configure (quorum 0) ---")
+    results = ray.get([w.init.remote(store_addr=store_addr, rank=i, timeout_s=timeout_s) for i, w in enumerate(workers)])
+    for r in results:
+        print(f"  {r}")
+
+    print("\n--- Step 2: Normal allreduce ---")
+    results = ray.get([w.do_allreduce.remote() for w in workers])
+    for r in results:
+        print(f"  {r}")
+
+    print("\n--- Step 3: Shutdown + reconfigure (quorum 1) ---")
+    results = ray.get([w.shutdown_and_reconfigure.remote() for w in workers])
+    for r in results:
+        print(f"  {r}")
+
+    print("\n--- Step 4: P2P send/recv after reconfig ---")
+    send_ref = workers[0].send_tensor.remote(dst_rank=1)
+    recv_ref = workers[1].recv_tensor.remote(src_rank=0)
+    for ref, label in [(send_ref, "send"), (recv_ref, "recv")]:
+        try:
+            result = ray.get(ref, timeout=timeout_s + 30)
+            print(f"  {label}: {result}")
+        except Exception as e:
+            print(f"  {label}: FAILED — {e}")
+
+    for w in workers:
+        try:
+            ray.kill(w, no_restart=True)
+        except Exception:
+            pass
+    del store
+    print()
+
+
 if __name__ == "__main__":
     app()
