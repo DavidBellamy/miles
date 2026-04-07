@@ -234,7 +234,7 @@ class RolloutManager:
     async def stop_cell(self, cell_id: int):
         idx = get_cell_indexer_of_id_map(self.servers)[cell_id]
         group = self.servers[idx.srv_key].server_groups[idx.group_index]
-        group.stop_engines(TODO_translate)
+        group.stop_engines(engine_indices=idx.engine_indices)
 
     # -------------------------- misc APIs -----------------------------
 
