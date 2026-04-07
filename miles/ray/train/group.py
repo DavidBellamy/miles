@@ -122,6 +122,8 @@ class RayTrainGroup:
         run_analysis_from_args(self.args)
 
         async def _fn(attempt: int):
+            self._restart_all_errored_if_none_alive()
+
             witness_info = self._allocate_witness_info(
                 rollout_id=rollout_id,
                 attempt=attempt,
@@ -265,10 +267,37 @@ class RayTrainGroup:
     async def _execute_all_alive_and_catch(self, fn_name: str, *args, **kwargs):
         snapshot_alive_cells = [c for c in self._cells if c.is_alive]
         assert snapshot_alive_cells, "No alive cells"
-        outputs = await asyncio.gather(
-            *[cell.execute(fn_name, *args, **kwargs) for cell in snapshot_alive_cells],
-            return_exceptions=True,
-        )
+
+        tasks = [
+            asyncio.create_task(cell.execute(fn_name, *args, **kwargs))
+            for cell in snapshot_alive_cells
+        ]
+
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+
+        if pending:
+            has_error = any(not t.cancelled() and t.exception() is not None for t in done)
+            if has_error:
+                for cell, task in zip(snapshot_alive_cells, tasks):
+                    if task in pending and cell.is_alive:
+                        logger.warning(
+                            "Killing cell %d to unblock after peer failure in %s",
+                            cell.cell_index, fn_name,
+                        )
+                        cell._mark_as_errored()
+                await asyncio.wait(pending, timeout=60)
+            else:
+                await asyncio.wait(pending)
+
+        outputs: list = []
+        for task in tasks:
+            if task.cancelled():
+                outputs.append(RuntimeError("Task cancelled after peer failure"))
+            elif task.exception() is not None:
+                outputs.append(task.exception())
+            else:
+                outputs.append(task.result())
+
         AsyncioGatherUtils.log_error(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
         return snapshot_alive_cells, outputs
 
@@ -278,6 +307,17 @@ class RayTrainGroup:
         return await alive_cells[0].execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
+
+    def _restart_all_errored_if_none_alive(self) -> None:
+        has_alive_or_pending = any(c.is_alive or c.is_pending for c in self._cells)
+        if has_alive_or_pending:
+            return
+
+        logger.warning("All cells are dead — restarting all errored cells for retry")
+        for cell in self._cells:
+            if cell.is_errored:
+                cell.stop()
+                cell.mark_as_pending()
 
     async def _refresh_cells(self) -> None:
         snapshotted_pending_indices = [c.cell_index for c in self._cells if c.is_pending]
