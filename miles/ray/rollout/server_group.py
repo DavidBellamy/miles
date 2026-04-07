@@ -161,17 +161,17 @@ class ServerGroup:
             (rollout_engine_id + 1) * self.nodes_per_engine,
         ):
             engine = self.all_engines[i]
-            if engine:
+            if engine.is_allocated:
                 logger.info(f"Shutting down and killing engine at index {i}")
                 try:
-                    ray.get(engine.shutdown.remote())
-                    ray.kill(engine)
+                    ray.get(engine.actor_handle.shutdown.remote())
+                    ray.kill(engine.actor_handle)
                     logger.info(f"Successfully killed engine at index {i}")
                 except Exception as e:
                     logger.warning(f"Fail to kill engine at index {i} (e: {e})")
             else:
                 logger.info(f"Engine at index {i} is already None")
-            self.all_engines[i] = None
+            self.all_engines[i].mark_stopped()
 
     async def recover(self, port_cursors: PortCursors):
         dead_indices = [i for i, engine in enumerate(self.all_engines) if engine is None]
