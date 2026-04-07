@@ -7,7 +7,7 @@ from torch.utils.checkpoint import checkpoint
 
 from miles.utils.distributed_utils import distributed_masked_whiten
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import TrainLossComputationEvent
+from miles.utils.event_logger.models import TrainAdvantageComputationEvent
 from miles.utils.misc import load_function
 from miles.utils.ppo_utils import (
     calculate_log_probs_and_entropy,
@@ -449,7 +449,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     rollout_data["returns"] = returns
 
 
-def log_train_loss_computation_event(rollout_data: RolloutBatch) -> None:
+def _log_train_advantage_computation_event(rollout_data: RolloutBatch) -> None:
     """Log per-sample advantages and witness_ids for the witness verifier.
 
     Must be called BEFORE get_batch packs witness_ids into a single tensor.
@@ -468,7 +468,7 @@ def log_train_loss_computation_event(rollout_data: RolloutBatch) -> None:
     per_sample_advantages = [float(adv.abs().sum().item()) for adv in advantages_list]
 
     get_event_logger().log(
-        TrainLossComputationEvent,
+        TrainAdvantageComputationEvent,
         dict(
             advantages=per_sample_advantages,
             witness_ids=per_sample_witness_ids,

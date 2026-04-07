@@ -6,7 +6,7 @@ from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
     TrainGroupStepEndEvent,
-    TrainLossComputationEvent,
+    TrainAdvantageComputationEvent,
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
 )
@@ -59,7 +59,7 @@ def check(events: list[Event]) -> list[WitnessIssue]:
                 _filter_by_type(events, WitnessAllocateIdEvent)
             ),
             zero_adv_witness_ids_by_key=_compute_zero_advantage_witness_ids(
-                _filter_by_type(events, TrainLossComputationEvent)
+                _filter_by_type(events, TrainAdvantageComputationEvent)
             ),
         )
     )
@@ -70,7 +70,7 @@ def _filter_by_type(arr: list, ty: type) -> list:
 
 
 def _compute_zero_advantage_witness_ids(
-    events: list[TrainLossComputationEvent],
+    events: list[TrainAdvantageComputationEvent],
 ) -> dict[tuple[int, int], set[int]]:
     """Return witness_ids where per-sample abs-sum advantage == 0.0, keyed by (rollout_id, cell_index)."""
     result: dict[tuple[int, int], set[int]] = defaultdict(set)

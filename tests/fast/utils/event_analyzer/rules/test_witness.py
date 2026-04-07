@@ -10,7 +10,7 @@ from miles.utils.event_logger.models import (
     Event,
     RolloutGenerateCompletedEvent,
     TrainGroupStepEndEvent,
-    TrainLossComputationEvent,
+    TrainAdvantageComputationEvent,
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
 )
@@ -276,8 +276,8 @@ def _make_loss_computation(
     witness_ids: list[int],
     cell_index: int = 0,
     attempt: int = 0,
-) -> TrainLossComputationEvent:
-    return TrainLossComputationEvent(
+) -> TrainAdvantageComputationEvent:
+    return TrainAdvantageComputationEvent(
         timestamp=_FIXED_TS,
         source=_make_source(cell_index=cell_index),
         rollout_id=rollout_id,
@@ -312,7 +312,7 @@ class TestZeroAdvantageExclusion:
         assert 11 not in issues[0].actual_witness_ids
 
     def test_no_loss_computation_event_means_no_exclusion(self) -> None:
-        """Without TrainLossComputationEvent, no zero-adv exclusion — missing ID is caught."""
+        """Without TrainAdvantageComputationEvent, no zero-adv exclusion — missing ID is caught."""
         events: list[Event] = [
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0, 11: 1}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
@@ -338,10 +338,10 @@ class TestZeroAdvantageExclusion:
         assert issues[0].cell_index == 1
 
     def test_witness_ids_none_in_loss_event_is_skipped(self) -> None:
-        """TrainLossComputationEvent with witness_ids=None should not affect verification."""
+        """TrainAdvantageComputationEvent with witness_ids=None should not affect verification."""
         events: list[Event] = [
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
-            TrainLossComputationEvent(
+            TrainAdvantageComputationEvent(
                 timestamp=_FIXED_TS,
                 source=_make_source(),
                 rollout_id=0,
