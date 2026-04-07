@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 # NOTE: currently it is almost a dataclass without encapsulation to minimize code diff;
 #       ideally, it may encapsulate all actions and states, and ensure state transition
 #       only happens after internal actions, while no external code can touch its internals
-#
 #       for example:
 #         def init(): _allocate_engine(); _mark_allocated(); _init_engine(); _mark_alive()
 #         def stop(): _kill_engine(); _mark_stopped()
 #       and external code cannot directly mutate the engines
+#       this makes it more encapsulated and easier to reason about
 class ServerEngine:
     def __init__(self):
         self._state = _StateStopped()
