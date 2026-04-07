@@ -16,19 +16,19 @@ class ServerEngine:
         self._state = _StateStopped()
 
     def mark_allocated(self, actor_handle: ray.actor.ActorHandle):
-        self._change_state("mark_allocated", _StateStopped, _StateAllocated(actor_handle=actor_handle))
+        self._change_state("mark_allocated", _StateStopped, _StateAllocatedUninitialized(actor_handle=actor_handle))
 
     def mark_stopped(self):
-        self._change_state("mark_stopped", (_StateStopped, _StateAllocated), _StateStopped())
+        self._change_state("mark_stopped", (_StateStopped, _StateAllocatedBase), _StateStopped())
 
     @property
     def actor_handle(self) -> ray.actor.ActorHandle:
-        assert isinstance(self._state, _StateAllocated)
+        assert isinstance(self._state, _StateAllocatedBase)
         return self._state.actor_handle
 
     @property
     def is_allocated(self) -> bool:
-        return isinstance(self._state, _StateAllocated)
+        return isinstance(self._state, _StateAllocatedBase)
 
     # TODO: unify w/ trainer `change_state`
     def _change_state(
@@ -54,8 +54,16 @@ class _StateStopped(_StateBase):
     pass
 
 
-class _StateAllocated(_StateBase):
+class _StateAllocatedBase(_StateBase):
     actor_handle: ray.actor.ActorHandle
 
 
-_State = _StateStopped | _StateAllocated
+class _StateAllocatedUninitialized(_StateAllocatedBase):
+    pass
+
+
+class _StateAllocatedAlive(_StateAllocatedBase):
+    pass
+
+
+_State = _StateStopped | _StateAllocatedUninitialized | _StateAllocatedAlive
