@@ -137,13 +137,15 @@ class MegatronTrainRayActor(TrainRayActor):
         checkpointing_context = None
         if ckpt_ref is not None:
             import ray
+            import torch
 
-            logger.info("Receiving checkpoint from Ray object store")
-            payload = ray.get(ckpt_ref)
+            save_path = ray.get(ckpt_ref)
+            logger.info("Loading healing checkpoint from %s", save_path)
+            payload = torch.load(save_path, map_location="cpu", weights_only=False)
             ckpt_manager = InMemoryCheckpointManager()
             ckpt_manager.save(payload["state_dict"], iteration=payload["iteration"])
             checkpointing_context = {"local_checkpoint_manager": ckpt_manager}
-            logger.info("Checkpoint loaded from Ray (iteration=%s)", payload["iteration"])
+            logger.info("Healing checkpoint loaded (iteration=%s)", payload["iteration"])
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role, checkpointing_context=checkpointing_context
@@ -655,17 +657,25 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def save_ckpt_to_ray(self) -> object:
-        """Save model/optimizer state to Ray object store for healing checkpoint transfer.
+        """Save checkpoint to a shared path for healing. Returns the path as ObjectRef.
 
         Bypasses Megatron's save_checkpoint (which has internal collectives that can
-        hang after abort) and directly serializes the state dicts.
+        hang after abort). Each rank saves its own shard to a per-rank file.
         """
         import ray
 
         assert not self.args.keep_old_actor
 
-        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: collecting state_dict directly (bypass Megatron save)", flush=True)
-        logger.info("save_ckpt_to_ray: collecting state_dict directly (bypass Megatron save)")
+        rank = dist.get_rank()
+        save_dir = "/tmp/miles_healing_ckpt"
+        save_path = f"{save_dir}/rank_{rank}.pt"
+
+        print(f"[rank {rank}] save_ckpt_to_ray: saving state_dict to {save_path}", flush=True)
+
+        import os
+        import torch
+
+        os.makedirs(save_dir, exist_ok=True)
         state_dict = {}
         for i, model_chunk in enumerate(self.model):
             key = "model" if len(self.model) == 1 else f"model{i}"
@@ -675,12 +685,10 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.opt_param_scheduler is not None:
             state_dict["opt_param_scheduler"] = self.opt_param_scheduler.state_dict()
 
-        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: state_dict collected, starting ray.put", flush=True)
-        logger.info("save_ckpt_to_ray: state_dict collected, starting ray.put")
-        payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
-        ref = ray.put(payload)
-        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: ray.put done (iteration={self._last_rollout_id})", flush=True)
-        logger.info("save_ckpt_to_ray: ray.put done (iteration=%s)", self._last_rollout_id)
+        torch.save({"iteration": self._last_rollout_id, "state_dict": state_dict}, save_path)
+        print(f"[rank {rank}] save_ckpt_to_ray: saved to {save_path}", flush=True)
+
+        ref = ray.put(save_path)
         return ref
 
 
