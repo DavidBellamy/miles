@@ -308,27 +308,22 @@ class RayTrainGroup:
             if c.cell_index in snapshotted_pending_indices:
                 c.allocate_for_pending()
 
-        # Step 3: Cooperatively prepare (with Ray object store for ckpt transfer)
+        # Step 3: Cooperatively prepare
         src_cell_index = snapshotted_alive_indices[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        needs_ckpt_transfer = len(snapshotted_pending_indices) > 0
+        src_alive_rank = will_alive_indices.index(src_cell_index)
+        ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
 
-        # Phase 3a: Save checkpoint from source cell (before reconfigure, while PG is still good)
-        ckpt_refs = None
-        if needs_ckpt_transfer:
-            src_cell = next(c for c in self._cells if c.cell_index == src_cell_index)
-            ckpt_refs = await src_cell.save_ckpt_to_ray()
-
-        # Phase 3b: Reconfigure alive cells + init healing cells (concurrent — needed for PG handshake)
         coop_prepare_outputs = await asyncio.gather(
             *[
                 (
                     c.prepare_indep_dp_mode_alive(
                         indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
+                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if c.cell_index == src_cell_index else [],
                     )
                     if c.cell_index in snapshotted_alive_indices
                     else c.prepare_indep_dp_mode_healing(
                         indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        ckpt_refs=ckpt_refs,
+                        recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
                     )
                 )
                 for c in self._cells
@@ -336,6 +331,7 @@ class RayTrainGroup:
             ],
             return_exceptions=True,
         )
+        # No need to do anything else - cells with exceptions will auto mark itself as errored
         AsyncioGatherUtils.log_error(coop_prepare_outputs, debug_name="refresh_cells#cooperatively_prepare")
 
         if not AsyncioGatherUtils.has_error(coop_prepare_outputs):

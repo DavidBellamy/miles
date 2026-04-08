@@ -36,7 +36,8 @@ from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollou
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values, _log_train_advantage_computation_event
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint
-from .in_memory_checkpoint import InMemoryCheckpointManager, save_to_memory
+from .checkpoint_transfer import recv_ckpt
+from .checkpoint_transfer import send_ckpt as _send_ckpt
 from .indep_dp import reconfigure_indep_dp_group
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
@@ -61,7 +62,6 @@ class MegatronTrainRayActor(TrainRayActor):
         *,
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
-        ckpt_ref: object | None = None,
         indep_dp_info: IndepDPInfo,
     ) -> int | None:
         """Initialize the actor.
@@ -70,8 +70,8 @@ class MegatronTrainRayActor(TrainRayActor):
             args: Runtime arguments.
             role: Logical role ("actor" or "critic").
             with_ref: Whether to load a reference model.
-            recv_ckpt_src_rank: DEPRECATED. Use ckpt_ref instead.
-            ckpt_ref: Ray ObjectRef containing checkpoint state_dict from alive cell.
+            recv_ckpt_src_rank: If not None, receive checkpoint from this alive_rank
+                via PGTransport instead of loading from disk.
             indep_dp_info: Independent DP configuration (cell identity, alive rank/size, quorum ID).
         """
         monkey_patch_torch_dist()
@@ -135,16 +135,12 @@ class MegatronTrainRayActor(TrainRayActor):
                 m.enable_check_replay_result = m.enabled and self.args.ci_test
 
         checkpointing_context = None
-        if ckpt_ref is not None:
-            import torch
-
-            save_path = ckpt_ref  # ckpt_ref is a file path string (not ObjectRef)
-            logger.info("Loading healing checkpoint from %s", save_path)
-            payload = torch.load(save_path, map_location="cpu", weights_only=False)
-            ckpt_manager = InMemoryCheckpointManager()
-            ckpt_manager.save(payload["state_dict"], iteration=payload["iteration"])
+        if recv_ckpt_src_rank is not None:
+            ckpt_manager = recv_ckpt(
+                indep_dp=get_parallel_state().indep_dp,
+                src_rank=recv_ckpt_src_rank,
+            )
             checkpointing_context = {"local_checkpoint_manager": ckpt_manager}
-            logger.info("Healing checkpoint loaded (iteration=%s)", payload["iteration"])
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role, checkpointing_context=checkpointing_context
@@ -655,38 +651,18 @@ class MegatronTrainRayActor(TrainRayActor):
             group_name=group_name,
         )
 
-    def save_ckpt_to_ray(self) -> str:
-        """Save checkpoint to a shared path for healing. Returns the file path.
-
-        Bypasses Megatron's save_checkpoint (which has internal collectives that can
-        hang after abort). Each rank saves its own shard to a per-rank file.
-        """
+    def send_ckpt(self, dst_rank: int) -> None:
+        # These states are not handled
         assert not self.args.keep_old_actor
 
-        rank = dist.get_rank()
-        save_dir = "/tmp/miles_healing_ckpt"
-        save_path = f"{save_dir}/rank_{rank}.pt"
-
-        print(f"[rank {rank}] save_ckpt_to_ray: saving state_dict to {save_path}", flush=True)
-
-        import os
-        import torch
-
-        os.makedirs(save_dir, exist_ok=True)
-        state_dict = {}
-        for i, model_chunk in enumerate(self.model):
-            key = "model" if len(self.model) == 1 else f"model{i}"
-            state_dict[key] = model_chunk.state_dict_for_save_checkpoint()
-        if self.optimizer is not None:
-            state_dict["optimizer"] = self.optimizer.state_dict()
-        if self.opt_param_scheduler is not None:
-            state_dict["opt_param_scheduler"] = self.opt_param_scheduler.state_dict()
-
-        torch.save({"iteration": self._last_rollout_id, "state_dict": state_dict}, save_path)
-        print(f"[rank {rank}] save_ckpt_to_ray: saved to {save_path}", flush=True)
-
-        return save_path
-
+        _send_ckpt(
+            indep_dp=get_parallel_state().indep_dp,
+            model=self.model,
+            optimizer=self.optimizer,
+            opt_param_scheduler=self.opt_param_scheduler,
+            iteration=self._last_rollout_id,
+            dst_rank=dst_rank,
+        )
 
     def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
         reconfigure_indep_dp_group(
