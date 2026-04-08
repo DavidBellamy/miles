@@ -136,10 +136,9 @@ class MegatronTrainRayActor(TrainRayActor):
 
         checkpointing_context = None
         if ckpt_ref is not None:
-            import ray
             import torch
 
-            save_path = ray.get(ckpt_ref)
+            save_path = ckpt_ref  # ckpt_ref is a file path string (not ObjectRef)
             logger.info("Loading healing checkpoint from %s", save_path)
             payload = torch.load(save_path, map_location="cpu", weights_only=False)
             ckpt_manager = InMemoryCheckpointManager()
@@ -656,14 +655,12 @@ class MegatronTrainRayActor(TrainRayActor):
             group_name=group_name,
         )
 
-    def save_ckpt_to_ray(self) -> object:
-        """Save checkpoint to a shared path for healing. Returns the path as ObjectRef.
+    def save_ckpt_to_ray(self) -> str:
+        """Save checkpoint to a shared path for healing. Returns the file path.
 
         Bypasses Megatron's save_checkpoint (which has internal collectives that can
         hang after abort). Each rank saves its own shard to a per-rank file.
         """
-        import ray
-
         assert not self.args.keep_old_actor
 
         rank = dist.get_rank()
@@ -688,8 +685,7 @@ class MegatronTrainRayActor(TrainRayActor):
         torch.save({"iteration": self._last_rollout_id, "state_dict": state_dict}, save_path)
         print(f"[rank {rank}] save_ckpt_to_ray: saved to {save_path}", flush=True)
 
-        ref = ray.put(save_path)
-        return ref
+        return save_path
 
 
     def reconfigure_indep_dp(self, indep_dp_info: IndepDPInfo) -> None:
