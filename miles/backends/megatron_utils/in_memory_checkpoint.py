@@ -29,11 +29,6 @@ class InMemoryCheckpointManager:
         self._state_dict = state_dict
         self.latest_iteration = iteration
 
-        if torch.distributed.is_initialized():
-            torch.distributed.barrier()
-
-        return None
-
     def find_latest(self) -> int:
         return self.latest_iteration
 
