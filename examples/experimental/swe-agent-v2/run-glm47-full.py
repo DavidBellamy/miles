@@ -113,14 +113,22 @@ def execute(args: ScriptArgs):
         "--balance-data "
     )
 
-    # Training parallelism: TP=4, PP=4, EP=8 for 16 H200 nodes (128 GPUs)
-    # DP = 128 / (TP * PP) = 8, EP = 8 <= DP
+    # Training parallelism: TP=4, PP=4, EP=DP
+    # 92 layers / PP=4 = 23 layers per stage (even split)
+    tp, pp = 4, 4
+    total_gpus = args.num_nodes * args.num_gpus_per_node
+    dp = total_gpus // (tp * pp)
+    ep = dp  # maximize expert distribution across ranks
+    assert total_gpus % (tp * pp) == 0, (
+        f"total GPUs ({total_gpus}) must be divisible by TP*PP ({tp * pp})"
+    )
+
     perf_args = (
-        "--tensor-model-parallel-size 4 "
+        f"--tensor-model-parallel-size {tp} "
         "--sequence-parallel "
-        "--pipeline-model-parallel-size 4 "
+        f"--pipeline-model-parallel-size {pp} "
         "--context-parallel-size 1 "
-        "--expert-model-parallel-size 8 "
+        f"--expert-model-parallel-size {ep} "
         "--expert-tensor-parallel-size 1 "
         "--recompute-granularity full "
         "--recompute-method uniform "
@@ -152,7 +160,7 @@ def execute(args: ScriptArgs):
     )
 
     # SGLang: 16 GPUs per engine with EP/DP-attention for 355B MoE inference
-    # 128 / 16 = 8 engines total; each GPU holds ~72GB of model weights
+    # e.g. 112 GPUs / 16 = 7 engines; each GPU holds ~72GB of model weights
     sglang_world_size = 16
     sglang_args = (
         f"--rollout-num-gpus-per-engine {sglang_world_size} "
