@@ -655,24 +655,26 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def save_ckpt_to_ray(self) -> object:
-        """Save checkpoint to Ray object store and return the ObjectRef."""
+        """Save model/optimizer state to Ray object store for healing checkpoint transfer.
+
+        Bypasses Megatron's save_checkpoint (which has internal collectives that can
+        hang after abort) and directly serializes the state dicts.
+        """
         import ray
 
         assert not self.args.keep_old_actor
 
-        # Barrier to ensure all ranks enter save_to_memory simultaneously.
-        # Without this, some ranks may still be processing previous operations
-        # (e.g. clear_memory), causing Megatron save's internal collectives to hang.
-        logger.info("save_ckpt_to_ray: waiting for all ranks at barrier")
-        dist.barrier(group=get_gloo_group())
-        logger.info("save_ckpt_to_ray: starting save_to_memory")
-        state_dict = save_to_memory(
-            iteration=self._last_rollout_id,
-            model=self.model,
-            optimizer=self.optimizer,
-            opt_param_scheduler=self.opt_param_scheduler,
-        )
-        logger.info("save_ckpt_to_ray: save_to_memory done, starting ray.put")
+        logger.info("save_ckpt_to_ray: collecting state_dict directly (bypass Megatron save)")
+        state_dict = {}
+        for i, model_chunk in enumerate(self.model):
+            key = "model" if len(self.model) == 1 else f"model{i}"
+            state_dict[key] = model_chunk.state_dict_for_save_checkpoint()
+        if self.optimizer is not None:
+            state_dict["optimizer"] = self.optimizer.state_dict()
+        if self.opt_param_scheduler is not None:
+            state_dict["opt_param_scheduler"] = self.opt_param_scheduler.state_dict()
+
+        logger.info("save_ckpt_to_ray: state_dict collected, starting ray.put")
         payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
         ref = ray.put(payload)
         logger.info("save_ckpt_to_ray: ray.put done (iteration=%s)", self._last_rollout_id)
