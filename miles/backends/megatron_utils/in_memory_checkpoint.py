@@ -69,5 +69,5 @@ def _ensure_args_for_in_memory_checkpoint(args: Any) -> None:
         )
         args.non_persistent_ckpt_type = "local"
     if args.non_persistent_local_ckpt_algo is None:
-        logger.info("Setting non_persistent_local_ckpt_algo='fully_parallel' for in-memory checkpoint")
-        args.non_persistent_local_ckpt_algo = "fully_parallel"
+        logger.info("Setting non_persistent_local_ckpt_algo='atomic' for in-memory checkpoint")
+        args.non_persistent_local_ckpt_algo = "atomic"
