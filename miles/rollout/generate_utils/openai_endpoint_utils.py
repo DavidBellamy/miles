@@ -202,6 +202,8 @@ def _compute_sample_from_openai_record(
     if "weight_version" in choice["meta_info"]:
         sample.weight_versions.append(choice["meta_info"]["weight_version"])
 
+    sample.prefix_cache_info.add(choice.get("meta_info", {}))
+
     return sample
 
 
