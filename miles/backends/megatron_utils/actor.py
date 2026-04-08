@@ -664,6 +664,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         assert not self.args.keep_old_actor
 
+        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: collecting state_dict directly (bypass Megatron save)", flush=True)
         logger.info("save_ckpt_to_ray: collecting state_dict directly (bypass Megatron save)")
         state_dict = {}
         for i, model_chunk in enumerate(self.model):
@@ -674,9 +675,11 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.opt_param_scheduler is not None:
             state_dict["opt_param_scheduler"] = self.opt_param_scheduler.state_dict()
 
+        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: state_dict collected, starting ray.put", flush=True)
         logger.info("save_ckpt_to_ray: state_dict collected, starting ray.put")
         payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
         ref = ray.put(payload)
+        print(f"[rank {dist.get_rank()}] save_ckpt_to_ray: ray.put done (iteration={self._last_rollout_id})", flush=True)
         logger.info("save_ckpt_to_ray: ray.put done (iteration=%s)", self._last_rollout_id)
         return ref
 
