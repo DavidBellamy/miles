@@ -655,15 +655,16 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def save_ckpt_to_ray(self) -> object:
-        """Save checkpoint to Ray object store and return the ObjectRef.
-
-        Moves all tensors to CPU before ray.put to avoid CUDA synchronize hanging
-        on stuck NCCL operations from the aborted indep_dp PG.
-        """
+        """Save checkpoint to Ray object store and return the ObjectRef."""
         import ray
 
         assert not self.args.keep_old_actor
 
+        # Barrier to ensure all ranks enter save_to_memory simultaneously.
+        # Without this, some ranks may still be processing previous operations
+        # (e.g. clear_memory), causing Megatron save's internal collectives to hang.
+        logger.info("save_ckpt_to_ray: waiting for all ranks at barrier")
+        dist.barrier(group=get_gloo_group())
         logger.info("save_ckpt_to_ray: starting save_to_memory")
         state_dict = save_to_memory(
             iteration=self._last_rollout_id,
