@@ -52,6 +52,24 @@ logging.getLogger("megatron").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
+def _move_state_dict_to_cpu(obj: object) -> None:
+    """Recursively move all CUDA tensors in a state_dict to CPU (in-place)."""
+    import torch
+
+    if isinstance(obj, dict):
+        for key in obj:
+            if isinstance(obj[key], torch.Tensor) and obj[key].is_cuda:
+                obj[key] = obj[key].cpu()
+            elif isinstance(obj[key], (dict, list)):
+                _move_state_dict_to_cpu(obj[key])
+    elif isinstance(obj, list):
+        for i in range(len(obj)):
+            if isinstance(obj[i], torch.Tensor) and obj[i].is_cuda:
+                obj[i] = obj[i].cpu()
+            elif isinstance(obj[i], (dict, list)):
+                _move_state_dict_to_cpu(obj[i])
+
+
 class MegatronTrainRayActor(TrainRayActor):
     @with_defer(lambda: Timer().start("train_wait"))
     def init(
@@ -655,7 +673,11 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def save_ckpt_to_ray(self) -> object:
-        """Save checkpoint to Ray object store and return the ObjectRef."""
+        """Save checkpoint to Ray object store and return the ObjectRef.
+
+        Moves all tensors to CPU before ray.put to avoid CUDA synchronize hanging
+        on stuck NCCL operations from the aborted indep_dp PG.
+        """
         import ray
 
         assert not self.args.keep_old_actor
@@ -667,7 +689,12 @@ class MegatronTrainRayActor(TrainRayActor):
             optimizer=self.optimizer,
             opt_param_scheduler=self.opt_param_scheduler,
         )
-        logger.info("save_ckpt_to_ray: save_to_memory done, starting ray.put")
+        logger.info("save_ckpt_to_ray: save_to_memory done, testing cuda sync")
+        import torch
+        torch.cuda.synchronize()
+        logger.info("save_ckpt_to_ray: cuda sync done, moving tensors to CPU")
+        _move_state_dict_to_cpu(state_dict)
+        logger.info("save_ckpt_to_ray: tensors on CPU, starting ray.put")
         payload = {"iteration": self._last_rollout_id, "state_dict": state_dict}
         ref = ray.put(payload)
         logger.info("save_ckpt_to_ray: ray.put done (iteration=%s)", self._last_rollout_id)
