@@ -2,8 +2,6 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-import torch
-
 from megatron.training.global_vars import get_args
 
 from miles.backends.megatron_utils.model import save
@@ -28,11 +26,6 @@ class InMemoryCheckpointManager:
         assert self._state_dict is None
         self._state_dict = state_dict
         self.latest_iteration = iteration
-
-        if torch.distributed.is_initialized():
-            torch.distributed.barrier()
-
-        return None
 
     def find_latest(self) -> int:
         return self.latest_iteration
