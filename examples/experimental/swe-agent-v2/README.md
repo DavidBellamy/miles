@@ -121,16 +121,13 @@ pip install harbor
 # Inside miles container:
 
 # Download and convert to Miles format
-python download_and_process_data.py --input SWE-Gym/SWE-Gym --output swe.jsonl
-python download_and_process_data.py --input /data/tb.jsonl --output tb.jsonl \
-  --agent-name terminus-2 --prompt-key instruction
+python download_and_process_data.py --input SWE-bench/SWE-bench_Verified --output /root/tb.jsonl --agent-name terminus-2 --split test
 
 # Merge into one mixed JSONL
 cat swe.jsonl tb.jsonl > mixed.jsonl
 
 # Create Harbor task dirs (for custom data without a Harbor adapter)
-python prepare_harbor_tasks.py --input my.jsonl --output /root/harbor_tasks/ \
-  --docker-network swe-net
+python prepare_harbor_tasks.py --input /root/tb.jsonl --output /data/jiajun/harbor_tasks/ --docker-network swe-net
 ```
 
 Each Harbor task directory contains 4 files:

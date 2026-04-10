@@ -18,12 +18,32 @@ Components:
 """
 
 import logging
+import os
 
 from miles.rollout.base_types import RolloutFnTrainInput, RolloutFnTrainOutput
 from miles.rollout.inference_rollout.inference_rollout_common import InferenceRolloutFn
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
+
+_ZERO_REWARD_SUBMITTED_SHAPE = float(os.getenv("AGENT_ZERO_REWARD_SUBMITTED_SHAPE", "-0.05"))
+_ZERO_REWARD_TIMEOUT_SHAPE = float(os.getenv("AGENT_ZERO_REWARD_TIMEOUT_SHAPE", "-0.10"))
+_ZERO_REWARD_ERROR_SHAPE = float(os.getenv("AGENT_ZERO_REWARD_ERROR_SHAPE", "-0.20"))
+
+
+def _shaped_reward(sample: Sample) -> float:
+    reward = float(sample.metadata.get("reward", 0.0))
+    if reward != 0.0:
+        return reward
+
+    exit_status = sample.metadata.get("exit_status", "")
+    if exit_status == "Submitted":
+        return _ZERO_REWARD_SUBMITTED_SHAPE
+    if exit_status in {"TimeLimitExceeded", "SequenceLengthLimitExceeded"}:
+        return _ZERO_REWARD_TIMEOUT_SHAPE
+    if exit_status in {"AgentError", "ImportError", "TaskNotFound", "InvalidInstanceId"}:
+        return _ZERO_REWARD_ERROR_SHAPE
+    return reward
 
 
 # -- Reward --
@@ -36,8 +56,8 @@ async def reward_func(args, samples: Sample | list[Sample], **kwargs) -> float |
     (from ``batched_async_rm`` when ``--custom-rm-path`` is set).
     """
     if isinstance(samples, list):
-        return [s.metadata.get("reward", 0.0) for s in samples]
-    return samples.metadata.get("reward", 0.0)
+        return [_shaped_reward(s) for s in samples]
+    return _shaped_reward(samples)
 
 
 # -- Agent Metrics Aggregation --
