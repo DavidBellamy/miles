@@ -103,17 +103,20 @@ def _create_task_dir(
     env_dir.mkdir(exist_ok=True)
 
     # Auto-detect SWE-bench instances and derive the correct Docker image
-    if not metadata.get("docker_image") and _is_swebench_instance(metadata):
+    is_swebench = not metadata.get("docker_image") and _is_swebench_instance(metadata)
+    if is_swebench:
         docker_image = _swebench_docker_image(instance_id)
         logger.debug(f"SWE-bench auto-detected: {instance_id} -> {docker_image}")
+        extra_lines = "WORKDIR /testbed\nRUN mkdir -p /logs\n"
     else:
         docker_image = metadata.get("docker_image", "ubuntu:24.04")
+        extra_lines = ""
     setup_cmds = metadata.get("setup_commands", "")
     if isinstance(setup_cmds, list):
         setup_cmds = " && ".join(setup_cmds)
     setup_block = f"RUN {setup_cmds}\n" if setup_cmds else ""
 
-    (env_dir / "Dockerfile").write_text(f"FROM {docker_image}\nWORKDIR /testbed\nRUN mkdir -p /logs\n{setup_block}")
+    (env_dir / "Dockerfile").write_text(f"FROM {docker_image}\n{extra_lines}{setup_block}")
 
     if docker_network:
         compose_yaml = textwrap.dedent(
