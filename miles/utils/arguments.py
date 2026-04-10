@@ -10,8 +10,11 @@ from transformers import AutoConfig
 
 from miles.backends.sglang_utils.arguments import add_sglang_arguments
 from miles.backends.sglang_utils.arguments import validate_args as sglang_validate_args
+from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
+from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.logging_utils import configure_logger
+from miles.utils.misc import load_function
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +107,18 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
 
+            parser.add_argument(
+                "--offload-rollout-level",
+                type=str,
+                nargs="+",
+                default=["kv_cache", "weight"],
+                help=(
+                    "Specifies what to offload during rollout when offload-rollout is set. "
+                    "Possible values: 'kv_cache', 'weight'. Default: both 'kv_cache' and 'weight'. "
+                    "Example: --offload-rollout-level kv_cache weight"
+                ),
+            )
+
             reset_arg(parser, "--distributed-backend", type=str, default="nccl")
             reset_arg(parser, "--distributed-timeout-minutes", type=int, default=10)
 
@@ -122,7 +137,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 choices=["thd", "bshd"],
                 default="thd",
-                help="The qkv layout for Megatron backend.",
+                help="The qkv layout.",
             )
             parser.add_argument(
                 "--true-on-policy-mode",
@@ -146,7 +161,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--disable-weights-backuper",
                 action="store_false",
                 dest="enable_weights_backuper",
-                help="Whether to disable weights backuper to save host memory.",
+                help=(
+                    "Applies to `megatron` training backend only. "
+                    "Disables the system that backups model weights (Actor, Ref, Old Actor) to CPU RAM. "
+                    "Disabling saves significant host memory but prevents features that rely on weight-swapping, such as computing KL-divergence against a reference model. "
+                    "Note: do not set `--ref-load` and `--keep-old-actor` if disable weights backuper."
+                ),
             )
             parser.add_argument(
                 "--megatron-to-hf-mode",
@@ -169,10 +189,24 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--recompute-loss-function",
                 action="store_true",
-                help="Whether to disable recompute loss function to save memory during training.",
+                help="Whether to enable recompute loss function to save memory during training.",
             )
             parser.add_argument(
                 "--log-probs-chunk-size", type=int, default=-1, help="Chunk size to compute log probs to save memory"
+            )
+            parser.add_argument(
+                "--allgather-cp",
+                action="store_true",
+                default=False,
+            )
+            reset_arg(
+                parser,
+                "--low-memory-resume",
+                action="store_true",
+                default=False,
+                help=(
+                    "Allocate optimizer states on CPU during checkpoint loading to prevent GPU OOM on memory spike. "
+                ),
             )
 
             return parser
@@ -204,7 +238,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--rollout-function-path",
                 type=str,
-                default="miles.rollout.sglang_rollout.generate_rollout",
+                default=(
+                    "miles.rollout.inference_rollout.inference_rollout_common.InferenceRolloutFn"
+                    if enable_experimental_rollout_refactor()
+                    else "miles.rollout.sglang_rollout.generate_rollout"
+                ),
                 help=(
                     "Path to the rollout generation function."
                     "You should use this model to create your own custom rollout function, "
@@ -419,6 +457,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--pin-rollout-manager-to-head",
+                action="store_true",
+                default=False,
+                help=(
+                    "Pin the RolloutManager (and its co-located router process) to the Ray head node. "
+                    "Useful in K8s where the head pod has a stable Service address so that "
+                    "external agent environments can reliably reach the router."
+                ),
+            )
+            parser.add_argument(
                 "--rollout-external",
                 action="store_true",
                 default=False,
@@ -430,6 +478,24 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 nargs="+",
                 help="Address and ports of the external engines.",
+            )
+            parser.add_argument(
+                "--update-weight-transfer-mode",
+                choices=["broadcast", "p2p"],
+                default="broadcast",
+                help="The method to transfer weights to remote rollout engines during update weight.",
+            )
+            parser.add_argument(
+                "--p2p-transfer-num-workers",
+                type=int,
+                default=4,
+                help="Number of thread pool workers for P2P weight transfer.",
+            )
+            parser.add_argument(
+                "--p2p-transfer-timeout",
+                type=float,
+                default=30.0,
+                help="Timeout in seconds for each P2P transfer operation.",
             )
             return parser
 
@@ -487,10 +553,8 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_false",
                 dest="rollout_global_dataset",
                 help=(
-                    "Whether to use a global dataset for rollout. "
-                    "If set, the rollout will use the `--prompt-data` as the prompt dataset, "
-                    "and the prompts for rollout will be sampled from the dataset. "
-                    "If not set, you need to manage the data by your self."
+                    "Disable the global dataset for rollout. By default, Miles loads `--prompt-data` into a global dataset and samples from it for rollout. "
+                    "Setting this flag turns off this behavior, Use this flag only when providing a custom `--rollout-function-path` (and usually a custom `--data-source-path`) that handles data loading independently."
                 ),
             )
 
@@ -507,7 +571,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help=(
                     "The path to the prompt data. "
                     "Currently we only support jsonl format, and each line should contains --input-key and --label-key, "
-                    "which will be used as the prompt and the label respectively. "
+                    "which will be used as the prompt and the label respectively."
                     "If you want to use a custom template, you can set --apply-chat-template to true, in that case, "
                     "the input should be the same structure as an openai message, e.g. [{'role': 'user', 'content': 'blabla'}]. "
                 ),
@@ -515,6 +579,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument("--apply-chat-template", action="store_true", default=False)
             # Temporarily be JSON-serialized str, will be a real dict after using Omegaconf
             parser.add_argument("--apply-chat-template-kwargs", type=json.loads, default="{}")
+            parser.add_argument(
+                "--chat-template-path",
+                type=str,
+                default=None,
+                help="Path to a custom Jinja chat template file (.jinja), or 'autofix'. "
+                "Sets tokenizer.chat_template when loading via load_tokenizer, "
+                "and also sets --sglang-chat-template so the sglang server uses the same template. "
+                "If set to 'autofix', Miles will automatically select a fixed chat template "
+                "maintained internally that resolves train-inference token mismatch issues "
+                "in agentic workflows (e.g. tool-call trajectories). "
+                "The path must be accessible on all Ray worker nodes "
+                "(e.g. a path inside the miles repo, or a shared filesystem like NFS).",
+            )
             parser.add_argument("--input-key", type=str, default="input", help="JSON dataset key")
             parser.add_argument("--label-key", type=str, default=None, help="JSON dataset key")
             parser.add_argument(
@@ -579,8 +656,8 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Balance the number of tokens between data parallel ranks with `karmarkar_karp` for verl. "
-                    "Note that this may allocate the different response of the same prompt into different training steps."
+                    "Repartition each rollout batch so each data-parallel rank gets a similar total token count via Karmarkar-Karp method. "
+                    "It may be beneficial for training speed but changes per-rank sample grouping and adds a small CPU scheduling overhead."
                 ),
             )
 
@@ -869,7 +946,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-tis",
                 action="store_true",
                 default=False,
-                help="Enable TIS from https://fengyao.notion.site/off-policy-rl for off-policy importance sampling.",
+                help="Enable TIS from https://fengyao.notion.site/off-policy-rl#279721e3f6c48092bbe2fcfe0e9c6b33.",
             )
             parser.add_argument(
                 "--tis-clip",
@@ -919,6 +996,60 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=float,
                 default=1e-4,
                 help="The threshold for Off-Policy Sequence Masking (OPSM).",
+            )
+            return parser
+
+        def add_lora_arguments(parser):
+            """Add LoRA-related arguments for Megatron backend."""
+            parser.add_argument(
+                "--lora-rank",
+                type=int,
+                default=0,
+                help="LoRA rank. Set to 0 to disable LoRA (default: 0)",
+            )
+            parser.add_argument(
+                "--lora-alpha",
+                type=int,
+                default=16,
+                help="LoRA alpha for scaling (default: 16)",
+            )
+            parser.add_argument(
+                "--lora-dropout",
+                type=float,
+                default=0.0,
+                help="LoRA dropout rate (default: 0.0)",
+            )
+            parser.add_argument(
+                "--lora-type",
+                type=str,
+                default="lora",
+                choices=["lora", "canonical_lora"],
+                help="LoRA variant to use: 'lora' (standard) or 'canonical_lora' (split Q/K/V) (default: lora)",
+            )
+            parser.add_argument(
+                "--target-modules",
+                type=str,
+                default=None,
+                help="Target modules for LoRA. Use 'all-linear' or comma-separated module names "
+                "(e.g., 'q_proj,k_proj,v_proj,o_proj' for HF naming or 'linear_qkv,linear_proj' for Megatron naming)",
+            )
+            parser.add_argument(
+                "--exclude-modules",
+                type=str,
+                default=None,
+                help="Modules to exclude from LoRA (comma-separated)",
+            )
+            parser.add_argument(
+                "--lora-adapter-path",
+                type=str,
+                default=None,
+                help="Path to load pre-trained LoRA adapter weights (default: None)",
+            )
+            parser.add_argument(
+                "--lora-sync-from-tensor",
+                action="store_true",
+                default=False,
+                help="Sync LoRA weights via tensor instead of file (more efficient)",
             )
             return parser
 
@@ -1023,7 +1154,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--log-correct-samples",
                 action="store_true",
                 default=False,
-                help="Whether to turn on passrate logging, which will log the pass@n of the responses in the rollout.",
+                help="Explicitly log metrics for correct samples.",
             )
             parser.add_argument("--wandb-run-id", type=str, default=None)
             return parser
@@ -1040,6 +1171,27 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--tb-experiment-name", type=str, default=None)
 
+            return parser
+
+        # prometheus
+        def add_prometheus_arguments(parser):
+            parser.add_argument("--use-prometheus", action="store_true", default=False)
+            parser.add_argument(
+                "--prometheus-port",
+                type=int,
+                default=int(os.environ.get("PROMETHEUS_PORT", "9090")),
+                help="Port for the Prometheus metrics HTTP server. "
+                "Prometheus scrapes /metrics on this port. "
+                "Defaults to PROMETHEUS_PORT env var or 9090.",
+            )
+            parser.add_argument(
+                "--prometheus-run-name",
+                type=str,
+                default=None,
+                help="Human-readable run name attached as a 'run_name' label to all "
+                "Prometheus metrics. Used to distinguish runs in Grafana. "
+                "Defaults to --wandb-group if set.",
+            )
             return parser
 
         # debug
@@ -1102,6 +1254,52 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 help=("Dump all details of training for post-hoc analysis and visualization."),
             )
+            parser.add_argument(
+                "--dumper-enable",
+                action="store_true",
+                default=False,
+                help="Enable sglang dumper for all three phases (sglang inference, "
+                "megatron forward-only, megatron forward-backward). "
+                "Per-phase --dumper-inference/--dumper-fwd-only/--dumper-fwd-bwd can override.",
+            )
+            parser.add_argument(
+                "--dumper-dir",
+                type=str,
+                default="/tmp/dumper",
+                help="Base output directory for sglang dumper. Three subdirs are created: "
+                "inference/, fwd_only/, fwd_bwd/.",
+            )
+            parser.add_argument(
+                "--dumper-inference",
+                nargs="*",
+                default=None,
+                help="SGLang inference phase dumper config as key=value pairs. "
+                "Keys map to DumperConfig fields (e.g. enable=true filter=whatever).",
+            )
+            parser.add_argument(
+                "--dumper-fwd-only",
+                nargs="*",
+                default=None,
+                help="Megatron forward-only phase dumper config as key=value pairs.",
+            )
+            parser.add_argument(
+                "--dumper-fwd-bwd",
+                nargs="*",
+                default=None,
+                help="Megatron forward-backward phase dumper config as key=value pairs.",
+            )
+            parser.add_argument(
+                "--dumper-source-patcher-config-inference",
+                type=str,
+                default=None,
+                help="Path to YAML config file for source patcher applied in SGLang inference engines.",
+            )
+            parser.add_argument(
+                "--dumper-source-patcher-config-train",
+                type=str,
+                default=None,
+                help="Path to YAML config file for source patcher applied in Megatron training actors.",
+            )
             # use together with --record-memory-history and --memory-snapshot-path (defined in Megatron)
             parser.add_argument(
                 "--memory-snapshot-dir",
@@ -1127,6 +1325,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="torch",
             )
             parser.add_argument("--check-weight-update-equal", action="store_true")
+            parser.add_argument(
+                "--env-report",
+                type=str,
+                default=os.environ.get("MILES_SCRIPT_ENV_REPORT", ""),
+                help="JSON string containing environment report from external launcher.",
+            )
             return parser
 
         def add_network_arguments(parser):
@@ -1323,6 +1527,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
             )
             parser.add_argument(
+                "--ci-disable-logprobs-checker",
+                action="store_true",
+            )
+            parser.add_argument(
                 "--ci-metric-checker-key",
                 type=str,
                 default=None,
@@ -1342,6 +1550,67 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
             )
+            parser.add_argument(
+                "--ci-save-model-hash",
+                action="store_true",
+            )
+            parser.add_argument(
+                "--ci-check-model-hash",
+                action="store_true",
+            )
+            return parser
+
+        def add_session_arguments(parser):
+            parser.add_argument(
+                "--use-session-server",
+                action="store_true",
+                default=False,
+                help="Start a standalone session server for TITO/session support. "
+                "Requires --hf-checkpoint and --chat-template-path to also be set.",
+            )
+            parser.add_argument(
+                "--session-server-ip",
+                type=str,
+                default=None,
+                help="IP address of the standalone session server. Defaults to sglang-router-ip.",
+            )
+            parser.add_argument(
+                "--session-server-port",
+                type=int,
+                default=None,
+                help="Port of the standalone session server. Auto-allocated if not set.",
+            )
+            parser.add_argument(
+                "--tito-model",
+                type=str,
+                default="default",
+                choices=[t.value for t in TITOTokenizerType],
+                help="TITO tokenizer type for pretokenized prefix reuse. "
+                "Controls how token IDs are computed for messages appended after "
+                "the pretokenized prefix in multi-turn agentic sessions.",
+            )
+            parser.add_argument(
+                "--tito-allowed-append-roles",
+                nargs="+",
+                default=["tool"],
+                choices=["tool", "user", "system"],
+                help="Message roles allowed to be appended after the pretokenized "
+                "assistant prefix in TITO sessions (default: tool).",
+            )
+            return parser
+
+        def add_user_provided_function_arguments(parser):
+            args_partial, _ = parser.parse_known_args()
+            for path in [
+                args_partial.rollout_function_path,
+                args_partial.custom_generate_function_path,
+            ]:
+                try:
+                    fn = load_function(path)
+                except (ModuleNotFoundError, ValueError):
+                    continue
+                if fn is not None and callable(getattr(fn, "add_arguments", None)):
+                    fn.add_arguments(parser)
             return parser
 
         def add_sglang_tp_size():
@@ -1362,11 +1631,14 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_data_arguments(parser)
         parser = add_eval_arguments(parser)
         parser = add_algo_arguments(parser)
+        parser = add_lora_arguments(parser)
         parser = add_wandb_arguments(parser)
         parser = add_tensorboard_arguments(parser)
+        parser = add_prometheus_arguments(parser)
         parser = add_router_arguments(parser)
         parser = add_debug_arguments(parser)
         parser = add_sglang_arguments(parser)
+        parser = add_session_arguments(parser)
         parser = add_network_arguments(parser)
         parser = add_reward_model_arguments(parser)
         parser = add_rollout_buffer_arguments(parser)
@@ -1374,6 +1646,9 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_prefill_decode_disaggregation_arguments(parser)
         parser = add_ci_arguments(parser)
         parser = add_custom_megatron_plugins_arguments(parser)
+        if enable_experimental_rollout_refactor():
+            parser = add_user_provided_function_arguments(parser)
+
         reset_arg(
             parser,
             "--custom-config-path",
@@ -1431,6 +1706,12 @@ def parse_args(add_custom_arguments=None):
                 "please use alltoall dispatcher instead."
             )
             args.moe_token_dispatcher_type = "alltoall"
+
+        if args.pipeline_model_parallel_size == 1:
+            assert args.decoder_first_pipeline_num_layers is None and args.decoder_last_pipeline_num_layers is None, (
+                "decoder_first_pipeline_num_layers and decoder_last_pipeline_num_layers should be None when "
+                "pipeline_model_parallel_size is 1."
+            )
 
     sglang_validate_args(args)
 
@@ -1493,6 +1774,35 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
+    # Normalize --tito-allowed-append-roles: lowercase + deduplicate.
+    raw_roles = getattr(args, "tito_allowed_append_roles", ["tool"])
+    args.tito_allowed_append_roles = sorted(set(r.lower() for r in raw_roles))
+
+    if "user" in args.tito_allowed_append_roles:
+        logger.warning(
+            "--tito-allowed-append-roles includes 'user'. "
+            "Incremental tokenization assumes appended messages do not change how "
+            "earlier turns render, which may not hold for user messages on "
+            "context-sensitive chat templates (e.g. last_query_index logic, "
+            "thinking-token trimming). This can cause input_ids to diverge from "
+            "the canonical template output. Use at your own risk."
+        )
+
+    if args.chat_template_path == "autofix":
+        from miles.utils.chat_template_utils import try_get_fixed_chat_template
+
+        resolved = try_get_fixed_chat_template(args.hf_checkpoint)
+        if resolved is None:
+            logger.warning(
+                "--chat-template-path=autofix but no fix rule found for %s, using HF default", args.hf_checkpoint
+            )
+        args.chat_template_path = resolved
+
+    if args.chat_template_path is not None:
+        if not os.path.isfile(args.chat_template_path):
+            raise FileNotFoundError(f"--chat-template-path file not found: {args.chat_template_path}")
+        args.sglang_chat_template = args.chat_template_path
+
     if args.kl_coef != 0 or args.use_kl_loss:
         if not os.path.exists(args.ref_load):
             raise FileNotFoundError(f"ref_load {args.ref_load} does not exist, please check the path.")
@@ -1527,6 +1837,27 @@ def miles_validate_args(args):
 
     if args.save_interval is not None:
         assert args.save is not None, "'--save' is required when save_interval is set."
+
+    # Parse LoRA target modules
+    if args.lora_rank > 0:
+        assert args.target_modules is not None, "'--target-modules' is required when LoRA is enabled."
+
+        if args.target_modules == "all-linear":
+            modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+        elif "," in args.target_modules:
+            modules = [m.strip() for m in args.target_modules.split(",")]
+        else:
+            modules = [args.target_modules]
+
+        if args.exclude_modules:
+            exclude_set = (
+                set(m.strip() for m in args.exclude_modules.split(","))
+                if "," in args.exclude_modules
+                else {args.exclude_modules}
+            )
+            modules = [m for m in modules if m not in exclude_set]
+
+        args.target_modules = modules
 
     assert not (args.kl_coef != 0 and args.kl_loss_coef != 0), "Only one of kl_coef and kl_loss_coef can be set"
 
@@ -1603,6 +1934,15 @@ def miles_validate_args(args):
     )
 
     # always true on offload for colocate at the moment.
+    if args.update_weight_transfer_mode == "p2p":
+        assert not args.colocate, (
+            "P2P weight transfer mode is not compatible with --colocate. "
+            "Please use broadcast mode or disable colocate."
+        )
+        assert (
+            getattr(args, "prefill_num_servers", None) is None
+        ), "P2P weight transfer mode has not been tested when PD is enabled."
+
     if args.colocate:
         if args.offload_train is None:
             args.offload_train = True
@@ -1621,6 +1961,10 @@ def miles_validate_args(args):
         args.offload_train = False
     if args.offload_rollout is None:
         args.offload_rollout = False
+
+    if args.offload_train:
+        args.disable_grad_buffers_cpu_backup = True
+        args.disable_param_buffers_cpu_backup = args.enable_weights_backuper
 
     if args.eval_function_path is None:
         args.eval_function_path = args.rollout_function_path
@@ -1695,11 +2039,39 @@ def miles_validate_args(args):
         args.prefill_num_servers is not None and args.rollout_external
     ), "prefill_num_servers cannot be set when rollout_external is set."
 
+    assert not (
+        getattr(args, "sglang_config", None) is not None and args.rollout_external
+    ), "sglang_config cannot be set when rollout_external is set."
+
+    assert not (
+        getattr(args, "sglang_config", None) is not None and getattr(args, "prefill_num_servers", None) is not None
+    ), "sglang_config and prefill_num_servers are mutually exclusive. Use server_groups in the YAML config instead."
+
     if args.qkv_format == "bshd":
         assert args.train_backend == "megatron", "bshd format is only supported for megatron backend."
         assert (
             args.use_dynamic_batch_size is False
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
+
+    _maybe_apply_dumper_overrides(args)
+
+
+def _maybe_apply_dumper_overrides(args) -> None:
+    if not args.dumper_enable:
+        return
+
+    if args.use_fault_tolerance:
+        logger.info("Dumper mode: disabling --use-fault-tolerance to suppress RolloutHealthMonitor heartbeats")
+        args.use_fault_tolerance = False
+
+    logger.info("Dumper mode: all heartbeat mechanisms disabled")
+    args.router_disable_health_check = True
+    args.rollout_health_check_interval = 1e18
+
+    logger.info("Dumper mode: forced num_rollout=%d, disabled eval and save", args.num_rollout)
+    args.num_rollout = (args.start_rollout_id or 0) + 1
+    args.eval_interval = None
+    args.save_interval = None
 
 
 def hf_validate_args(args, hf_config):
@@ -1712,13 +2084,21 @@ def hf_validate_args(args, hf_config):
     if hasattr(hf_config, "text_config"):
         hf_config = hf_config.text_config
 
+    if hasattr(hf_config, "rope_parameters") and isinstance(hf_config.rope_parameters, dict):
+        if "rope_theta" in hf_config.rope_parameters:
+            hf_config.rope_theta = hf_config.rope_parameters["rope_theta"]
+
     for hf_config_name, megatron_config_name, compare_fn in [
         ("hidden_size", "hidden_size", equal),
         ("num_attention_heads", "num_attention_heads", equal),
         ("num_hidden_layers", "num_layers", equal),
         ("intermediate_size", "ffn_hidden_size", equal),
         ("tie_word_embeddings", "untie_embeddings_and_output_weights", lambda x, y: not x == y),
-        ("rms_norm_eps", "norm_epsilon", equal),
+        (
+            "rms_norm_eps",
+            "norm_epsilon" if os.getenv("DEPRECATED_MEGATRON_COMPATIBLE", "0") == "1" else "layernorm_epsilon",
+            equal,
+        ),
         ("rope_theta", "rotary_base", equal),
     ]:
         if hasattr(hf_config, hf_config_name):

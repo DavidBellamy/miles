@@ -13,19 +13,20 @@ from miles.utils.types import RolloutBatch
 from ...utils.data import process_rollout_data
 from ...utils.ray_utils import Box
 from .cp_utils import slice_log_prob_with_cp, slice_with_cp
-from .parallel import ParallelState
+from .parallel import get_parallel_state
 
 logger = logging.getLogger(__name__)
 
 
-def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: ParallelState) -> RolloutBatch:
+def get_rollout_data(args: Namespace, rollout_data_ref: Box) -> RolloutBatch:
+    parallel_state = get_parallel_state()
     # Fetch data through ray on CPU, not sure if this will be performance bottleneck.
     # Both first pp stage and the last pp stage will receive the data.
     rollout_data = process_rollout_data(
         args,
         rollout_data_ref,
-        parallel_state.dp_rank,
-        parallel_state.dp_size,
+        parallel_state.intra_dp.rank,
+        parallel_state.intra_dp.size,
     )
     # move tokens to GPU in advance
     rollout_data["tokens"] = [
@@ -50,7 +51,7 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
         max_seq_len = max(rollout_data["total_lengths"])
 
         # pad to reduce memory fragmentation and maybe make the computation faster
-        pad_size = parallel_state.tp_size * args.data_pad_size_multiplier
+        pad_size = parallel_state.tp.size * args.data_pad_size_multiplier
         max_seq_len = (max_seq_len + pad_size - 1) // pad_size * pad_size
 
         rollout_data["max_seq_lens"] = [max_seq_len] * len(rollout_data["tokens"])
@@ -62,7 +63,6 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
                     log_prob,
                     total_length,
                     response_length,
-                    parallel_state,
                     args.qkv_format,
                     rollout_data["max_seq_lens"][i] if args.qkv_format == "bshd" else None,
                 ),
@@ -86,10 +86,10 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
 def get_batch(
     data_iterator: "DataIterator",
     keys: Sequence[str],
-    parallel_state: ParallelState,
     pad_multiplier: int = 128,
     qkv_format: str = "thd",
     get_position_ids: bool = False,
+    allgather_cp: bool = False,
 ) -> dict[str, torch.Tensor | list[torch.Tensor] | None]:
     """
     Generate a CP-ready micro-batch with packed sequence parameters.
@@ -112,6 +112,8 @@ def get_batch(
     Plus any other requested keys forwarded from the iterator.
     """
 
+    parallel_state = get_parallel_state()
+
     assert "tokens" in keys
     batch = data_iterator.get_next(keys)
 
@@ -121,36 +123,59 @@ def get_batch(
     tokens = batch["tokens"]
     # use 0 as the pad token id should be fine?
     pad_token_id = 0
-    pad_size = parallel_state.dp_size * pad_multiplier
+    pad_size = parallel_state.tp.size * pad_multiplier
 
     # for cp, we need all tokens to calculate logprob
     batch["unconcat_tokens"] = tokens
 
-    cp_size = parallel_state.cp_size
+    cp_size = parallel_state.cp.size
 
     if qkv_format == "bshd":
         max_seqlen = batch["max_seq_lens"][0]
         assert max([t.size(0) for t in tokens]) <= max_seqlen
-        tokens = [slice_with_cp(t, pad_token_id, parallel_state, qkv_format, max_seqlen) for t in tokens]
+        tokens = [slice_with_cp(t, pad_token_id, qkv_format, max_seqlen) for t in tokens]
         tokens = torch.stack(tokens)
 
     elif qkv_format == "thd":
-        tokens = [slice_with_cp(t, pad_token_id, parallel_state, qkv_format) for t in tokens]
+        cp_rank = parallel_state.cp.rank
 
-        cu_seqlens = [0]
-        for t in tokens:
-            cu_seqlens.append(cu_seqlens[-1] + t.size(0))
+        if allgather_cp:
+            # DSA mode: concatenate all sequences first, then slice once with CP.
+            # We also pad the *global* concatenated stream to make per-rank chunks equal.
+            cu_seqlens_list: list[int] = [0]
+            for t in tokens:
+                cu_seqlens_list.append(cu_seqlens_list[-1] + t.size(0))
 
-        tokens = torch.cat(tokens)
+            tokens = torch.cat(tokens, dim=0)
 
-        # Always pad to reduce memory fragmentation and maybe make the computation faster
-        pad = (pad_size - tokens.size(0) % pad_size) % pad_size
-        if pad != 0:
-            tokens = F.pad(tokens, (0, pad), value=pad_token_id)
-            cu_seqlens.append(cu_seqlens[-1] + pad)
+            # Pad global stream so (1) divisible by cp_size (equal chunks),
+            # (2) divisible by pad_size (reduce fragmentation).
+            global_pad_size = cp_size * pad_size
+            pad = (global_pad_size - tokens.size(0) % global_pad_size) % global_pad_size
+            if pad != 0:
+                tokens = F.pad(tokens, (0, pad), value=pad_token_id)
+                cu_seqlens_list.append(cu_seqlens_list[-1] + pad)
 
-        # thd requires the cu_seqlens to be of the origin length
-        cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int).cuda() * cp_size
+            cu_seqlens = torch.tensor(cu_seqlens_list, dtype=torch.int, device=torch.cuda.current_device())
+            tokens = tokens.chunk(cp_size, dim=0)[cp_rank]
+        else:
+            tokens = [slice_with_cp(t, pad_token_id, qkv_format) for t in tokens]
+
+            cu_seqlens = [0]
+            for t in tokens:
+                cu_seqlens.append(cu_seqlens[-1] + t.size(0))
+
+            tokens = torch.cat(tokens)
+
+            # Always pad to reduce memory fragmentation and maybe make the computation faster
+            pad = (pad_size - tokens.size(0) % pad_size) % pad_size
+            if pad != 0:
+                tokens = F.pad(tokens, (0, pad), value=pad_token_id)
+                cu_seqlens.append(cu_seqlens[-1] + pad)
+
+            # thd requires the cu_seqlens to be of the origin length
+            cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int).cuda() * cp_size
+
         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
 
         tokens = tokens.unsqueeze(0)
@@ -163,6 +188,7 @@ def get_batch(
     batch["tokens"] = tokens
 
     if get_position_ids:
+        assert not allgather_cp, "allgather CP is not supported for FSDP"
         position_ids_list = []
         for t in batch["unconcat_tokens"]:
             seq_len = t.size(0)
@@ -170,10 +196,10 @@ def get_batch(
             position_ids_list.append(pos_ids)
 
         if qkv_format == "bshd":
-            position_ids = [slice_with_cp(p, 0, parallel_state, qkv_format, max_seqlen) for p in position_ids_list]
+            position_ids = [slice_with_cp(p, 0, qkv_format, max_seqlen) for p in position_ids_list]
             position_ids = torch.stack(position_ids)
         elif qkv_format == "thd":
-            position_ids = [slice_with_cp(p, 0, parallel_state, qkv_format) for p in position_ids_list]
+            position_ids = [slice_with_cp(p, 0, qkv_format) for p in position_ids_list]
             position_ids = torch.cat(position_ids)
             if pad != 0:
                 position_ids = F.pad(position_ids, (0, pad), value=0)
@@ -190,12 +216,22 @@ def get_batch(
         strict=True,
     ):
         prompt_length = total_length - response_length
+        # Align mask to token stream positions (prompt_length-1 left pad, 1 right pad)
         loss_mask = F.pad(loss_mask, (prompt_length - 1, 1), value=0)
-        loss_mask = slice_with_cp(loss_mask, 0, parallel_state, qkv_format, max_seqlen)
+        if allgather_cp:
+            loss_masks.append(loss_mask)
+            continue
+        loss_mask = slice_with_cp(loss_mask, 0, qkv_format, max_seqlen)
         loss_masks.append(loss_mask)
 
     if qkv_format == "bshd":
         loss_masks = torch.stack(loss_masks)
+    elif qkv_format == "thd" and allgather_cp:
+        # DSA: concatenate first (same as tokens), pad globally (same pad as above), then slice once.
+        loss_masks = torch.cat(loss_masks, dim=0)
+        if pad != 0:
+            loss_masks = F.pad(loss_masks, (0, pad), value=0)
+        loss_masks = loss_masks.chunk(cp_size, dim=0)[cp_rank].unsqueeze(0)
     elif qkv_format == "thd":
         loss_masks = torch.cat(loss_masks)
         loss_masks = F.pad(loss_masks, (0, pad), value=0).unsqueeze(0)
@@ -290,7 +326,6 @@ class DataIterator:
 def get_data_iterator(
     args: Namespace,
     model: torch.nn.Module | Sequence[torch.nn.Module],
-    parallel_state: ParallelState,
     rollout_data: RolloutBatch,
 ) -> tuple[list[DataIterator], list[int]]:
     """
@@ -307,14 +342,16 @@ def get_data_iterator(
     - `data_iterators`: list of `DataIterator`, one per VPP stage (size 1 if VPP disabled)
     - `num_microbatches`: list[int], one per local step in the rollout (length = steps)
     """
-    dp_size = parallel_state.dp_size
-    dp_group = parallel_state.dp_group
+    parallel_state = get_parallel_state()
+    dp_size = parallel_state.intra_dp.size
+    dp_group = parallel_state.intra_dp.group
     vpp_size = parallel_state.vpp_size
     microbatch_group_size_per_vp_stage = parallel_state.microbatch_group_size_per_vp_stage
 
-    cp_size = parallel_state.cp_size
+    cp_size = parallel_state.cp.size
 
     num_local_samples = len(rollout_data["total_lengths"])
+    assert args.use_dynamic_global_batch_size == ("dynamic_global_batch_size" in rollout_data)
     global_batch_size = rollout_data.get("dynamic_global_batch_size", args.global_batch_size)
     num_local_gbs = global_batch_size // dp_size
     num_steps_per_rollout = num_local_samples // num_local_gbs

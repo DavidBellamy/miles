@@ -1,21 +1,56 @@
 import inspect
+import logging
 import re
 from argparse import Namespace
 from collections.abc import Iterator, Sequence
 
+import ray
 import torch
 import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
+from ray.actor import ActorHandle
 
 from miles.backends.megatron_utils.misc_utils import strip_param_name_prefix
 from miles.utils.types import ParamInfo
 
+logger = logging.getLogger(__name__)
 
-def all_gather_param(name: str, param: torch.nn.Parameter) -> torch.Tensor:
+
+def _gather_with_stride(
+    param_partitions: list[torch.Tensor], partition_dim: int, partition_stride: int
+) -> torch.Tensor:
+    """Gather partitions respecting partition_stride (strided/interleaved TP sharding)."""
+    if partition_stride == 1:
+        return torch.cat(param_partitions, dim=partition_dim)
+    # Interleaved (strided) partitioning, e.g. linear_fc1.weight under GLU/SwiGLU
+    chunks_per_rank = [p.chunk(partition_stride, dim=partition_dim) for p in param_partitions]
+    interleaved = [chunks_per_rank[r][s] for s in range(partition_stride) for r in range(len(param_partitions))]
+    return torch.cat(interleaved, dim=partition_dim)
+
+
+def _check_and_fix_partition(args: Namespace, name: str, partition_stride: int, partition_dim: int) -> tuple[int, int]:
+    """Validate partition_stride values for known parameter patterns.
+
+    After Megatron-LM PR #2708, linear_fc1 correctly reports partition_stride=2
+    (GLU/SwiGLU interleaved [gate, up]), so assert partition_stride==2 is removed.
+    But TEGroupedLinear still does not set partition_stride/partition_dim correctly for grouped moe gemm
+    """
+    if "linear_fc1.weight" in name and args.swiglu:
+        partition_stride = 2
+    elif "linear_fc2.weight" in name:
+        assert partition_stride == 1, f"Expected partition_stride=1 for {name}, got {partition_stride}"
+        if partition_dim == 0:
+            partition_dim = 1
+    else:
+        assert partition_stride == 1, f"Expected partition_stride=1 for {name}, got {partition_stride}"
+    return partition_stride, partition_dim
+
+
+def all_gather_param(args: Namespace, name: str, param: torch.nn.Parameter) -> torch.Tensor:
     """
     All-gather TP-sharded param to full tensor. expert_bias→param, non-TP/duplicated→param.data.
-    Uses expert-TP for ".experts.", else regular-TP. linear_fc1 rechunked (GLU), linear_fc2 dim fix.
+    Uses expert-TP for ".experts.", else regular-TP. Handles strided partitioning via partition_stride.
     """
     if "expert_bias" in name:
         return param
@@ -34,21 +69,15 @@ def all_gather_param(name: str, param: torch.nn.Parameter) -> torch.Tensor:
     param_partitions = [torch.empty_like(param.data) for _ in range(tp_size)]
     dist.all_gather(param_partitions, param.data, group=tp_group)
     partition_dim = param.partition_dim
-    assert param.partition_stride == 1, "partition_stride != 1 is not supported"
-    # TODO: here we did an extra copy during concat, maybe merge this with convert_to_hf is better?
-    # TODO: check only GLU is used.
-    if "linear_fc1.weight" in name:
-        param_partitions = [p.chunk(2, dim=0) for p in param_partitions]
-        param_partitions = [p[0] for p in param_partitions] + [p[1] for p in param_partitions]
-    # this is bug in megatron's grouped moe.
-    if "linear_fc2.weight" in name:
-        if partition_dim == 0:
-            partition_dim = 1
-    param = torch.cat(param_partitions, dim=partition_dim)
+    partition_stride = param.partition_stride
+
+    partition_stride, partition_dim = _check_and_fix_partition(args, name, partition_stride, partition_dim)
+    param = _gather_with_stride(param_partitions, partition_dim, partition_stride)
     return param
 
 
 def all_gather_params_async(
+    args: Namespace,
     param_infos_and_params: list[tuple[ParamInfo, torch.Tensor]],
 ) -> list[torch.Tensor]:
     """
@@ -63,10 +92,10 @@ def all_gather_params_async(
     for info, param in param_infos_and_params:
         # Prepare async all_gather
         if "expert_bias" in info.name:
-            gather_tasks.append((info, param, None, None, None))
+            gather_tasks.append((info, param, None, None, None, None))
             handles.append(None)
         elif not param.tensor_model_parallel or getattr(param, "parallel_mode", None) == "duplicated":
-            gather_tasks.append((info, param.data, None, None, None))
+            gather_tasks.append((info, param.data, None, None, None, None))
             handles.append(None)
         else:
             # Start async all_gather
@@ -79,7 +108,7 @@ def all_gather_params_async(
 
             param_partitions = [torch.empty_like(param.data) for _ in range(tp_size)]
             handle = dist.all_gather(param_partitions, param.data, group=tp_group, async_op=True)
-            gather_tasks.append((info, None, handle, param_partitions, param.partition_dim))
+            gather_tasks.append((info, None, handle, param_partitions, param.partition_dim, param.partition_stride))
             handles.append(handle)
 
     # Phase 2: Wait for ALL async operations to complete at once
@@ -90,23 +119,15 @@ def all_gather_params_async(
 
     # Phase 3: Process all results after all communications are done
     gathered_params = []
-    for info, direct_param, handle, param_partitions, partition_dim in gather_tasks:
+    for info, direct_param, handle, param_partitions, partition_dim, partition_stride in gather_tasks:
         if handle is None:
             # No all_gather needed
             param = direct_param
         else:
-            # Process the gathered partitions (same logic as original all_gather_param)
-            assert partition_dim is not None, "partition_stride != 1 is not supported"
-            # TODO: here we did an extra copy during concat, maybe merge this with convert_to_hf is better?
-            # TODO: check only GLU is used.
-            if "linear_fc1.weight" in info.name:
-                param_partitions = [p.chunk(2, dim=0) for p in param_partitions]
-                param_partitions = [p[0] for p in param_partitions] + [p[1] for p in param_partitions]
-            # this is bug in megatron's grouped moe.
-            if "linear_fc2.weight" in info.name:
-                if partition_dim == 0:
-                    partition_dim = 1
-            param = torch.cat(param_partitions, dim=partition_dim)
+            partition_stride, partition_dim = _check_and_fix_partition(
+                args, info.name, partition_stride, partition_dim
+            )
+            param = _gather_with_stride(param_partitions, partition_dim, partition_stride)
 
         gathered_params.append(param)
 
@@ -233,3 +254,45 @@ def _named_params_and_buffers_global(
                 layer_idx, rest = match.groups()
                 layer_idx = int(layer_idx) + layer_offset
                 yield f"module.module.decoder.layers.{layer_idx}.{rest}", buffer
+
+
+def collect_named_tensors_for_weight_transfer(
+    args: Namespace,
+    model: Sequence[torch.nn.Module],
+    convert_to_global_name: bool = True,
+    translate_gpu_to_cpu: bool = False,
+    is_expert: bool = False,
+) -> Iterator[tuple[str, torch.Tensor]]:
+
+    for name, tensor in named_params_and_buffers(
+        args,
+        model,
+        convert_to_global_name,
+        translate_gpu_to_cpu,
+    ):
+        if is_expert == (".experts." in name):
+            yield name, tensor
+
+
+def post_process_weights(
+    rollout_engines: Sequence[ActorHandle],
+    restore_weights_before_load: bool = False,
+    post_process_quantization: bool = False,
+    post_load_weights: bool = False,
+):
+    """
+    Trigger post-process on all rollout engines,
+    including:
+        - int4/fp4 quantization
+        - post_load_weights (should be enabled when using p2p weights updating)
+    """
+    ray.get(
+        [
+            engine.post_process_weights.remote(
+                restore_weights_before_load=restore_weights_before_load,
+                post_process_quantization=post_process_quantization,
+                post_load_weights=post_load_weights,
+            )
+            for engine in rollout_engines
+        ]
+    )

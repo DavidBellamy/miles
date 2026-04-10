@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+import numpy
 import torch
 
 
@@ -24,7 +25,9 @@ class Sample:
     loss_mask: list[int] | None = None
     weight_versions: list[str] = field(default_factory=list)
     rollout_log_probs: list[float] | None = None  # Log probabilities from rollout engine
-    rollout_routed_experts: list[list[int]] | None = None  # Routed experts from rollout engine
+    rollout_routed_experts: numpy.ndarray | None = (
+        None  # Routed experts from rollout engine. shape: (num_tokens-1, num_layers, moe_router_topk), dtype=int32
+    )
     remove_sample: bool = False
 
     class Status(Enum):
@@ -40,6 +43,7 @@ class Sample:
     status: Status = Status.PENDING
 
     metadata: dict = field(default_factory=dict)
+    generate_function_path: str | None = None
     # metadata used during training, e.g., what loss to use for this sample.
     train_metadata: dict | None = None
 
@@ -144,6 +148,41 @@ class Sample:
     @property
     def effective_response_length(self):
         return sum(self.loss_mask) if self.loss_mask is not None else self.response_length
+
+    def validate(self):
+        assert self.response_length >= 0, f"response_length must be >= 0, got {self.response_length}"
+        assert (
+            len(self.tokens) >= self.response_length
+        ), f"tokens length ({len(self.tokens)}) must be >= response_length ({self.response_length})"
+        if self.loss_mask is not None:
+            assert (
+                len(self.loss_mask) == self.response_length
+            ), f"loss_mask length ({len(self.loss_mask)}) != response_length ({self.response_length})"
+        if self.rollout_log_probs is not None:
+            assert (
+                len(self.rollout_log_probs) == self.response_length
+            ), f"rollout_log_probs length ({len(self.rollout_log_probs)}) != response_length ({self.response_length})"
+        if self.rollout_routed_experts is not None:
+            actual = len(self.rollout_routed_experts)
+            expect = len(self.tokens) - 1
+            assert actual == expect, f"rollout_routed_experts length ({actual}) != len(tokens) - 1 ({expect})"
+
+    def strip_last_output_tokens(self, n: int, tokenizer) -> None:
+        """Remove the last *n* output tokens and all associated per-token info."""
+        if n <= 0:
+            return
+        assert (
+            n <= self.response_length
+        ), f"cannot strip {n} tokens: only {self.response_length} output tokens available"
+        self.tokens = self.tokens[:-n]
+        self.response_length -= n
+        if self.rollout_log_probs is not None:
+            self.rollout_log_probs = self.rollout_log_probs[:-n]
+        if self.loss_mask is not None:
+            self.loss_mask = self.loss_mask[:-n]
+        self.response = tokenizer.decode(self.tokens[-self.response_length :]) if self.response_length > 0 else ""
+        if self.rollout_routed_experts is not None:
+            self.rollout_routed_experts = self.rollout_routed_experts[:-n]
 
     def update_from_meta_info(self, args, meta_info: dict):
         """

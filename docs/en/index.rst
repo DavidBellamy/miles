@@ -23,6 +23,12 @@ miles is the RL-framework behind GLM-4.7, GLM-4.6 and GLM-4.5. Apart from models
 
 .. toctree::
    :maxdepth: 1
+   :caption: Agentic
+
+   agentic/chat_template_verification.md
+
+.. toctree::
+   :maxdepth: 1
    :caption: Dense
 
    examples/qwen3-4B.md
@@ -41,10 +47,12 @@ miles is the RL-framework behind GLM-4.7, GLM-4.6 and GLM-4.5. Apart from models
    :caption: Advanced Features
 
    _examples_synced/reproducibility/README.md
+   advanced/miles-router.md
    advanced/speculative-decoding.md
    advanced/fault-tolerance.md
    advanced/arch-support-beyond-megatron.md
    advanced/pd-disaggregation.md
+   advanced/p2p-weight-transfer.md
 
 .. toctree::
    :maxdepth: 1
