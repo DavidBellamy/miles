@@ -47,7 +47,9 @@ class ScriptArgs(U.ExecuteTrainConfig):
     agent_model_name: str = os.environ.get("AGENT_MODEL_NAME", "model")
     harbor_tasks_dir: str = os.environ.get("HARBOR_TASKS_DIR", "/root/harbor_tasks")
     router_external_host: str = os.environ.get("MILES_ROUTER_EXTERNAL_HOST", socket.gethostname())
-    miles_host_ip: str = os.environ.get("MILES_HOST_IP", socket.gethostname())
+    miles_host_ip: str = os.environ.get(
+        "MILES_HOST_IP", socket.gethostbyname(socket.gethostname())
+    )
 
     # W&B settings
     wandb_key: str = os.environ.get("WANDB_KEY", os.environ.get("WANDB_API_KEY", ""))
@@ -78,12 +80,19 @@ def cleanup():
 
 
 def prepare(args: ScriptArgs):
-    """Convert HF checkpoint to torch_dist format (multinode for 355B)."""
+    """Convert HF checkpoint to torch_dist format (multinode for 355B).
+
+    The conversion tool requires world_size <= num_layers (92 for this model).
+    Cap conversion nodes so total GPUs don't exceed 92.
+    """
+    max_convert_nodes = 92 // args.num_gpus_per_node  # 11 for 8 GPUs/node
+    convert_nodes = min(args.num_nodes, max_convert_nodes)
     U.convert_checkpoint(
         model_name=args.model_name,
         megatron_model_type=args.megatron_model_type,
         num_gpus_per_node=args.num_gpus_per_node,
         multinode=True,
+        num_nodes=convert_nodes,
         dir_dst=str(Path(args.ref_load).parent),
         hf_checkpoint=args.hf_checkpoint,
         megatron_path=args.megatron_path,
@@ -113,15 +122,18 @@ def execute(args: ScriptArgs):
         "--balance-data "
     )
 
-    # Training parallelism: TP=4, PP=4, EP=DP
-    # 92 layers / PP=4 = 23 layers per stage (even split)
-    tp, pp = 4, 4
+    # Training parallelism: TP=4, PP=2, EP chosen as largest divisor of 160 that fits.
+    # 92 layers / PP=2 = 46 layers per stage.
+    # 160 experts → EP must divide 160. Divisors ≤DP: {1,2,4,5,8,10,16,20,...}
+    tp, pp = 4, 2
     total_gpus = args.num_nodes * args.num_gpus_per_node
     dp = total_gpus // (tp * pp)
-    ep = dp  # maximize expert distribution across ranks
     assert total_gpus % (tp * pp) == 0, (
         f"total GPUs ({total_gpus}) must be divisible by TP*PP ({tp * pp})"
     )
+    num_experts = 160
+    # Pick largest divisor of num_experts that is <= dp
+    ep = max(d for d in range(1, dp + 1) if num_experts % d == 0)
 
     perf_args = (
         f"--tensor-model-parallel-size {tp} "
@@ -159,19 +171,26 @@ def execute(args: ScriptArgs):
         "--adam-beta2 0.98 "
     )
 
-    # SGLang: 16 GPUs per engine with EP/DP-attention for 355B MoE inference
-    # e.g. 112 GPUs / 16 = 7 engines; each GPU holds ~72GB of model weights
-    sglang_world_size = 16
+    # SGLang: TP=8 (1 node/engine, 16 engines). No cross-node TP.
+    # 355B/8*2B → 82.53 GB/GPU. mem-fraction-static is total budget (model+KV).
+    # Model needs 82.53/141 = 58.5%, so fraction must be >0.59.
+    # 0.80 → budget=112.8 GB, KV=30.3 GB, CUDA overhead=28.2 GB.
+    # CUDA graphs disabled: avoids OOM during capture (only 28 GB headroom).
+    # TP=16 cross-node fails: ranks on remote nodes die during init, breaking
+    # Gloo/NCCL connections. TP=8 avoids this by keeping all ranks on one node.
+    sglang_world_size = min(8, total_gpus)
+    # Round down to nearest multiple of gpus_per_node that divides total_gpus
+    sglang_world_size = (sglang_world_size // args.num_gpus_per_node) * args.num_gpus_per_node
+    while sglang_world_size > 0 and total_gpus % sglang_world_size != 0:
+        sglang_world_size -= args.num_gpus_per_node
     sglang_args = (
         f"--rollout-num-gpus-per-engine {sglang_world_size} "
-        "--sglang-mem-fraction-static 0.40 "
-        f"--sglang-ep-size {sglang_world_size} "
-        "--sglang-enable-dp-attention "
-        f"--sglang-dp-size {sglang_world_size} "
-        "--sglang-moe-dense-tp-size 1 "
-        "--sglang-enable-dp-lm-head "
+        "--sglang-mem-fraction-static 0.80 "
+        f"--sglang-tp-size {sglang_world_size} "
+        f"--sglang-chunked-prefill-size {sglang_world_size * 2048} "
         "--sglang-tool-call-parser glm47 "
         "--sglang-reasoning-parser glm45 "
+        "--sglang-disable-cuda-graph "
         "--use-miles-router "
         "--sglang-router-port 31000 "
         "--session-server-port 30000 "
@@ -201,7 +220,7 @@ def execute(args: ScriptArgs):
         f"--actor-num-nodes {args.num_nodes} "
         f"--actor-num-gpus-per-node {args.num_gpus_per_node} "
         f"--num-gpus-per-node {args.num_gpus_per_node} "
-        f"--rollout-num-gpus {args.num_gpus_per_node} "
+        f"--rollout-num-gpus {total_gpus} "
         "--use-fault-tolerance "
     )
 
@@ -250,6 +269,12 @@ def execute(args: ScriptArgs):
         "MILES_ROUTER_EXTERNAL_HOST": args.router_external_host,
         "HARBOR_TASKS_DIR": args.harbor_tasks_dir,
         "MILES_HOST_IP": args.miles_host_ip,
+        # Disable NVLS — 355B model leaves too little memory for NVLink SHARP multicast buffers
+        "NCCL_NVLS_ENABLE": "0",
+        # Work around SGLang deprecation mapping bug: SGL_DISABLE_...=true maps
+        # to SGLANG_ENABLE_...=true (same value, wrong semantics). Setting to
+        # "false" makes the mapping produce SGLANG_ENABLE_...=false → check disabled.
+        "SGL_DISABLE_TP_MEMORY_INBALANCE_CHECK": "false",
     }
 
     U.execute_train(
