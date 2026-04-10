@@ -95,3 +95,13 @@ class TestStripLastOutputTokens:
         original_tokens = list(s.tokens)
         s.strip_last_output_tokens(-1, tokenizer)
         assert s.tokens == original_tokens
+
+
+class TestOldestWeightVersion:
+    def test_ignores_non_numeric_versions(self):
+        s = Sample(weight_versions=["default", "3", "x", "10"])
+        assert s.oldest_weight_version == 3
+
+    def test_all_non_numeric_versions_return_none(self):
+        s = Sample(weight_versions=["default", "latest"])
+        assert s.oldest_weight_version is None
