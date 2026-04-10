@@ -40,7 +40,6 @@ class ScriptArgs(U.ExecuteTrainConfig):
     hf_checkpoint: str = "/models/zai-org/GLM-4.7"
     ref_load: str = "/models/zai-org/GLM-4.7_torch_dist"
     save_dir: str = "/root/GLM-4.7-Full_reasoning/"
-    max_seq_len: int = 4096
     prompt_data: str = "/root/datasets/gsm8k/train.parquet"
 
     # W&B settings
@@ -112,7 +111,6 @@ def execute(args: ScriptArgs):
         "--n-samples-per-prompt 4 "
         "--rollout-temperature 0.8 "
         "--rollout-max-response-len 1024 "
-        f"--max-seq-len {args.max_seq_len} "
         "--over-sampling-batch-size 64 "
         "--dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_reward_nonzero_std "
         "--global-batch-size 64 "
