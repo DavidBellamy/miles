@@ -10,31 +10,29 @@ query was, causing shape mismatch in _apply_output_gate:
 These tests verify the fix without requiring multi-GPU or full model init.
 """
 
-import torch
 import pytest
+import torch
 
 
 # ---------------------------------------------------------------------------
 # Test 1: Pure tensor shape simulation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "num_attention_heads,num_kv_heads,head_dim,tp_size",
     [
-        (16, 2, 256, 4),   # Qwen3.5-35B / Qwen3-Next with TP4
-        (16, 2, 256, 8),   # TP8
-        (16, 4, 256, 8),   # num_kv_heads=4, TP8
-        (32, 4, 128, 8),   # another config
-        (16, 2, 256, 2),   # TP=num_kv_heads, should NOT enter the slice path
-        (16, 8, 128, 4),   # num_kv_heads >= TP, should NOT enter the slice path
+        (16, 2, 256, 4),  # Qwen3.5-35B / Qwen3-Next with TP4
+        (16, 2, 256, 8),  # TP8
+        (16, 4, 256, 8),  # num_kv_heads=4, TP8
+        (32, 4, 128, 8),  # another config
+        (16, 2, 256, 2),  # TP=num_kv_heads, should NOT enter the slice path
+        (16, 8, 128, 4),  # num_kv_heads >= TP, should NOT enter the slice path
     ],
 )
-def test_gate_query_shape_match_after_tp_slice(
-    num_attention_heads, num_kv_heads, head_dim, tp_size
-):
+def test_gate_query_shape_match_after_tp_slice(num_attention_heads, num_kv_heads, head_dim, tp_size):
     """Simulate the gate/query slicing logic and verify shapes match."""
     sq, b = 32, 1  # sequence length, batch
-    hidden_size = num_attention_heads * head_dim
 
     if num_kv_heads < tp_size:
         # This is the path that was buggy
@@ -44,22 +42,21 @@ def test_gate_query_shape_match_after_tp_slice(
         num_query_groups_per_partition = num_kv_heads // tp_size
         num_attention_heads_per_partition = num_attention_heads // tp_size
 
-    num_query_heads_per_group = (
-        num_attention_heads_per_partition // num_query_groups_per_partition
-    )
+    num_query_heads_per_group = num_attention_heads_per_partition // num_query_groups_per_partition
 
     for rank in range(tp_size):
         # Simulate gate after split: [sq, b, ng, np/ng * hn]
         gate_raw = torch.randn(
-            sq, b, num_query_groups_per_partition,
+            sq,
+            b,
+            num_query_groups_per_partition,
             num_query_heads_per_group * head_dim,
         )
         # Reshape: [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
         gate = gate_raw.reshape(sq, b, -1, head_dim)
 
         # Simulate query after reshape + slice
-        query = torch.randn(sq, b, num_query_groups_per_partition,
-                            num_query_heads_per_group * head_dim)
+        query = torch.randn(sq, b, num_query_groups_per_partition, num_query_heads_per_group * head_dim)
         query = query.reshape(sq, b, -1, head_dim)
 
         if num_kv_heads < tp_size:
@@ -72,25 +69,22 @@ def test_gate_query_shape_match_after_tp_slice(
 
         # Now simulate _apply_output_gate: flatten to [sq, b, h_local]
         x = query.reshape(sq, b, -1)  # core_attn_out shape
-        gate_flat = gate.reshape(gate.size(0) * gate.size(1), -1)
 
         # This is the critical check: gate must be viewable as x.shape
         try:
             gate_for_view = gate.contiguous().view(*x.shape)
         except RuntimeError as e:
             pytest.fail(
-                f"gate.view(*x.shape) failed for rank={rank}, "
-                f"gate numel={gate.numel()}, x.shape={x.shape}: {e}"
+                f"gate.view(*x.shape) failed for rank={rank}, " f"gate numel={gate.numel()}, x.shape={x.shape}: {e}"
             )
 
-        assert gate_for_view.shape == x.shape, (
-            f"rank={rank}: gate shape {gate_for_view.shape} != x shape {x.shape}"
-        )
+        assert gate_for_view.shape == x.shape, f"rank={rank}: gate shape {gate_for_view.shape} != x shape {x.shape}"
 
 
 # ---------------------------------------------------------------------------
 # Test 2: Verify the bug would occur WITHOUT the fix
 # ---------------------------------------------------------------------------
+
 
 def test_without_fix_gate_shape_mismatch():
     """Verify that without slicing gate, shapes mismatch for num_kv_heads < TP."""
@@ -128,6 +122,7 @@ def test_without_fix_gate_shape_mismatch():
 # Test 3: Numerical correctness — gate applied to correct head partition
 # ---------------------------------------------------------------------------
 
+
 def test_gate_numerical_correctness_per_rank():
     """Each TP rank should get the correct slice of gate matching its query heads."""
     num_attention_heads = 16
@@ -152,7 +147,7 @@ def test_gate_numerical_correctness_per_rank():
 
         # Within the kv_group, all query heads for that group
         group_start = kv_group * num_heads_per_kv_group
-        group_gate = full_gate[:, :, group_start:group_start + num_heads_per_kv_group, :]
+        group_gate = full_gate[:, :, group_start : group_start + num_heads_per_kv_group, :]
         # Shape: [sq, b, 8, 256]
 
         # Apply the fix: slice to this rank's portion
@@ -163,7 +158,7 @@ def test_gate_numerical_correctness_per_rank():
 
         # Expected heads for this rank
         expected_start = rank * heads_per_rank
-        expected_gate = full_gate[:, :, expected_start:expected_start + heads_per_rank, :]
+        expected_gate = full_gate[:, :, expected_start : expected_start + heads_per_rank, :]
 
         assert torch.equal(rank_gate, expected_gate), (
             f"rank={rank}: got heads with values "
@@ -176,13 +171,15 @@ def test_gate_numerical_correctness_per_rank():
 # Test 4: Import and verify the patched code path exists
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.skip(reason="Requires patched Megatron-LM; verified via patch file instead")
 def test_patched_attention_has_gate_slice():
     """Verify the patched SelfAttention.get_query_key_value_tensors has the gate slice."""
     import inspect
+
     from megatron.core.transformer.attention import SelfAttention
 
     source = inspect.getsource(SelfAttention.get_query_key_value_tensors)
-    assert "gate = gate[:, :, idx * size" in source, (
-        "Patch not applied: gate TP slicing not found in SelfAttention.get_query_key_value_tensors"
-    )
+    assert (
+        "gate = gate[:, :, idx * size" in source
+    ), "Patch not applied: gate TP slicing not found in SelfAttention.get_query_key_value_tensors"
