@@ -11,8 +11,13 @@ This patch:
 """
 
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
+
+
+def _debug(msg: str) -> None:
+    print(f"[FP8_PATCH] {msg}", file=sys.stderr, flush=True)
 
 _patched = False
 
@@ -22,6 +27,8 @@ def apply_fp8_restore_patch() -> None:
     if _patched:
         return
     _patched = True
+
+    _debug("apply_fp8_restore_patch called")
 
     try:
         import torch
@@ -35,8 +42,8 @@ def apply_fp8_restore_patch() -> None:
         from sglang.srt.layers.quantization.compressed_tensors.schemes.compressed_tensors_w8a8_fp8 import (
             CompressedTensorsW8A8Fp8,
         )
-    except ImportError:
-        logger.warning("fp8_restore_patch: required modules not available, skipping")
+    except ImportError as e:
+        _debug(f"import failed: {e}")
         return
 
     if hasattr(CompressedTensorsW8A8Fp8, "_miles_patched"):
@@ -44,6 +51,8 @@ def apply_fp8_restore_patch() -> None:
 
     # 1. Wrap create_weights to save weight_loader and shape
     _original_create_weights = CompressedTensorsW8A8Fp8.create_weights
+
+    _create_weights_call_count = [0]
 
     def _patched_create_weights(self, layer, input_size_per_partition, output_partition_sizes,
                                 input_size, output_size, params_dtype, weight_loader, **kwargs):
@@ -53,12 +62,22 @@ def apply_fp8_restore_patch() -> None:
         )
         layer._saved_weight_loader = weight_loader
         layer._original_weight_shape = (sum(output_partition_sizes), input_size_per_partition)
+        _create_weights_call_count[0] += 1
+        if _create_weights_call_count[0] <= 3:
+            _debug(f"create_weights called #{_create_weights_call_count[0]}, shape={layer._original_weight_shape}")
 
     CompressedTensorsW8A8Fp8.create_weights = _patched_create_weights
 
+    _debug(f"Patch applied: create_weights wrapped, id(class)={id(CompressedTensorsW8A8Fp8)}")
+
     # 2. Add restore_weights_before_loading
+    _restore_call_count = [0]
+
     def _restore_weights_before_loading(self, layer) -> None:
+        _restore_call_count[0] += 1
         weight_loader = getattr(layer, "_saved_weight_loader", None)
+        if _restore_call_count[0] <= 3:
+            _debug(f"restore called #{_restore_call_count[0]}, has_saved_wl={weight_loader is not None}, layer={type(layer).__name__}")
         if weight_loader is None:
             return
         out_size, in_size = layer._original_weight_shape

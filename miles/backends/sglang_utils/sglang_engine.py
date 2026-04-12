@@ -57,10 +57,13 @@ def _launch_server_with_patches(server_args: ServerArgs) -> None:
 
     Must be a module-level function so it's picklable for multiprocessing spawn.
     """
+    import sys
+    print("[FP8_PATCH] _launch_server_with_patches called", file=sys.stderr, flush=True)
     from miles.backends.sglang_utils.fp8_restore_patch import apply_fp8_restore_patch
     from sglang.srt.entrypoints.http_server import launch_server
 
     apply_fp8_restore_patch()
+    print("[FP8_PATCH] patch applied, launching server", file=sys.stderr, flush=True)
     launch_server(server_args)
 
 
