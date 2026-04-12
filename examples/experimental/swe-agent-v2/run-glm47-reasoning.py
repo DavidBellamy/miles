@@ -42,7 +42,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     save_dir: str = "/root/GLM-4.7-Full_reasoning/"
     prompt_data: str = "/root/datasets/gsm8k/train.parquet"
 
-    # FP8 rollout: use FP8 block-quantized HF checkpoint for SGLang inference
+    # FP8 rollout: use official FP8 HF checkpoint (compressed-tensors) for SGLang inference
     fp8_rollout: bool = False
 
     # W&B settings
@@ -93,13 +93,11 @@ def prepare(args: ScriptArgs):
         megatron_path=args.megatron_path,
     )
 
-    # Convert HF checkpoint to FP8 block-quantized format for SGLang rollout
+    # Download official FP8 checkpoint (compressed-tensors format) for SGLang rollout
     if args.fp8_rollout:
         fp8_dst = f"{Path(args.hf_checkpoint).parent}/{args.model_name}-FP8"
         U.exec_command(
-            f"python tools/convert_hf_to_fp8.py "
-            f"--model-dir {args.hf_checkpoint} --save-dir {fp8_dst} "
-            f"--strategy block --block-size 64 64"
+            f"hf download zai-org/{args.model_name}-FP8 --local-dir {fp8_dst}"
         )
 
 
@@ -260,8 +258,6 @@ def execute(args: ScriptArgs):
         "NCCL_NVLS_ENABLE": "0",
         # Work around SGLang deprecation mapping bug
         "SGL_DISABLE_TP_MEMORY_INBALANCE_CHECK": "false",
-        # Disable deep_gemm JIT — block_size=64 scale factors incompatible with deep_gemm layout
-        "SGLANG_ENABLE_JIT_DEEPGEMM": "false",
     }
 
     U.execute_train(
