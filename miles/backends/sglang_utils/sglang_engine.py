@@ -57,13 +57,31 @@ def _launch_server_with_patches(server_args: ServerArgs) -> None:
 
     Must be a module-level function so it's picklable for multiprocessing spawn.
     """
+    import os
     import sys
-    print("[FP8_PATCH] _launch_server_with_patches called", file=sys.stderr, flush=True)
-    from miles.backends.sglang_utils.fp8_restore_patch import apply_fp8_restore_patch
-    from sglang.srt.entrypoints.http_server import launch_server
 
-    apply_fp8_restore_patch()
-    print("[FP8_PATCH] patch applied, launching server", file=sys.stderr, flush=True)
+    pid = os.getpid()
+    # Write to file since stderr may not be captured from spawned subprocess
+    with open(f"/tmp/fp8_patch_debug_{pid}.log", "w") as f:
+        f.write(f"_launch_server_with_patches called, pid={pid}\n")
+        f.flush()
+
+        try:
+            from miles.backends.sglang_utils.fp8_restore_patch import apply_fp8_restore_patch
+            f.write("import succeeded\n")
+            f.flush()
+        except Exception as e:
+            f.write(f"import failed: {e}\n")
+            f.flush()
+            from sglang.srt.entrypoints.http_server import launch_server
+            launch_server(server_args)
+            return
+
+        from sglang.srt.entrypoints.http_server import launch_server
+        apply_fp8_restore_patch()
+        f.write("patch applied, launching server\n")
+        f.flush()
+
     launch_server(server_args)
 
 
