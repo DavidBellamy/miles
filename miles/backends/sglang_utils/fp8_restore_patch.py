@@ -1,83 +1,44 @@
-"""Monkey-patch CompressedTensorsW8A8Fp8 to add restore_weights_before_loading.
+"""Source-level patch for CompressedTensorsW8A8Fp8.restore_weights_before_loading.
 
 SGLang's FP8 compressed-tensors scheme lacks restore_weights_before_loading,
 which is needed for RL training weight sync. After process_weights_after_loading
 replaces ModelWeightParameter (has weight_loader) with plain Parameter, subsequent
 load_weights calls crash because param.weight_loader is missing.
 
-This patch:
-1. Wraps create_weights to save weight_loader and original shape on each layer
-2. Adds restore_weights_before_loading to recreate typed parameters with weight_loader
+This module provides generate_patch_code() which returns Python source to append
+to the SGLang file. The source-level approach is needed because SGLang spawns
+TP workers with multiprocessing "spawn" mode, so runtime monkey-patches in the
+parent process are NOT inherited by TP workers.
 """
 
-import logging
-import sys
-
-logger = logging.getLogger(__name__)
+import textwrap
 
 
-def _debug(msg: str) -> None:
-    print(f"[FP8_PATCH] {msg}", file=sys.stderr, flush=True)
+def generate_patch_code() -> str:
+    """Return Python source code to append to compressed_tensors_w8a8_fp8.py.
 
-_patched = False
+    The code wraps create_weights to save weight_loader/shape, and adds
+    restore_weights_before_loading to recreate typed parameters.
+    """
+    return textwrap.dedent('''
 
-
-def apply_fp8_restore_patch() -> None:
-    global _patched
-    if _patched:
-        return
-    _patched = True
-
-    _debug("apply_fp8_restore_patch called")
-
-    try:
-        import torch
-        from compressed_tensors.quantization import QuantizationStrategy
-        from sglang.srt.layers.parameter import (
-            BlockQuantScaleParameter,
-            ChannelQuantScaleParameter,
-            ModelWeightParameter,
-            PerTensorScaleParameter,
-        )
-        from sglang.srt.layers.quantization.compressed_tensors.schemes.compressed_tensors_w8a8_fp8 import (
-            CompressedTensorsW8A8Fp8,
-        )
-    except ImportError as e:
-        _debug(f"import failed: {e}")
-        return
-
-    if hasattr(CompressedTensorsW8A8Fp8, "_miles_patched"):
-        return
-
-    # 1. Wrap create_weights to save weight_loader and shape
-    _original_create_weights = CompressedTensorsW8A8Fp8.create_weights
-
-    _create_weights_call_count = [0]
+    # --- BEGIN miles FP8 restore patch ---
+    _orig_create_weights = CompressedTensorsW8A8Fp8.create_weights
 
     def _patched_create_weights(self, layer, input_size_per_partition, output_partition_sizes,
                                 input_size, output_size, params_dtype, weight_loader, **kwargs):
-        _original_create_weights(
+        _orig_create_weights(
             self, layer, input_size_per_partition, output_partition_sizes,
             input_size, output_size, params_dtype, weight_loader, **kwargs,
         )
         layer._saved_weight_loader = weight_loader
         layer._original_weight_shape = (sum(output_partition_sizes), input_size_per_partition)
-        _create_weights_call_count[0] += 1
-        if _create_weights_call_count[0] <= 3:
-            _debug(f"create_weights called #{_create_weights_call_count[0]}, shape={layer._original_weight_shape}")
 
     CompressedTensorsW8A8Fp8.create_weights = _patched_create_weights
 
-    _debug(f"Patch applied: create_weights wrapped, id(class)={id(CompressedTensorsW8A8Fp8)}")
-
-    # 2. Add restore_weights_before_loading
-    _restore_call_count = [0]
 
     def _restore_weights_before_loading(self, layer) -> None:
-        _restore_call_count[0] += 1
         weight_loader = getattr(layer, "_saved_weight_loader", None)
-        if _restore_call_count[0] <= 3:
-            _debug(f"restore called #{_restore_call_count[0]}, has_saved_wl={weight_loader is not None}, layer={type(layer).__name__}")
         if weight_loader is None:
             return
         out_size, in_size = layer._original_weight_shape
@@ -123,5 +84,5 @@ def apply_fp8_restore_patch() -> None:
             layer.register_parameter("input_scale", isc)
 
     CompressedTensorsW8A8Fp8.restore_weights_before_loading = _restore_weights_before_loading
-    CompressedTensorsW8A8Fp8._miles_patched = True
-    logger.info("fp8_restore_patch: patched CompressedTensorsW8A8Fp8 with restore_weights_before_loading")
+    # --- END miles FP8 restore patch ---
+    ''')

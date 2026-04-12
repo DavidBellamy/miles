@@ -52,43 +52,49 @@ def _to_local_gpu_id(physical_gpu_id: int) -> int:
     )
 
 
-def _launch_server_with_patches(server_args: ServerArgs) -> None:
-    """Wrapper that applies monkey-patches before starting the SGLang server.
+def _apply_fp8_source_patch() -> None:
+    """Patch the SGLang FP8 scheme source file to add restore_weights_before_loading.
 
-    Must be a module-level function so it's picklable for multiprocessing spawn.
+    Directly modifies the .py file on the local container overlay so that all
+    subprocesses (including TP workers spawned with 'spawn' mode) pick up the change.
+    Must be called once per node before any SGLang server is started.
     """
-    import os
-    import sys
+    from miles.backends.sglang_utils.fp8_restore_patch import generate_patch_code
 
-    pid = os.getpid()
-    # Write to file since stderr may not be captured from spawned subprocess
-    with open(f"/tmp/fp8_patch_debug_{pid}.log", "w") as f:
-        f.write(f"_launch_server_with_patches called, pid={pid}\n")
-        f.flush()
+    target = (
+        "/sgl-workspace/sglang/python/sglang/srt/layers/quantization/"
+        "compressed_tensors/schemes/compressed_tensors_w8a8_fp8.py"
+    )
+    marker = "# MILES_FP8_RESTORE_PATCHED"
 
-        try:
-            from miles.backends.sglang_utils.fp8_restore_patch import apply_fp8_restore_patch
-            f.write("import succeeded\n")
-            f.flush()
-        except Exception as e:
-            f.write(f"import failed: {e}\n")
-            f.flush()
-            from sglang.srt.entrypoints.http_server import launch_server
-            launch_server(server_args)
+    try:
+        with open(target) as f:
+            content = f.read()
+        if marker in content:
+            logger.info("fp8 source patch: already applied")
             return
-
-        from sglang.srt.entrypoints.http_server import launch_server
-        apply_fp8_restore_patch()
-        f.write("patch applied, launching server\n")
-        f.flush()
-
-    launch_server(server_args)
+        patched = content + "\n" + marker + "\n" + generate_patch_code()
+        with open(target, "w") as f:
+            f.write(patched)
+        # Invalidate any cached .pyc
+        pyc = target.replace(".py", ".cpython-312.pyc")
+        import os
+        for root, _dirs, files in os.walk(os.path.dirname(target) + "/__pycache__"):
+            for fn in files:
+                if "compressed_tensors_w8a8_fp8" in fn and fn.endswith(".pyc"):
+                    os.remove(os.path.join(root, fn))
+                    logger.info("fp8 source patch: removed stale %s", fn)
+        logger.info("fp8 source patch: applied to %s", target)
+    except Exception:
+        logger.exception("fp8 source patch: failed")
 
 
 def launch_server_process(server_args: ServerArgs) -> multiprocessing.Process:
+    from sglang.srt.entrypoints.http_server import launch_server
+
     multiprocessing.set_start_method("spawn", force=True)
     server_args.host = server_args.host.strip("[]")
-    p = multiprocessing.Process(target=_launch_server_with_patches, args=(server_args,))
+    p = multiprocessing.Process(target=launch_server, args=(server_args,))
     p.start()
 
     if server_args.node_rank != 0:
@@ -243,6 +249,7 @@ class SGLangEngine(RayActor):
 
     def _init_normal(self, server_args_dict):
         logger.info(f"Launch HttpServerEngineAdapter at: {self.server_host}:{self.server_port}")
+        _apply_fp8_source_patch()
         self.process = launch_server_process(ServerArgs(**server_args_dict))
 
         if self.node_rank == 0 and self.router_ip and self.router_port:
