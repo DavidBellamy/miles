@@ -260,6 +260,8 @@ def execute(args: ScriptArgs):
         "NCCL_NVLS_ENABLE": "0",
         # Work around SGLang deprecation mapping bug
         "SGL_DISABLE_TP_MEMORY_INBALANCE_CHECK": "false",
+        # Disable deep_gemm JIT — block_size=64 scale factors incompatible with deep_gemm layout
+        "SGLANG_ENABLE_JIT_DEEPGEMM": "false",
     }
 
     U.execute_train(
