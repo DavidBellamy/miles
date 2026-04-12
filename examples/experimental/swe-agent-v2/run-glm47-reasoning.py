@@ -47,9 +47,9 @@ class ScriptArgs(U.ExecuteTrainConfig):
 
     # W&B settings
     wandb_key: str = os.environ.get("WANDB_KEY", os.environ.get("WANDB_API_KEY", ""))
-    wandb_project: str = os.environ.get("WANDB_PROJECT", "glm47-full-reasoning")
+    wandb_project: str = os.environ.get("WANDB_PROJECT", "glm47-full-fp8-reasoning")
     wandb_team: str = os.environ.get("WANDB_TEAM", "")
-    wandb_run_name: str = "glm47-full-gsm8k"
+    wandb_run_name: str = "260412-glm47-full-fp8-gsm8k"
 
     # Prometheus settings
     use_prometheus: bool = True
@@ -220,6 +220,7 @@ def execute(args: ScriptArgs):
     if args.wandb_key:
         wandb_args = (
             "--use-wandb "
+            "--disable-wandb-random-suffix "
             f"--wandb-project {args.wandb_project} "
             f"--wandb-group {args.wandb_run_name} "
             f"--wandb-key {args.wandb_key} "

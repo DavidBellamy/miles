@@ -52,12 +52,22 @@ def _to_local_gpu_id(physical_gpu_id: int) -> int:
     )
 
 
-def launch_server_process(server_args: ServerArgs) -> multiprocessing.Process:
+def _launch_server_with_patches(server_args: ServerArgs) -> None:
+    """Wrapper that applies monkey-patches before starting the SGLang server.
+
+    Must be a module-level function so it's picklable for multiprocessing spawn.
+    """
+    from miles.backends.sglang_utils.fp8_restore_patch import apply_fp8_restore_patch
     from sglang.srt.entrypoints.http_server import launch_server
 
+    apply_fp8_restore_patch()
+    launch_server(server_args)
+
+
+def launch_server_process(server_args: ServerArgs) -> multiprocessing.Process:
     multiprocessing.set_start_method("spawn", force=True)
     server_args.host = server_args.host.strip("[]")
-    p = multiprocessing.Process(target=launch_server, args=(server_args,))
+    p = multiprocessing.Process(target=_launch_server_with_patches, args=(server_args,))
     p.start()
 
     if server_args.node_rank != 0:
