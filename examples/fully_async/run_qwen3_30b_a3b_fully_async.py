@@ -6,13 +6,14 @@ import typer
 import miles.utils.external_utils.command_utils as U
 
 # in_place + broadcast
-#python run_qwen3_30b_a3b_fully_async.py
+# python run_qwen3_30b_a3b_fully_async.py
 
 # retract + p2p
-#python run_qwen3_30b_a3b_fully_async.py --pause-generation-mode retract --update-weight-transfer-mode p2p
+# python run_qwen3_30b_a3b_fully_async.py --pause-generation-mode retract --update-weight-transfer-mode p2p
 
 # retract + broadcast
-#python run_qwen3_30b_a3b_fully_async.py --pause-generation-mode retract --update-weight-transfer-mode broadcast
+# python run_qwen3_30b_a3b_fully_async.py --pause-generation-mode retract --update-weight-transfer-mode broadcast
+
 
 @dataclass
 class ScriptArgs(U.ExecuteTrainConfig):
