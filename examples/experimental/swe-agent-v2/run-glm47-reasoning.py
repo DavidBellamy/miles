@@ -42,6 +42,9 @@ class ScriptArgs(U.ExecuteTrainConfig):
     save_dir: str = "/root/GLM-4.7-Full_reasoning/"
     prompt_data: str = "/root/datasets/gsm8k/train.parquet"
 
+    # FP8 rollout: use FP8 block-quantized HF checkpoint for SGLang inference
+    fp8_rollout: bool = False
+
     # W&B settings
     wandb_key: str = os.environ.get("WANDB_KEY", os.environ.get("WANDB_API_KEY", ""))
     wandb_project: str = os.environ.get("WANDB_PROJECT", "glm47-full-reasoning")
@@ -71,7 +74,7 @@ def cleanup():
 
 
 def prepare(args: ScriptArgs):
-    """Download GSM8K data and convert HF checkpoint to torch_dist format."""
+    """Download GSM8K data, convert HF checkpoint, and optionally create FP8 checkpoint."""
     # Download GSM8K dataset
     U.hf_download_dataset("zhuzilin/gsm8k")
 
@@ -90,10 +93,24 @@ def prepare(args: ScriptArgs):
         megatron_path=args.megatron_path,
     )
 
+    # Convert HF checkpoint to FP8 block-quantized format for SGLang rollout
+    if args.fp8_rollout:
+        fp8_dst = f"{Path(args.hf_checkpoint).parent}/{args.model_name}-FP8"
+        U.exec_command(
+            f"python tools/convert_hf_to_fp8.py "
+            f"--model-dir {args.hf_checkpoint} --save-dir {fp8_dst} "
+            f"--strategy block --block-size 128 128"
+        )
+
 
 def execute(args: ScriptArgs):
+    hf_ckpt = (
+        f"{Path(args.hf_checkpoint).parent}/{args.model_name}-FP8"
+        if args.fp8_rollout
+        else args.hf_checkpoint
+    )
     ckpt_args = (
-        f"--hf-checkpoint {args.hf_checkpoint} "
+        f"--hf-checkpoint {hf_ckpt} "
         f"--ref-load {args.ref_load} "
         f"--save {args.save_dir} "
         "--save-interval 100 "
