@@ -99,7 +99,7 @@ def prepare(args: ScriptArgs):
         U.exec_command(
             f"python tools/convert_hf_to_fp8.py "
             f"--model-dir {args.hf_checkpoint} --save-dir {fp8_dst} "
-            f"--strategy block --block-size 128 128"
+            f"--strategy block --block-size 64 64"
         )
 
 
