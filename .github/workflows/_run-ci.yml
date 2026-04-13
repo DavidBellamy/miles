@@ -176,10 +176,19 @@ jobs:
           uv pip install -e Megatron-LM --no-deps
           uv pip install -r requirements.txt
           uv pip install -e . --no-deps
-          # Python-only sglang runtime deps hit by miles' import chain
-          # (sglang itself is installed --no-deps; these are needed even on CPU).
-          uv pip install openai fastapi uvicorn pydantic python-multipart \
-            partial_json_parser jsonschema torchvision
+          # sglang is installed --no-deps above, but miles' import chain loads
+          # many sglang modules. Install sglang's pure-python runtime deps
+          # upfront; skip GPU-only ones (cuda-python, flashinfer, flash-attn-4,
+          # sglang-kernel, torchao, torchcodec, torch_memory_saver, quack-kernels,
+          # nvidia-cutlass-dsl, apache-tvm-ffi, kernels, decord2, av).
+          # torch itself comes via accelerate (in requirements.txt).
+          uv pip install \
+            IPython aiohttp anthropic build compressed-tensors einops fastapi \
+            gguf interegular jsonschema llguidance mistral_common modelscope \
+            msgspec ninja nvidia-ml-py openai openai-harmony orjson outlines \
+            partial_json_parser prometheus-client psutil py-spy pydantic \
+            python-multipart pyzmq scipy sentencepiece setproctitle soundfile \
+            tiktoken timm torchvision uvicorn uvloop watchfiles xgrammar
 
       - name: Execute
         shell: bash
