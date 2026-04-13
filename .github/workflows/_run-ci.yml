@@ -176,6 +176,10 @@ jobs:
           uv pip install -e Megatron-LM --no-deps
           uv pip install -r requirements.txt
           uv pip install -e . --no-deps
+          # Python-only sglang runtime deps hit by miles' import chain
+          # (sglang itself is installed --no-deps; these are needed even on CPU).
+          uv pip install openai fastapi uvicorn pydantic python-multipart \
+            partial_json_parser jsonschema torchvision
 
       - name: Execute
         shell: bash
