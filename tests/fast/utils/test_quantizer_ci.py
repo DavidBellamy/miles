@@ -7,9 +7,9 @@ The change adds `name.startswith(r)` to the ignore matching logic, so rules like
 from tests.ci.ci_register import register_cuda_ci
 
 # The quantizer hardcodes `device="cuda"` throughout; this test drives it with
-# real CUDA tensors to exercise the ignore-rule name-matching path. Runs on
-# the precision GPU suite, not the CPU fast suite.
-register_cuda_ci(est_time=60, suite="stage-c-precision-8-gpu", num_gpus=8)
+# real CUDA tensors to exercise the ignore-rule name-matching path. Fast enough
+# for the GPU fast suite; only needs 1 GPU.
+register_cuda_ci(est_time=60, suite="stage-b-fast-1-gpu", num_gpus=1)
 
 
 import pytest

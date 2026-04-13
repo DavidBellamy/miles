@@ -1,6 +1,9 @@
-from tests.ci.ci_register import register_cpu_ci
+from tests.ci.ci_register import register_cuda_ci
 
-register_cpu_ci(est_time=60, suite="stage-a-fast")
+# --sglang-enable-deterministic-inference triggers imports of miles' experimental
+# FSDP path (ring_flash_attn → flash_attn), which requires CUDA. Runs in the
+# GPU fast suite rather than stage-a-fast on CPU runners.
+register_cuda_ci(est_time=60, suite="stage-b-fast-1-gpu", num_gpus=1)
 
 import pytest
 

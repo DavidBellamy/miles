@@ -18,6 +18,7 @@ PER_COMMIT_SUITES = {
     ],
     HWBackend.CUDA: [
         "stage-b-sglang-1-gpu",
+        "stage-b-fast-1-gpu",
         "stage-b-short-8-gpu",
         "stage-c-fsdp-8-gpu",
         "stage-c-megatron-8-gpu",

@@ -50,6 +50,20 @@ jobs:
       execute_command: "pytest tests/e2e/fsdp/test_qwen3_4B_fsdp_true_on_policy.py -x -v"
     secrets: inherit
 
+  # Stage B: Fast GPU tests (1 GPU, runs every PR)
+  # For fast tests that require GPU (e.g. deterministic inference paths that
+  # pull in flash_attn). Parallel with stage-b-sglang; one self-hosted daemon slot.
+  stage-b-fast-gpu:
+    needs: [stage-a-fast]
+    if: |
+      always() && !failure() && !cancelled() &&
+      ((github.event_name == 'workflow_dispatch') || (github.event.pull_request))
+    uses: ./.github/workflows/_run-ci.yml
+    with:
+      gpu_count: 1
+      execute_command: "python tests/ci/run_suite.py --hw cuda --suite stage-b-fast-1-gpu"
+    secrets: inherit
+
   # Stage B: SGLang patch tests (1 GPU)
   stage-b-sglang:
     needs: [stage-a-fast]
