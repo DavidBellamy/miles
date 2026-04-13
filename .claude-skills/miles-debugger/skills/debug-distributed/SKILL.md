@@ -106,6 +106,7 @@ Read the comparator output. The first tensor that shows significant divergence (
 ## References
 
 For detailed debugging procedures and common bug patterns:
-- @references/common_bugs.md - Catalog of common TP/PP/EP/CP bugs with symptoms and fixes
+- @references/common_bugs.md - Catalog of common TP/PP/EP/CP bugs with symptoms and fixes (60+ real issues from Miles, Megatron-LM, SGLang)
 - @references/debugging_recipes.md - Step-by-step debugging procedures for specific scenarios
 - @references/megatron_internals.md - How Megatron implements each parallelism axis
+- @references/ci_invariants.md - CI thresholds, validation patterns, configuration checks, model conversion support
