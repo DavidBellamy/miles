@@ -28,11 +28,14 @@ concurrency:
 
 jobs:
   # Stage A: CPU-only fast tests (always runs on PR)
+  # Runs on GitHub-hosted ubuntu-latest (cpu_runner: true) to avoid
+  # occupying GPU-fleet runner slots.
   stage-a-fast:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request)
     uses: ./.github/workflows/_run-ci.yml
     with:
       gpu_count: 0
+      cpu_runner: true
       execute_command: "python tests/ci/run_suite.py --hw cpu --suite stage-a-fast"
     secrets: inherit
 
