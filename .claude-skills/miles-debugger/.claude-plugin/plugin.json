@@ -1,0 +1,8 @@
+{
+  "name": "miles-debugger",
+  "description": "Automated distributed training debugger for Miles/Megatron. Provides skills for dumping intermediate tensors, comparing activations across parallelism configurations (TP/PP/EP/CP), diagnosing shape mismatches, and debugging distributed hangs.",
+  "author": {
+    "name": "Miles Team",
+    "email": "miles@radixark.com"
+  }
+}
