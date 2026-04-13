@@ -1,7 +1,4 @@
-from tests.ci.ci_register import register_cpu_ci
-
-register_cpu_ci(est_time=60, suite="stage-a-fast")
-
+import re
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from itertools import groupby
@@ -9,11 +6,14 @@ from itertools import groupby
 import numpy as np
 import pybase64
 import pytest
+from tests.ci.ci_register import register_cpu_ci
 from tests.fast.fixtures.generation_fixtures import GenerateEnv, generation_env, listify, make_sample, run_generate
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_sglang_server import ProcessResult, ProcessResultMetaInfo
 from miles.utils.test_utils.mock_tools import SAMPLE_TOOLS, ThreeTurnStub, TwoTurnStub
 from miles.utils.types import Sample
+
+register_cpu_ci(est_time=60, suite="stage-a-fast")
 
 _ = generation_env, SAMPLE_TOOLS, TwoTurnStub, ThreeTurnStub
 
@@ -669,6 +669,29 @@ class TestAgentMetadata:
         for s in samples:
             assert s.metadata.get("instance_id") == "test-123"
             assert "reward" not in s.metadata
+
+    def test_session_server_identity_forwarded_to_agent_metadata(self, variant, generation_env):
+        from miles.utils.test_utils import mock_tools
+
+        generation_env.mock_server.process_fn = TwoTurnStub.process_fn
+
+        _SESSION_KEYS = ("session_server_id", "session_server_instance_id")
+
+        def _echo_session(metadata=None):
+            metadata = metadata or {}
+            return {k: metadata[k] for k in _SESSION_KEYS if k in metadata}
+
+        mock_tools.AGENTIC_RETURN_METADATA = _echo_session
+        try:
+            result = _run_generate(variant, generation_env, make_sample(prompt=TwoTurnStub.PROMPT))
+        finally:
+            mock_tools.AGENTIC_RETURN_METADATA = None
+
+        samples = listify(result.sample)
+        expected_session_server_id = f"127.0.0.1:{generation_env.args.session_server_port}"
+        for s in samples:
+            assert s.metadata["session_server_id"] == expected_session_server_id
+            assert re.fullmatch(r"[0-9a-f]{32}", s.metadata["session_server_instance_id"])
 
 
 class TestAgentNoRecords:
