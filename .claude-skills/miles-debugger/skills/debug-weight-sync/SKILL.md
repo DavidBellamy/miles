@@ -204,6 +204,35 @@ print(f"Weight update took {duration:.1f}s")
 # If > 60s: investigate network or memory issues
 ```
 
+## SGLang Weight Sync Issues
+
+### Hardcoded src=0 Deadlock (SGLang #19251)
+
+**Symptom**: Weight sync deadlock when using multi-GPU torchrun training.
+
+**Root cause**: `update_weights_from_distributed` hardcodes broadcast source to rank 0. With torchrun, NCCL prevents a process from being rank 0 in multiple independent groups simultaneously.
+
+**Miles workaround**: Miles uses its own NCCL group management (`broadcast.py`, `p2p.py`), but new deployments using default path may hit this.
+
+### NCCL Timeout Not Propagated to Subgroups (SGLang #21911)
+
+**Symptom**: Weight sync times out even with `--dist-timeout` set high.
+
+**Root cause**: `--dist-timeout` only applies to `init_process_group()`, not to `new_group()` calls. Custom weight-sync groups default to 600s regardless.
+
+**Fix**: Set `NCCL_TIMEOUT` environment variable (applies globally).
+
+### RDMA Weight Transfer (SGLang #17311, PR #21278 merged)
+
+P2P weight update with zero-copy cross-host transfers. Key points:
+- Parallelism mirroring between Megatron naming and SGLang naming
+- `register_memory_region_v2` iterates CUDA memory snapshots — any PR changing memory layout may break this
+- Already used by Miles in `p2p.py`
+
+### Layer-wise Broadcasting (SGLang #21677)
+
+Potential optimization: overlap weight transfers with inference by exploiting transformer's sequential layer processing. Working PoC exists.
+
 ## Related Skills
 
 - `/debug-precision`: For FP8/INT4 quantization precision issues

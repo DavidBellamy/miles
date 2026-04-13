@@ -203,8 +203,13 @@ ray.get(actor.ping.remote())  # should return quickly
 3. **Segfault in NCCL**: Driver version mismatch
 4. **Python exception**: Check actor logs for traceback
 
+## References
+
+- @references/session_cascade.md - Detailed session lifecycle cascade failure analysis (Miles #920, #921, #936, #955, #956)
+
 ## Related Skills
 
 - `/debug-hang`: For NCCL hangs in colocate mode
 - `/debug-weight-sync`: For weight update issues
 - `/debug-precision`: For memory-related precision issues (FP8 param gather)
+- `/debug-moe`: For MoE dispatch issues in colocate mode

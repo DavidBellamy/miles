@@ -203,11 +203,48 @@ python -m sglang.srt.debug_utils.comparator \
   --preset sglang_dev
 ```
 
+## SGLang-Specific Precision Issues
+
+### DP Attention NaN/Inf (SGLang #21460)
+
+**Symptom**: NaN/Inf in probability tensor during rollout with DP attention on H800.
+
+**Root cause**: Tensor shape vs metadata mismatch (e.g., tensor shape [1,35] but metadata says [1,36]) before `deepseek_layer_hidden_post_self_attn`. The crash path is `torch.multinomial(probs)`.
+
+**Impact**: Crashes RLHF rollouts silently. High severity for Miles.
+
+### FP8 KV Cache Accuracy Degradation (SGLang #22671)
+
+**Symptom**: 19.6-point accuracy drop on AIME26 when using fp8_e4m3 KV cache on B300 GPUs.
+
+**Root cause**: FP8 KV cache quantization introduces unacceptable precision loss for certain models (GLM-5.1-FP8).
+
+**Fix**: Revert to BF16 KV cache: `--kv-cache-dtype auto` (default).
+
+### Degenerate Output at Temperature=1.0 (SGLang #21238)
+
+**Symptom**: SGLang generates completely wrong outputs at temperature=1.0 (works at 0.5). Blocks GRPO training which requires temperature=1.0.
+
+**Root cause**: Hypothesized FlashInfer sampling kernel BF16 precision loss during softmax with high-entropy logits.
+
+### FP8 lm_head Bypass (SGLang #21148)
+
+**Symptom**: `LogitsProcessor._compute_lm_head()` falls through to generic `torch.matmul` for FP8 weights instead of using `quant_method.apply()`. Causes unnecessary BF16 cast and potential logit differences.
+
+### Quality Regression Across SGLang Versions (SGLang #21696)
+
+**Symptom**: ~20% decline in LLM-as-judge scores after upgrading 0.5.9 → 0.5.10rc0.
+
+**Root cause**: Backend selection changes (`flashinfer_cutlass` vs `auto`), FP8 scale format mismatch warnings, missing KV cache scaling factors defaulting to 1.0.
+
+**Lesson**: Always verify output quality after SGLang version upgrades, especially with FP8 models.
+
 ## Related Skills
 
 - `/dumper-usage`: How to capture tensors for precision analysis
 - `/debug-distributed`: For precision issues combined with parallelism bugs
 - `/debug-logprob`: For log-probability precision issues specifically
+- `/debug-moe`: For MoE-specific precision issues
 
 ## References
 
