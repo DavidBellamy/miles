@@ -88,7 +88,7 @@ Read the comparator output. The first tensor that shows significant divergence (
 | **EP** | MoE experts across ranks | `--expert-model-parallel-size` | AllToAll token dispatch; expert counts must divide evenly |
 | **ETP** | Expert tensor parallel | `--expert-tensor-parallel-size` | Nested within EP; affects MoE MLP sharding |
 
-## Related Skills — Complete Debugging Toolkit
+## Related Skills — Complete Debugging Toolkit (11 skills)
 
 | Skill | When to Use |
 |-------|------------|
@@ -100,6 +100,8 @@ Read the comparator output. The first tensor that shows significant divergence (
 | `/debug-logprob` | Log-prob mismatch, KL divergence, PPO issues |
 | `/debug-weight-sync` | Weight update/sync between Megatron and SGLang |
 | `/debug-colocate` | Ray actor, colocate mode, GPU contention, timeout cascades |
+| `/debug-moe` | MoE routing, R3, AllToAll dispatch, EP/ETP |
+| `/debug-sft` | SFT gibberish output, VLM conversion, tokenization |
 
 ## References
 

@@ -44,8 +44,18 @@ This project ships with Claude Code debugging skills in `.claude-skills/miles-de
 | `/debug-logprob` | Log-prob mismatch, KL divergence, training-inference gap |
 | `/debug-weight-sync` | Weight update/sync bugs |
 | `/debug-colocate` | Colocate mode, Ray actor, GPU contention |
+| `/debug-moe` | MoE routing, R3, AllToAll dispatch, EP/ETP issues |
+| `/debug-sft` | SFT gibberish output, VLM conversion, tokenization |
 | `/dumper-usage` | Dumper API, comparator CLI, source patcher |
 | `/dumper-dims` | Dims annotation syntax for tensor sharding |
+
+### Quick Analysis Script
+
+After running the comparator, use the built-in analysis script for automated diagnosis:
+```bash
+python .claude-skills/miles-debugger/skills/dumper-usage/scripts/analyze_comparator.py \
+  /tmp/debug_dumps/fwd_bwd/comparator_report.jsonl
+```
 
 ## Dumper System
 
