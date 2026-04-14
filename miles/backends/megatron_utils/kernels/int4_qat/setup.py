@@ -43,7 +43,8 @@ setup(
                     f'-gencode=arch=compute_{arch.replace(".", "")},code=sm_{arch.replace(".", "")}'
                     for arch in arch_list
                 ]
-                + ["-gencode=arch=compute_90a,code=sm_90a"],
+                # PTX for JIT fallback on newer architectures (e.g. Blackwell sm_103a)
+                + ["-gencode=arch=compute_90,code=compute_90"],
             },
         )
     ],

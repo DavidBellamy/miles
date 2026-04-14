@@ -231,6 +231,11 @@ def if_quant(name, patterns):
 
 
 def pack_layer(weight, group_size, sym=True):
+    if fake_int4_quant_cuda is None:
+        raise RuntimeError(
+            "pack_layer requires fake_int4_quant_cuda. "
+            "Build it from miles/backends/megatron_utils/kernels/int4_qat/ ."
+        )
     w, scale, zp = fake_int4_quant_cuda.fake_int4_quant_cuda(weight, (1, group_size), sym)
     w = w.view(weight.shape[0], 1, weight.shape[1] // group_size, group_size)
     scale = scale.view(weight.shape[0], 1, weight.shape[1] // group_size, 1)
