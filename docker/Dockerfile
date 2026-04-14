@@ -26,6 +26,7 @@ ARG ENABLE_CUDA_13=0
 
 ARG WHEELS_REPO=yueming-yuan/miles-wheels
 ARG WHEELS_TAG=cu129-x86_64
+ARG GITHUB_TOKEN=""
 
 # When BUILD_FROM_SOURCE=1, skip pre-built wheels and compile flash-attn/apex from source.
 # Use this when no pre-built wheels exist for the target platform (e.g. B300 x86 cu130).
@@ -53,7 +54,8 @@ RUN git clone https://github.com/NVIDIA/nccl-tests.git /tmp/nccl-tests && \
 
 RUN if [ "${BUILD_FROM_SOURCE}" = "0" ]; then \
       mkdir -p /tmp/wheels && \
-      curl -sL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}" \
+      AUTH_HEADER=$([ -n "${GITHUB_TOKEN}" ] && echo "-H \"Authorization: token ${GITHUB_TOKEN}\"" || echo "") && \
+      curl -sL ${AUTH_HEADER} "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}" \
       | python3 -c "import sys, json, subprocess; \
 [subprocess.run(['curl', '-fSL', '-o', '/tmp/wheels/' + a['name'], a['browser_download_url']], check=True) \
  for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.whl')]" && \
@@ -94,7 +96,11 @@ RUN pip install flash-linear-attention==0.4.2
 RUN pip install tilelang -f https://tile-ai.github.io/whl/nightly/cu128/
 
 RUN if [ "${ENABLE_CUDA_13}" = "1" ]; then \
-      pip install nvidia-mathdx==25.6.0 && \
+      pip install nvidia-mathdx==25.6.0; \
+    fi && \
+    if ls /tmp/wheels/transformer_engine-*.whl 2>/dev/null | grep -q .; then \
+      pip install /tmp/wheels/transformer_engine-*.whl; \
+    elif [ "${ENABLE_CUDA_13}" = "1" ]; then \
       pip -v install --no-build-isolation "transformer_engine[core_cu13,pytorch]==2.12.0"; \
     else \
       pip -v install --no-build-isolation "transformer_engine[pytorch]==2.10.0"; \
