@@ -54,9 +54,12 @@ RUN git clone https://github.com/NVIDIA/nccl-tests.git /tmp/nccl-tests && \
 
 RUN if [ "${BUILD_FROM_SOURCE}" = "0" ]; then \
       mkdir -p /tmp/wheels && \
-      AUTH_HEADER=$([ -n "${GITHUB_TOKEN}" ] && echo "-H \"Authorization: token ${GITHUB_TOKEN}\"" || echo "") && \
-      curl -sL ${AUTH_HEADER} "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}" \
-      | python3 -c "import sys, json, subprocess; \
+      if [ -n "${GITHUB_TOKEN}" ]; then \
+        API_RESP=$(curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
+      else \
+        API_RESP=$(curl -fSL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
+      fi && \
+      echo "${API_RESP}" | python3 -c "import sys, json, subprocess; \
 [subprocess.run(['curl', '-fSL', '-o', '/tmp/wheels/' + a['name'], a['browser_download_url']], check=True) \
  for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.whl')]" && \
       ls -lh /tmp/wheels/; \
