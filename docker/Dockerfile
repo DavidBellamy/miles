@@ -77,11 +77,7 @@ RUN pip install flash-linear-attention==0.4.2
 RUN pip install tilelang -f https://tile-ai.github.io/whl/nightly/cu128/
 
 RUN if [ "${ENABLE_CUDA_13}" = "1" ]; then \
-      pip install nvidia-mathdx==25.6.0; \
-    fi && \
-    if ls /tmp/wheels/transformer_engine-*.whl 2>/dev/null | grep -q .; then \
-      pip install /tmp/wheels/transformer_engine-*.whl; \
-    elif [ "${ENABLE_CUDA_13}" = "1" ]; then \
+      pip install nvidia-mathdx==25.6.0 && \
       pip -v install --no-build-isolation "transformer_engine[core_cu13,pytorch]==2.12.0"; \
     else \
       pip -v install --no-build-isolation "transformer_engine[pytorch]==2.10.0"; \
