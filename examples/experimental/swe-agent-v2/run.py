@@ -45,6 +45,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     rollout_batch_size: int = 2
     n_samples_per_prompt: int = 4
     global_batch_size: int = 8
+    expert_model_parallel_size: int = 8
 
     # Agent settings
     agent_server_url: str = os.environ.get(
@@ -123,7 +124,7 @@ def execute(args: ScriptArgs):
         "--sequence-parallel "
         "--pipeline-model-parallel-size 1 "
         "--context-parallel-size 1 "
-        "--expert-model-parallel-size 8 "
+        f"--expert-model-parallel-size {args.expert_model_parallel_size} "
         "--expert-tensor-parallel-size 1 "
         "--recompute-granularity full "
         "--recompute-method uniform "
