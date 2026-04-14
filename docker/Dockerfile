@@ -28,10 +28,6 @@ ARG WHEELS_REPO=yueming-yuan/miles-wheels
 ARG WHEELS_TAG=cu129-x86_64
 ARG GITHUB_TOKEN=""
 
-# When BUILD_FROM_SOURCE=1, skip pre-built wheels and compile flash-attn/apex from source.
-# Use this when no pre-built wheels exist for the target platform (e.g. B300 x86 cu130).
-ARG BUILD_FROM_SOURCE=0
-
 # ======================================== Setup =============================================
 
 WORKDIR /root/
@@ -52,46 +48,28 @@ RUN git clone https://github.com/NVIDIA/nccl-tests.git /tmp/nccl-tests && \
 
 # ====================================== Download pre-built wheels ============================================
 
-RUN if [ "${BUILD_FROM_SOURCE}" = "0" ]; then \
-      mkdir -p /tmp/wheels && \
-      if [ -n "${GITHUB_TOKEN}" ]; then \
-        API_RESP=$(curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
-      else \
-        API_RESP=$(curl -fSL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
-      fi && \
-      echo "${API_RESP}" | python3 -c "import sys, json, subprocess; \
+RUN mkdir -p /tmp/wheels && \
+    if [ -n "${GITHUB_TOKEN}" ]; then \
+      API_RESP=$(curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
+    else \
+      API_RESP=$(curl -fSL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
+    fi && \
+    echo "${API_RESP}" | python3 -c "import sys, json, subprocess; \
 [subprocess.run(['curl', '-fSL', '-o', '/tmp/wheels/' + a['name'], a['browser_download_url']], check=True) \
  for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.whl')]" && \
-      ls -lh /tmp/wheels/; \
-    else \
-      mkdir -p /tmp/wheels; \
-    fi
+    ls -lh /tmp/wheels/
 
 # ====================================== Python dependencies ============================================
 
-# flash-attn (FA2): from pre-built wheel, or build from source
-RUN if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
-      MAX_JOBS=64 pip -v install flash-attn==2.7.4.post1 --no-build-isolation; \
-    else \
-      pip install /tmp/wheels/flash_attn-*.whl; \
-    fi
+# flash-attn
+RUN pip install /tmp/wheels/flash_attn-*.whl
 
 # flash-attn hopper (FA3): Hopper-only (sm_90a). Coexists with FA2.
-# From pre-built wheel, or build from source at the same commit as FA2.
-RUN python_path=$(python -c "import site; print(site.getsitepackages()[0])") && \
+RUN pip install /tmp/wheels/flash_attn_3-*.whl && \
+    python_path=$(python -c "import site; print(site.getsitepackages()[0])") && \
     mkdir -p $python_path/flash_attn_3 && \
-    if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
-      git clone https://github.com/Dao-AILab/flash-attention.git --recursive /tmp/flash-attn-src && \
-      cd /tmp/flash-attn-src && \
-      git checkout fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89 && \
-      MAX_JOBS=64 pip install hopper/ --no-build-isolation && \
-      cp hopper/flash_attn_interface.py $python_path/flash_attn_3/ && \
-      rm -rf /tmp/flash-attn-src; \
-    else \
-      pip install /tmp/wheels/flash_attn_3-*.whl && \
-      curl -fSL https://raw.githubusercontent.com/Dao-AILab/flash-attention/fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89/hopper/flash_attn_interface.py \
-        -o $python_path/flash_attn_3/flash_attn_interface.py; \
-    fi
+    curl -fSL https://raw.githubusercontent.com/Dao-AILab/flash-attention/fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89/hopper/flash_attn_interface.py \
+      -o $python_path/flash_attn_3/flash_attn_interface.py
 
 RUN pip install git+https://github.com/ISEEKYAN/mbridge.git@89eb10887887bc74853f89a4de258c0702932a1c --no-deps
 
@@ -109,16 +87,8 @@ RUN if [ "${ENABLE_CUDA_13}" = "1" ]; then \
       pip -v install --no-build-isolation "transformer_engine[pytorch]==2.10.0"; \
     fi
 
-# apex: from pre-built wheel, or build from source
-RUN if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
-      NVCC_APPEND_FLAGS="--threads 4" \
-      pip -v install --disable-pip-version-check --no-cache-dir \
-      --no-build-isolation \
-      --config-settings "--build-option=--cpp_ext --cuda_ext --parallel 8" \
-      git+https://github.com/NVIDIA/apex.git@10417aceddd7d5d05d7cbf7b0fc2daad1105f8b4; \
-    else \
-      pip install /tmp/wheels/apex-*.whl; \
-    fi
+# apex
+RUN pip install /tmp/wheels/apex-*.whl
 
 RUN git clone https://github.com/${MEGATRON_REPO}.git --recursive -b ${MEGATRON_BRANCH} Megatron-LM && \
     cd Megatron-LM && \
