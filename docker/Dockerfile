@@ -9,7 +9,7 @@
 # 3. radixark/miles:dev-cu13-x86 (x86 CUDA 13 / B300, sm_103a)
 #    build-arg:ENABLE_CUDA_13=1 \
 #    build-arg:SGLANG_IMAGE_TAG=v0.5.10-cu130 \
-#    build-arg:BUILD_FROM_SOURCE=1 \
+#    build-arg:WHEELS_TAG=cu130-x86_64 \
 
 ARG SGLANG_IMAGE_TAG=v0.5.10
 FROM lmsysorg/sglang:${SGLANG_IMAGE_TAG} AS sglang
@@ -158,13 +158,13 @@ RUN git clone https://github.com/${MILES_REPO}.git /root/miles && \
     git checkout ${MILES_COMMIT} && \
     pip install -e . --no-deps
 
-# int4_qat: from pre-built wheel, or build from in-tree source.
+# int4_qat: from pre-built wheel if available, otherwise build from in-tree source.
 # setup.py generates sm_80/sm_90 binaries + compute_90 PTX for JIT on Blackwell.
-RUN if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
+RUN if ls /tmp/wheels/fake_int4_quant_cuda-*.whl 2>/dev/null | grep -q .; then \
+      pip install /tmp/wheels/fake_int4_quant_cuda-*.whl; \
+    else \
       cd /root/miles/miles/backends/megatron_utils/kernels/int4_qat && \
       TORCH_CUDA_ARCH_LIST="8.0 9.0" MAX_JOBS=32 pip install . --no-build-isolation; \
-    else \
-      pip install /tmp/wheels/fake_int4_quant_cuda-*.whl; \
     fi
 
 RUN rm -rf /tmp/wheels
