@@ -1,6 +1,10 @@
 from tests.ci.ci_register import register_cpu_ci
 
-register_cpu_ci(est_time=60, suite="stage-a-fast")
+register_cpu_ci(
+    est_time=60,
+    suite="stage-a-fast",
+    disabled="stepfun-ai/Step-3.5-Flash config num_hidden_layers/layer_types mismatch breaks huggingface_hub strict validation",
+)
 
 import pytest
 
