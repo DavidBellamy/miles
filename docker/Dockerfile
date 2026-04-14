@@ -71,12 +71,19 @@ RUN if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
       pip install /tmp/wheels/flash_attn-*.whl; \
     fi
 
-# flash-attn hopper (FA3): Hopper-only (sm_90), skip when building from source for Blackwell.
-# flash_attn_3 module is not imported by Miles directly; TE 2.12.0+core_cu13 handles Blackwell attn.
-RUN if [ "${BUILD_FROM_SOURCE}" = "0" ]; then \
+# flash-attn hopper (FA3): Hopper-only (sm_90a). Coexists with FA2.
+# From pre-built wheel, or build from source at the same commit as FA2.
+RUN python_path=$(python -c "import site; print(site.getsitepackages()[0])") && \
+    mkdir -p $python_path/flash_attn_3 && \
+    if [ "${BUILD_FROM_SOURCE}" = "1" ]; then \
+      git clone https://github.com/Dao-AILab/flash-attention.git --recursive /tmp/flash-attn-src && \
+      cd /tmp/flash-attn-src && \
+      git checkout fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89 && \
+      MAX_JOBS=64 pip install hopper/ --no-build-isolation && \
+      cp hopper/flash_attn_interface.py $python_path/flash_attn_3/ && \
+      rm -rf /tmp/flash-attn-src; \
+    else \
       pip install /tmp/wheels/flash_attn_3-*.whl && \
-      python_path=$(python -c "import site; print(site.getsitepackages()[0])") && \
-      mkdir -p $python_path/flash_attn_3 && \
       curl -fSL https://raw.githubusercontent.com/Dao-AILab/flash-attention/fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89/hopper/flash_attn_interface.py \
         -o $python_path/flash_attn_3/flash_attn_interface.py; \
     fi
