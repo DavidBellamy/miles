@@ -144,8 +144,9 @@ RUN cd /sgl-workspace/sglang && \
 
 # ====================================== Install main package ============================================
 
+ARG MILES_REPO=radixark/miles
 ARG MILES_COMMIT=main
-RUN git clone https://github.com/radixark/miles.git /root/miles && \
+RUN git clone https://github.com/${MILES_REPO}.git /root/miles && \
     cd /root/miles && \
     git checkout ${MILES_COMMIT} && \
     pip install -e . --no-deps
