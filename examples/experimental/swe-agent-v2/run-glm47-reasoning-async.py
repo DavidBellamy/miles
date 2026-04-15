@@ -163,12 +163,12 @@ def execute(args: ScriptArgs):
     )
 
     eval_args = (
-        "--eval-interval 20 "
-        "--skip-eval-before-train "
-        "--eval-prompt-data gsm8k /root/datasets/gsm8k/test.parquet "
-        "--n-samples-per-eval-prompt 1 "
-        "--eval-max-response-len 1024 "
-        "--eval-top-k 1 "
+        # "--eval-interval 20 "
+        # "--skip-eval-before-train "
+        # "--eval-prompt-data gsm8k /root/datasets/gsm8k/test.parquet "
+        # "--n-samples-per-eval-prompt 1 "
+        # "--eval-max-response-len 1024 "
+        # "--eval-top-k 1 "
     )
 
     # Disaggregated split: training on train_num_nodes, inference on the rest.
