@@ -15,7 +15,7 @@ from packaging.version import parse
 from tqdm import tqdm
 
 from miles.backends.megatron_utils.lora_utils import LORA_ADAPTER_NAME, is_lora_enabled
-from miles.rollout.base_types import RolloutFnEvalOutput, RolloutFnTrainOutput
+from miles.rollout.base_types import GenerateFnInput, RolloutFnEvalOutput, RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
 from miles.utils import dumper_utils
 from miles.utils.async_utils import run
@@ -257,8 +257,15 @@ async def generate_and_rm(
 
             if custom_func_path is not None:
                 custom_generate_func = load_function(custom_func_path)
-                # if signature has evaluation, pass evaluation
-                if "evaluation" in inspect.signature(custom_generate_func).parameters:
+                sig = inspect.signature(custom_generate_func)
+                params = list(sig.parameters.values())
+                # Support GenerateFnInput-style generate functions (single-arg with typed input)
+                if len(params) == 1 and params[0].annotation is GenerateFnInput:
+                    output = await custom_generate_func(
+                        GenerateFnInput(state=state, sample=sample, sampling_params=sampling_params, evaluation=evaluation)
+                    )
+                    sample = output.samples
+                elif "evaluation" in sig.parameters:
                     sample = await custom_generate_func(args, sample, sampling_params, evaluation=evaluation)
                 else:
                     sample = await custom_generate_func(args, sample, sampling_params)
