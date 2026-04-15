@@ -26,7 +26,7 @@ ARG ENABLE_CUDA_13=0
 
 ARG WHEELS_REPO=yueming-yuan/miles-wheels
 ARG WHEELS_TAG=cu129-x86_64
-ARG GITHUB_TOKEN=""
+ARG WHEELS_DIR=/tmp/wheels
 
 # ======================================== Setup =============================================
 
@@ -46,26 +46,26 @@ RUN git clone https://github.com/NVIDIA/nccl-tests.git /tmp/nccl-tests && \
     cp /tmp/nccl-tests/build/*_perf /usr/local/bin/ && \
     rm -rf /tmp/nccl-tests
 
-# ====================================== Download pre-built wheels ============================================
+# ====================================== Collect pre-built wheels ============================================
+# Local wheels from build context (wheels/) override GitHub release versions.
 
-RUN mkdir -p /tmp/wheels && \
-    if [ -n "${GITHUB_TOKEN}" ]; then \
-      API_RESP=$(curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
-    else \
-      API_RESP=$(curl -fSL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}"); \
-    fi && \
-    echo "${API_RESP}" | python3 -c "import sys, json, subprocess; \
-[subprocess.run(['curl', '-fSL', '-o', '/tmp/wheels/' + a['name'], a['browser_download_url']], check=True) \
- for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.whl')]" && \
-    ls -lh /tmp/wheels/
+COPY wheel[s]/ ${WHEELS_DIR}/
+
+RUN mkdir -p ${WHEELS_DIR} && \
+    curl -sL "https://api.github.com/repos/${WHEELS_REPO}/releases/tags/${WHEELS_TAG}" \
+    | python3 -c "import sys,json,subprocess,os; w='${WHEELS_DIR}'; \
+[subprocess.run(['curl','-fSL','-o',os.path.join(w,a['name']),a['browser_download_url']],check=True) \
+ for a in json.load(sys.stdin).get('assets',[]) \
+ if a['name'].endswith('.whl') and not os.path.exists(os.path.join(w,a['name']))]" && \
+    ls -lh ${WHEELS_DIR}/
 
 # ====================================== Python dependencies ============================================
 
 # flash-attn
-RUN pip install /tmp/wheels/flash_attn-*.whl
+RUN pip install ${WHEELS_DIR}/flash_attn-*.whl
 
 # flash-attn hopper (FA3): Hopper-only (sm_90a). Coexists with FA2.
-RUN pip install /tmp/wheels/flash_attn_3-*.whl && \
+RUN pip install ${WHEELS_DIR}/flash_attn_3-*.whl && \
     python_path=$(python -c "import site; print(site.getsitepackages()[0])") && \
     mkdir -p $python_path/flash_attn_3 && \
     curl -fSL https://raw.githubusercontent.com/Dao-AILab/flash-attention/fbf24f67cf7f6442c5cfb2c1057f4bfc57e72d89/hopper/flash_attn_interface.py \
@@ -76,15 +76,32 @@ RUN pip install git+https://github.com/ISEEKYAN/mbridge.git@89eb10887887bc74853f
 RUN pip install flash-linear-attention==0.4.2
 RUN pip install tilelang -f https://tile-ai.github.io/whl/nightly/cu128/
 
+# transformer_engine
 RUN if [ "${ENABLE_CUDA_13}" = "1" ]; then \
-      pip install nvidia-mathdx==25.6.0 && \
-      pip -v install --no-build-isolation "transformer_engine[core_cu13,pytorch]==2.12.0"; \
+      pip install --no-deps transformer_engine==2.12.0 && \
+      pip install transformer_engine_cu13==2.12.0 && \
+      if ls ${WHEELS_DIR}/transformer_engine_torch-*.whl 2>/dev/null | grep -q .; then \
+        pip install ${WHEELS_DIR}/transformer_engine_torch-*.whl; \
+      else \
+        pip install nvidia-mathdx==25.6.0 && \
+        pip -v install --no-build-isolation transformer_engine_torch==2.12.0; \
+      fi; \
     else \
       pip -v install --no-build-isolation "transformer_engine[pytorch]==2.10.0"; \
     fi
 
+# TE patches (cu13): B300/GB300 sm103 FA2 whitelist fix
+COPY docker/patch/ /tmp/patches/
+RUN if [ "${ENABLE_CUDA_13}" = "1" ] && [ -d /tmp/patches/cu13 ]; then \
+      TE_DIR=$(python -c 'import transformer_engine; print(transformer_engine.__path__[0])') && \
+      for p in /tmp/patches/cu13/*.patch; do \
+        echo "Applying $(basename $p) to $TE_DIR" && \
+        patch -d "$TE_DIR" -p1 < "$p"; \
+      done; \
+    fi && rm -rf /tmp/patches
+
 # apex
-RUN pip install /tmp/wheels/apex-*.whl
+RUN pip install ${WHEELS_DIR}/apex-*.whl
 
 RUN git clone https://github.com/${MEGATRON_REPO}.git --recursive -b ${MEGATRON_BRANCH} Megatron-LM && \
     cd Megatron-LM && \
@@ -126,20 +143,13 @@ RUN cd /sgl-workspace/sglang && \
 
 # ====================================== Install main package ============================================
 
-ARG MILES_REPO=radixark/miles
 ARG MILES_COMMIT=main
-RUN git clone https://github.com/${MILES_REPO}.git /root/miles && \
+RUN git clone https://github.com/radixark/miles.git /root/miles && \
     cd /root/miles && \
     git checkout ${MILES_COMMIT} && \
     pip install -e . --no-deps
 
-# int4_qat: from pre-built wheel if available, otherwise build from in-tree source.
-# setup.py generates sm_80/sm_90 binaries + compute_90 PTX for JIT on Blackwell.
-RUN if ls /tmp/wheels/fake_int4_quant_cuda-*.whl 2>/dev/null | grep -q .; then \
-      pip install /tmp/wheels/fake_int4_quant_cuda-*.whl; \
-    else \
-      cd /root/miles/miles/backends/megatron_utils/kernels/int4_qat && \
-      TORCH_CUDA_ARCH_LIST="8.0 9.0" MAX_JOBS=32 pip install . --no-build-isolation; \
-    fi
+# int4_qat
+RUN pip install ${WHEELS_DIR}/fake_int4_quant_cuda-*.whl
 
-RUN rm -rf /tmp/wheels
+RUN rm -rf ${WHEELS_DIR}
