@@ -169,7 +169,7 @@ def execute(args: ScriptArgs):
         f"--rollout-max-response-len {args.rollout_max_response_len} "
         f"--max-seq-len {args.max_seq_len} "
         "--dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted "
-        "--global-batch-size 8 "
+        "--global-batch-size 16 "
         "--balance-data "
         f"--pause-generation-mode {args.pause_generation_mode} "
     )
