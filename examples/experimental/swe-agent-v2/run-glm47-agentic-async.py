@@ -73,7 +73,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     pause_generation_mode: Literal["in_place", "retract"] = "in_place"
     update_weight_transfer_mode: Literal["broadcast", "p2p"] = "broadcast"
     accumulate_allreduce_grads_in_fp32: bool = False
-    max_tokens_per_gpu: int = 16384
+    max_tokens_per_gpu: int = 2048
     optimizer_cpu_offload: bool = True
     use_precision_aware_optimizer: bool = True
 
@@ -163,13 +163,14 @@ def execute(args: ScriptArgs):
         "--metadata-key metadata "
         "--rollout-shuffle "
         "--num-rollout 3000 "
-        "--rollout-batch-size 8 "
+        "--rollout-batch-size 32 "
         "--n-samples-per-prompt 4 "
         "--rollout-temperature 0.8 "
         f"--rollout-max-response-len {args.rollout_max_response_len} "
         f"--max-seq-len {args.max_seq_len} "
+        "--over-sampling-batch-size 64 "
         "--dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted "
-        "--global-batch-size 16 "
+        "--global-batch-size 64 "
         "--balance-data "
         f"--pause-generation-mode {args.pause_generation_mode} "
     )
