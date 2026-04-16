@@ -16,13 +16,10 @@ def _should_profile_this_rank(profile_ranks) -> bool:
         return True
 
     if profile_ranks == ["per_pp_stage"]:
-        from megatron.core import mpu
+        from miles.backends.training_utils.parallel import get_parallel_state
 
-        return (
-            mpu.get_tensor_model_parallel_rank() == 0
-            and mpu.get_context_parallel_rank() == 0
-            and mpu.get_data_parallel_rank(with_context_parallel=False) == 0
-        )
+        ps = get_parallel_state()
+        return ps.tp.rank == 0 and ps.cp.rank == 0 and ps.intra_dp.rank == 0
     elif not all(r.isdigit() for r in profile_ranks):
         raise ValueError(f"--profile-ranks value not supported: {profile_ranks}")
 
