@@ -48,6 +48,7 @@ miles is the RL-framework behind GLM-4.7, GLM-4.6 and GLM-4.5. Apart from models
 
    _examples_synced/reproducibility/README.md
    advanced/miles-router.md
+   advanced/on-policy-distillation.md
    advanced/speculative-decoding.md
    advanced/fault-tolerance.md
    advanced/arch-support-beyond-megatron.md
@@ -63,7 +64,6 @@ miles is the RL-framework behind GLM-4.7, GLM-4.6 and GLM-4.5. Apart from models
    _examples_synced/fully_async/README.md
    _examples_synced/retool/README.md
    _examples_synced/multi_agent/README.md
-   _examples_synced/on_policy_distillation/README.md   
 
 .. toctree::
    :maxdepth: 1
