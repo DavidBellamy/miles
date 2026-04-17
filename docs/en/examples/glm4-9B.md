@@ -126,7 +126,7 @@ During evaluation, most rollout parameters are inherited, but we provide some pa
 ```bash
 EVAL_ARGS=(
    --eval-interval 5
-   --eval-prompt-data /root/aime-2024/aime-2024.jsonl
+   --eval-prompt-data aime /root/aime-2024/aime-2024.jsonl
    --n-samples-per-eval-prompt 16
    --eval-max-response-len 16384
    --eval-top-p 1

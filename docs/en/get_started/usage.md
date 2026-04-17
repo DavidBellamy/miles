@@ -81,7 +81,7 @@ We provide configurations for common models in [scripts/models](../../../scripts
 Note:
 
   - miles will load all parameters of Megatron found in the `PYTHONPATH`, so you can find parameters and their descriptions within the Megatron in your environment.
-  - miles uses data packing (also known as varlen or thd) for training. There is no need to configure `--seq-length` or `--max-positional-embedding`, as these parameters do not affect the maximum context length of the trained model.
+  - miles uses data packing (also known as varlen or thd) for training. There is no need to configure `--seq-length` or `--max-position-embeddings`, as these parameters do not affect the maximum context length of the trained model.
 
 #### Setting Up Parallelism and Recomputation
 
@@ -325,7 +325,7 @@ In some customized Megatron implementations, special operations need to be perfo
 
 ## How to Use FSDP
 
-miles also support FSDP2 as the training backend, docs [here](https://lmsys.org/blog/2025-12-03-miles-fsdp/). 
+miles also supports FSDP2 as the training backend, docs [here](https://lmsys.org/blog/2025-12-03-miles-fsdp/). 
 
 > FSDP automatically reads all architecture information via `AutoModelForCausalLM.from_pretrained()`, without manual specification. Megatron requires manual configuration of parameters to read model architecture information. FSDP can read entirely from `config.json`, directly avoiding the weight format conversion step.
 
@@ -379,6 +379,6 @@ pip install -e . --no-deps
 
 # FSDP does not require weight conversion, natively supports huggingface format
 # Enable reference model, train Qwen3-4B in colocate mode
-source /root/miles/scripts/run-qwen3-4B-fsdp.sh
+bash scripts/run-qwen3-4B-fsdp.sh
 ```
 
