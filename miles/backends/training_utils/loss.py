@@ -651,6 +651,20 @@ def policy_loss_function(
     else:
         pg_loss_reducer = sum_of_sample_mean
 
+    # ESS (Effective Sample Size) ratio per sample, computed from per-token IS
+    # weights w = π_new/π_old = exp(-ppo_kl).  ESS_i = (Σw)² / (n·Σw²).
+    # Ratio of 1.0 = on-policy; near 0 = severely off-policy.
+    # Stored as sum across samples; aggregate_train_losses divides by N later.
+    is_weights = (-ppo_kl).detach().exp()
+    is_weights_per_sample = is_weights.split(response_lengths, dim=0)
+    ess_ratio_sum = torch.zeros(1, device=ppo_kl.device)
+    for w_i, mask_i in zip(is_weights_per_sample, batch["loss_masks"], strict=False):
+        w_masked = w_i * mask_i
+        n_i = torch.clamp_min(mask_i.sum(), 1)
+        sum_w = w_masked.sum()
+        sum_w2 = (w_masked * w_masked).sum()
+        ess_ratio_sum += (sum_w * sum_w) / (n_i * torch.clamp_min(sum_w2, 1e-8))
+
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
     ppo_kl = sum_of_sample_mean(ppo_kl)
@@ -693,6 +707,7 @@ def policy_loss_function(
         "entropy_loss": entropy_loss.clone().detach(),
         "pg_clipfrac": pg_clipfrac.clone().detach(),
         "ppo_kl": ppo_kl.clone().detach(),
+        "ess_ratio": ess_ratio_sum.squeeze(),
     }
 
     if train_rollout_logprob_abs_diff is not None:
