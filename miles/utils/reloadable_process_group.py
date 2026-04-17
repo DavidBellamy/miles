@@ -12,6 +12,68 @@ logger = logging.getLogger(__name__)
 old_new_group_dict = {}
 
 
+def _maybe_wrap_alltoall_diag(func):
+    """Wrap all_to_all_single to emit per-rank diagnostic info on RuntimeError.
+
+    Activated via MILES_R3_DIAG_ALLTOALL=1. The diagnostic makes the R3 replay
+    'Split sizes doesn't match total dim 0 size' crash locally-inspectable: each
+    rank prints its own input shape, split sizes, and the sum check before
+    re-raising. Without this, the crash surfaces as a bare RuntimeError with no
+    indication of WHICH rank's split sizes diverged.
+
+    See radixark/miles#1002.
+    """
+    if os.environ.get("MILES_R3_DIAG_ALLTOALL", "0") != "1":
+        return func
+
+    import traceback
+
+    def diag(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except RuntimeError as e:
+            rank = dist.get_rank() if dist.is_initialized() else -1
+            output_t = args[0] if len(args) >= 1 else kwargs.get("output")
+            input_t = args[1] if len(args) >= 2 else kwargs.get("input")
+            output_ss = args[2] if len(args) >= 3 else kwargs.get("output_split_sizes")
+            input_ss = args[3] if len(args) >= 4 else kwargs.get("input_split_sizes")
+            group = args[4] if len(args) >= 5 else kwargs.get("group")
+
+            def _shape(t):
+                return tuple(t.shape) if isinstance(t, torch.Tensor) else None
+
+            def _dtype(t):
+                return str(t.dtype) if isinstance(t, torch.Tensor) else None
+
+            input_sum = sum(input_ss) if input_ss is not None else None
+            output_sum = sum(output_ss) if output_ss is not None else None
+            input_dim0 = _shape(input_t)[0] if _shape(input_t) else None
+            output_dim0 = _shape(output_t)[0] if _shape(output_t) else None
+
+            group_ranks = None
+            try:
+                group_ranks = dist.get_process_group_ranks(group) if group is not None else None
+            except Exception:
+                group_ranks = "<unavailable>"
+
+            msg = (
+                f"[R3_DIAG rank={rank}] all_to_all_single RuntimeError: {e}\n"
+                f"  input: shape={_shape(input_t)} dtype={_dtype(input_t)}\n"
+                f"  output: shape={_shape(output_t)} dtype={_dtype(output_t)}\n"
+                f"  input_split_sizes={input_ss} sum={input_sum} input.dim0={input_dim0}\n"
+                f"  output_split_sizes={output_ss} sum={output_sum} output.dim0={output_dim0}\n"
+                f"  group_ranks={group_ranks}\n"
+                f"  input_sum_matches_dim0={input_sum == input_dim0 if input_sum is not None else 'n/a'}\n"
+                f"  output_sum_matches_dim0={output_sum == output_dim0 if output_sum is not None else 'n/a'}\n"
+                f"  call stack (top 6):\n"
+                + "".join("    " + line for line in traceback.format_stack()[-8:-2])
+            )
+            logger.error(msg)
+            raise
+
+    return diag
+
+
 def monkey_patch_torch_dist():
     pid = os.getpid()
     if pid in old_new_group_dict:
@@ -68,7 +130,7 @@ def monkey_patch_torch_dist():
     dist.all_gather_into_tensor = get_new_function(dist.all_gather_into_tensor)
     dist.all_gather_object = get_new_function(dist.all_gather_object)
     dist.all_to_all = get_new_function(dist.all_to_all)
-    dist.all_to_all_single = get_new_function(dist.all_to_all_single)
+    dist.all_to_all_single = _maybe_wrap_alltoall_diag(get_new_function(dist.all_to_all_single))
     dist.broadcast = get_new_function(dist.broadcast)
     dist.reduce = get_new_function(dist.reduce)
     dist.reduce_scatter = get_new_function(dist.reduce_scatter)
