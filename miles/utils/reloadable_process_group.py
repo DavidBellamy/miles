@@ -33,7 +33,7 @@ def _maybe_wrap_alltoall_diag(func):
     def _describe(val):
         if isinstance(val, torch.Tensor):
             info = f"Tensor shape={tuple(val.shape)} dtype={val.dtype}"
-            if val.numel() > 0 and val.numel() <= 32:
+            if val.numel() > 0 and val.numel() <= 64:
                 try:
                     info += f" values={val.tolist()}"
                 except Exception:
@@ -45,45 +45,54 @@ def _maybe_wrap_alltoall_diag(func):
                         flat = val.flatten()
                         unique = torch.unique(flat)
                         info += f" n_unique={unique.numel()}"
-                        if unique.numel() <= 16:
+                        if unique.numel() <= 32:
                             info += f" unique={unique.tolist()}"
                 except Exception:
                     pass
             return info
-        if isinstance(val, (list, tuple)) and len(val) <= 32:
+        # numpy array (common for split sizes in Megatron)
+        try:
+            import numpy as _np
+            if isinstance(val, _np.ndarray):
+                info = f"ndarray shape={val.shape} dtype={val.dtype}"
+                if val.size <= 64:
+                    info += f" values={val.tolist()}"
+                    if val.dtype.kind in ("i", "u"):
+                        info += f" sum={int(val.sum())}"
+                return info
+        except ImportError:
+            pass
+        if isinstance(val, (list, tuple)) and len(val) <= 64:
             return f"{type(val).__name__}({len(val)})={list(val)}"
+        if isinstance(val, dict) and len(val) <= 16:
+            return f"dict({len(val)})={ {k: _describe(v) for k, v in val.items()} }"
         if isinstance(val, (int, float, bool, str)):
-            return repr(val)
+            return repr(val) if len(repr(val)) < 200 else f"<{type(val).__name__}>"
         return f"<{type(val).__name__}>"
 
     def _dump_caller_frames(msg_parts, depth=8):
         frame = sys._getframe(0)
-        for i in range(depth + 3):
-            if frame is None:
-                return
+        dumped = 0
+        while frame is not None and dumped < depth:
             frame = frame.f_back
             if frame is None:
-                return
+                break
             co = frame.f_code
             fname = co.co_filename
-            lineno = frame.f_lineno
-            func_name = co.co_name
-            # Skip wrapper frames; focus on callers outside reloadable_process_group
+            # Skip wrapper frames; keep everything else.
             if "reloadable_process_group" in fname:
                 continue
-            # Only dump frames that look relevant to MoE / dispatch / replay.
-            rel = any(kw in fname for kw in ("moe", "token_dispatcher", "mappings", "replay", "model_provider"))
-            if not rel and i < 2:
-                # Still worth showing the immediate caller once even if not matched.
-                pass
-            msg_parts.append(f"\n  === frame depth={i} {fname}:{lineno} in {func_name} ===\n")
+            lineno = frame.f_lineno
+            func_name = co.co_name
+            msg_parts.append(f"\n  === frame depth={dumped} {fname}:{lineno} in {func_name} ===\n")
             for name, val in frame.f_locals.items():
                 if name.startswith("__"):
                     continue
-                msg_parts.append(f"    {name}: {_describe(val)}\n")
-            if rel and i >= 1:
-                # One relevant frame is enough — bail after dumping it.
-                break
+                try:
+                    msg_parts.append(f"    {name}: {_describe(val)}\n")
+                except Exception as desc_err:
+                    msg_parts.append(f"    {name}: <describe-error: {desc_err!r}>\n")
+            dumped += 1
 
     def diag(*args, **kwargs):
         try:
