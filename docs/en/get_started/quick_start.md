@@ -115,7 +115,33 @@ python tools/convert_fsdp_to_hf.py \
 
 ## Training Script and Parameter Overview
 
-After completing the above preparation work, you can run the training script.
+After completing the above preparation work, you can run the training script. miles provides two styles of training scripts:
+
+- **Python scripts (recommended)**: `scripts/run_*.py` — use `typer` for CLI, handle model download, checkpoint conversion, and training in one command.
+- **Shell scripts (legacy)**: `scripts/run-*.sh` — the older format, still functional.
+
+### Using Python Scripts (Recommended)
+
+Python scripts automatically handle model/data download, checkpoint conversion, and training launch:
+
+```bash
+cd /root/miles
+# Qwen3-4B example (auto downloads model, converts checkpoint, launches training)
+python scripts/run_qwen3_4b.py
+
+# With custom options:
+python scripts/run_qwen3_4b.py --model-dir /root/models --data-dir /root/datasets --hardware H100
+
+# Qwen3-30B-A3B MoE example
+python scripts/run_qwen3_30b_a3b.py
+
+# GLM-4.5-355B-A32B multi-node example
+python scripts/run_glm45_355b_a32b.py train --num-nodes 8
+```
+
+All `.py` scripts accept `--help` to list available options.
+
+### Using Shell Scripts (Legacy)
 
 ```bash
 cd /root/miles
@@ -586,4 +612,4 @@ miles has been deeply optimized for distributed training of large-scale Mixture 
 
 - [Example: 64xH100 Training GLM-4.5](../examples/glm4.5-355B-A32B.md)
 - [Example: 128xH100 Training DeepSeek-R1](../examples/deepseek-r1.md)
-- The scripts such as `scripts/run_qwen3_30b_a3b.py`, `scripts/run_glm45_355b_a32b.py` also support multi-node training, though there are little documentations about it currently.
+- The Python scripts `scripts/run_qwen3_30b_a3b.py`, `scripts/run_glm45_355b_a32b.py`, and `scripts/run_deepseek.py` support multi-node training via `--num-nodes`.

@@ -47,6 +47,8 @@ cd /root/miles
 bash scripts/run-glm4-9B.sh
 ```
 
+> **Note**: For GLM-4.7-Flash, a Python-style script is also available: `python scripts/run_glm47_flash.py`.
+
 ### Parameter Introduction
 
 Here, we will briefly introduce the various components of the [run-glm4-9B.sh](https://github.com/radixark/miles/blob/main/scripts/run-glm4-9B.sh) script:

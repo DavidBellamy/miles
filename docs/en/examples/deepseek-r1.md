@@ -51,12 +51,18 @@ Here, `MASTER_ADDR` is the IP of node0, and `NODE_RANK` indicates the node's ind
 
 ## Executing the Training
 
-On node0, run:
+We recommend using the Python script:
 
 ```bash
 cd miles/
+# Recommended: Python script (handles Ray cluster, download, conversion)
+python scripts/run_deepseek.py train --num-nodes 16
+
+# Legacy: Shell script
 bash scripts/run-deepseek-r1.sh
 ```
+
+When using the legacy shell script, on node0, run `bash scripts/run-deepseek-r1.sh`.
 
 On other nodes, you need to join the Ray cluster with the following command:
 

@@ -24,12 +24,18 @@ Execute the training script:
 
 ```bash
 cd /root/miles
-bash scripts/run-qwen3-30B-A3B.sh
+# Recommended: Python script (auto downloads, converts, and trains)
+python scripts/run_qwen3_30b_a3b.py --model-dir /root --data-dir /root
+
+# With FP8 rollout:
+python scripts/run_qwen3_30b_a3b.py --rollout-fp8
 ```
+
+Use `python scripts/run_qwen3_30b_a3b.py --help` to see all available options.
 
 ### Parameter Introduction
 
-Here, we will briefly introduce the MoE-related parts in the [run-qwen3-30B-A3B.sh](https://github.com/radixark/miles/blob/main/scripts/run-qwen3-30B-A3B.sh) script.
+Here, we will briefly introduce the MoE-related parts in the [run_qwen3_30b_a3b.py](https://github.com/radixark/miles/blob/main/scripts/run_qwen3_30b_a3b.py) script.
 
 1.  To support running Qwen3-30B-A3B in an 8xH800 environment, we need to enable Megatron's CPU Adam to save GPU memory. The corresponding configuration is:
 

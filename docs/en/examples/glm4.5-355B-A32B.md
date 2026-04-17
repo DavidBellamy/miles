@@ -32,14 +32,21 @@ Here, `MASTER_ADDR` is the IP of node0, and `NODE_RANK` indicates the node's ind
 
 ## Executing the Training
 
-On node0, run:
+We recommend using the Python script, which handles Ray cluster setup and multi-node coordination automatically:
 
 ```bash
 cd miles/
+# Recommended: Python script
+python scripts/run_glm45_355b_a32b.py train --num-nodes 8
+
+# With FP8 rollout:
+python scripts/run_glm45_355b_a32b.py train --num-nodes 8 --rollout-fp8
+
+# Legacy: Shell script
 bash scripts/run-glm4.5-355B-A32B.sh
 ```
 
-On other nodes, you need to join the Ray cluster with the following command:
+When using the shell script, on other nodes, you need to join the Ray cluster with the following command:
 
 ```bash
 ray start --address=${MASTER_ADDR}:6379 --num-gpus 8 --node-ip-address ${WORKER_IP} --disable-usage-stats"
@@ -67,6 +74,8 @@ source "${SCRIPT_DIR}/models/glm4.5-355B-A32B.sh"
 ```
 
 This reads the model's config from [scripts/models/glm4.5-355B-A32B.sh](https://github.com/radixark/miles/blob/main/scripts/models/glm4.5-355B-A32B.sh). These configs are all Megatron parameters. When training with Megatron, it cannot read the model config from the checkpoint, so we need to configure it ourselves. We provide some examples in [scripts/models](https://github.com/radixark/miles/tree/main/scripts/models/).
+
+> **Note**: The Python script `run_glm45_355b_a32b.py` handles model type resolution automatically via the `megatron_model_type` field.
 
 #### PERF\_ARGS
 

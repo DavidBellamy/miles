@@ -40,16 +40,20 @@ PYTHONPATH=/root/Megatron-LM python tools/convert_hf_to_torch_dist.py \
 
 ## Run Training
 
-Execute the training script:
+Execute the training script. We recommend using the Python script, which handles model download, checkpoint conversion, and training in one step:
 
 ```bash
 cd /root/miles
+# Recommended: Python script (auto downloads, converts, and trains)
+python scripts/run_qwen3_4b.py --model-dir /root --data-dir /root
+
+# Legacy: Shell script (requires manual model download and checkpoint conversion)
 bash scripts/run-qwen3-4B.sh
 ```
 
 ### Parameter Introduction
 
-Here, we will briefly introduce the various components of the [run-qwen3-4B.sh](https://github.com/radixark/miles/blob/main/scripts/run-qwen3-4B.sh) script:
+Here, we will briefly introduce the various components of the [run-qwen3-4B.sh](https://github.com/radixark/miles/blob/main/scripts/run-qwen3-4B.sh) script (the `.py` script uses the same parameters internally):
 
 #### MODEL\_ARGS
 
