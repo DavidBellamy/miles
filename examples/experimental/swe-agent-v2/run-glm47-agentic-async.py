@@ -54,6 +54,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     prompt_data: str = "/root/swe_train.jsonl"
     max_seq_len: int = 16384
     rollout_max_response_len: int = 8192
+    save_interval: int = 100
 
     # Rollout precision
     rollout_fp8: bool = False
@@ -82,6 +83,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     wandb_project: str = os.environ.get("WANDB_PROJECT", "glm47-full-agentic")
     wandb_team: str = os.environ.get("WANDB_TEAM", "")
     wandb_run_name: str = "glm47-full-swe-async"
+    disable_wandb_random_suffix: bool = False
 
     # Prometheus settings
     use_prometheus: bool = True
@@ -153,7 +155,7 @@ def execute(args: ScriptArgs):
         f"--hf-checkpoint {hf_checkpoint} "
         f"--ref-load {args.ref_load} "
         f"--save {args.save_dir} "
-        "--save-interval 100 "
+        f"--save-interval {args.save_interval} "
     )
 
     rollout_args = (
@@ -320,6 +322,8 @@ def execute(args: ScriptArgs):
         )
         if args.wandb_team:
             wandb_args += f"--wandb-team {args.wandb_team} "
+        if args.disable_wandb_random_suffix:
+            wandb_args += "--disable-wandb-random-suffix "
 
     prometheus_args = ""
     if args.use_prometheus:
