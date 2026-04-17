@@ -363,12 +363,14 @@ Here `over_sampling_batch_size` needs to be greater than `rollout_batch_size`, f
 
 Then each sampling will directly sample 64 prompts, and each prompt will be sampled 8 times. Because miles performs asynchronous sampling internally, we will successively obtain 8 responses for each prompt. When receiving responses, the function corresponding to `dynamic_sampling_filter_path` will be used for filtering. If it passes, these 8 pieces of data will be kept; otherwise, they will be discarded.
 
-The filtering function `check_reward_nonzero_std` in the example will check whether the standard deviation of rewards for a group of samples is greater than zero, ensuring that the reward scores of each group of samples left have differences, thereby avoiding overly homogeneous data and improving data diversity.
+The filtering function `check_reward_nonzero_std` in the example will check whether the standard deviation of rewards for a group of samples is greater than zero, ensuring that the reward scores of each group of samples left have differences, thereby avoiding overly homogeneous data and improving data diversity. It returns a `DynamicFilterOutput` with `keep=True/False` and an optional `reason` string.
 
 ```python
-def check_reward_nonzero_std(args, samples: list[Sample], **kwargs):
+def check_reward_nonzero_std(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
     rewards = [sample.reward for sample in samples]
-    return torch.tensor(rewards, dtype=torch.float).std() > 0.0
+    std = torch.tensor(rewards, dtype=torch.float).std()
+    keep = std > 1e-8
+    return DynamicFilterOutput(keep=keep, reason=None if keep else "zero_std")
 ```
 
 If the filtering function is very strict, causing a large number of prompt groups to be discarded, the system will monitor the number of pending tasks in `remaining_batch_size`. Once the number of pending tasks drops below the target number (32) due to too many being discarded, the system will automatically trigger a new round of oversampling, requesting `over_sampling_batch_size` (64) new prompts again to repeat the above process.

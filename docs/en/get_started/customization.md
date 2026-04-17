@@ -47,7 +47,7 @@ else:
 
 **Signature**:
 ```python
-async def generate_rollout(args, rollout_id, *, evaluation=False) -> RolloutFnTrainOutput | RolloutFnEvalOutput
+def generate_rollout(args, rollout_id, data_source, evaluation=False) -> RolloutFnTrainOutput | RolloutFnEvalOutput
 ```
 
 **Use Cases**:

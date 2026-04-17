@@ -225,9 +225,11 @@ Here, `over_sampling_batch_size` needs to be greater than `rollout_batch_size`. 
 In this case, the sampling process will directly sample 64 prompts, with 8 samples per prompt. Since miles performs asynchronous sampling internally, we will receive the 8 responses for each prompt sequentially. Upon receiving the responses, the function specified by `dynamic_sampling_filter_path` is used for filtering. If the samples pass the filter, these 8 data points are kept; otherwise, they are discarded. The function in the example checks if the rewards for the samples are not all identical (i.e., not all correct or all incorrect):
 
 ```python
-def check_reward_nonzero_std(args, samples: list[Sample], **kwargs):
+def check_reward_nonzero_std(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
     rewards = [sample.reward for sample in samples]
-    return torch.tensor(rewards, dtype=torch.float).std() > 0.0
+    std = torch.tensor(rewards, dtype=torch.float).std()
+    keep = std > 1e-8
+    return DynamicFilterOutput(keep=keep, reason=None if keep else "zero_std")
 ```
 
 When we have received 32 \* 8 data points, we will immediately stop the current sampling round and will not wait for the remaining data to be sampled. If more than 32 prompts' worth of data is discarded (leaving fewer than 32 prompts' worth), we will then sample another 64 prompts.
