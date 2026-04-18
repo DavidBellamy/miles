@@ -1575,6 +1575,14 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=False,
                 help="Enable MTP layer parameter updates during training",
             )
+            parser.add_argument(
+                "--init-random-mtp",
+                action="store_true",
+                default=False,
+                help="Initialize MTP layers with random weights even when the base model "
+                "has no pretrained MTP. Requires --mtp-num-layers and --enable-mtp-training. "
+                "The MTP head starts random at step 0 and is trained during RL.",
+            )
 
             return parser
 
@@ -2124,6 +2132,10 @@ def miles_validate_args(args):
 
     if args.enable_mtp_training:
         assert args.mtp_num_layers, "mtp_num_layers must be set when enable_mtp_training is set"
+
+    if args.init_random_mtp:
+        assert args.mtp_num_layers, "--mtp-num-layers must be set when --init-random-mtp is set"
+        assert args.enable_mtp_training, "--enable-mtp-training must be set when --init-random-mtp is set"
 
     if args.use_rollout_routing_replay:
         args.use_routing_replay = True

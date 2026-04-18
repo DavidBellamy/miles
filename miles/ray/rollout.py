@@ -1285,7 +1285,7 @@ def _compute_zero_std_metrics(args, all_samples: list[Sample]):
 
 
 def _compute_spec_metrics(args, all_samples: list[Sample]):
-    if args.sglang_speculative_algorithm is None:
+    if args.sglang_speculative_algorithm is None and not getattr(args, "init_random_mtp", False):
         return {}
     num_samples = len(all_samples)
     metrics = {}
