@@ -57,6 +57,13 @@ class ScriptArgs(U.ExecuteTrainConfig):
     rollout_max_response_len: int = 8192
     save_interval: int = 5
 
+    # Rollout / training batch sizing (overridable for smoke tests)
+    num_rollout: int = 3000
+    rollout_batch_size: int = 32
+    n_samples_per_prompt: int = 4
+    global_batch_size: int = 32
+    over_sampling_batch_size: int = 64
+
     # Rollout precision
     rollout_fp8: bool = False
     rollout_health_check_first_wait: int = 1800
@@ -144,15 +151,15 @@ def execute(args: ScriptArgs):
         "--input-key prompt "
         "--metadata-key metadata "
         "--rollout-shuffle "
-        "--num-rollout 3000 "
-        "--rollout-batch-size 32 "
-        "--n-samples-per-prompt 4 "
+        f"--num-rollout {args.num_rollout} "
+        f"--rollout-batch-size {args.rollout_batch_size} "
+        f"--n-samples-per-prompt {args.n_samples_per_prompt} "
         "--rollout-temperature 0.8 "
         f"--rollout-max-response-len {args.rollout_max_response_len} "
         f"--max-seq-len {args.max_seq_len} "
-        "--over-sampling-batch-size 64 "
+        f"--over-sampling-batch-size {args.over_sampling_batch_size} "
         "--dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted "
-        "--global-batch-size 32 "
+        f"--global-batch-size {args.global_batch_size} "
         "--balance-data "
         f"--pause-generation-mode {args.pause_generation_mode} "
     )
