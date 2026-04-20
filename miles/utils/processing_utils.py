@@ -13,31 +13,27 @@ logger = logging.getLogger(__name__)
 DEFAULT_PATCH_SIZE = 14
 
 
-def _find_cached_snapshot(repo_id: str) -> str | None:
-    """Return the local snapshot dir if the tokenizer is fully cached, else None."""
-    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-    repo_folder = "models--" + repo_id.replace("/", "--")
-    snapshots_dir = os.path.join(hf_home, "hub", repo_folder, "snapshots")
-    if not os.path.isdir(snapshots_dir):
+_TOKENIZER_CACHE: dict[tuple, PreTrainedTokenizerBase] = {}
+
+
+def _make_cache_key(name_or_path: str, chat_template_path: str | None, kwargs: dict) -> tuple | None:
+    try:
+        kwargs_items = tuple(sorted(kwargs.items()))
+        hash(kwargs_items)
+    except TypeError:
         return None
-    for snapshot in sorted(os.listdir(snapshots_dir), reverse=True):
-        snapshot_path = os.path.join(snapshots_dir, snapshot)
-        has_config = os.path.isfile(os.path.join(snapshot_path, "config.json"))
-        has_tokenizer = os.path.isfile(os.path.join(snapshot_path, "tokenizer.json")) or os.path.isfile(
-            os.path.join(snapshot_path, "tokenizer.model")
-        )
-        if has_config and has_tokenizer:
-            return snapshot_path
-    return None
+    return (name_or_path, chat_template_path, kwargs_items)
 
 
-def load_tokenizer(name_or_path: str, chat_template_path: str = None, **kwargs):
-    resolved = name_or_path
-    if not os.path.exists(name_or_path):
-        cached = _find_cached_snapshot(name_or_path)
-        if cached:
-            resolved = cached
-    tokenizer = AutoTokenizer.from_pretrained(resolved, **kwargs)
+def load_tokenizer(name_or_path: str, chat_template_path: str | None = None, **kwargs) -> PreTrainedTokenizerBase:
+    # Cache keyed by (name, chat_template_path, kwargs) — the fast suite creates
+    # hundreds of SessionServer / MockSGLangServer fixtures and each previously
+    # triggered a fresh AutoTokenizer.from_pretrained, tripping HF Hub rate limits.
+    cache_key = _make_cache_key(name_or_path, chat_template_path, kwargs)
+    if cache_key is not None and cache_key in _TOKENIZER_CACHE:
+        return _TOKENIZER_CACHE[cache_key]
+
+    tokenizer = AutoTokenizer.from_pretrained(name_or_path, **kwargs)
     if chat_template_path:
         assert os.path.isfile(chat_template_path), (
             f"chat_template_path not found: {chat_template_path}. "
@@ -46,6 +42,9 @@ def load_tokenizer(name_or_path: str, chat_template_path: str = None, **kwargs):
         with open(chat_template_path) as f:
             tokenizer.chat_template = f.read()
         logger.info("Loaded custom chat template from %s", chat_template_path)
+
+    if cache_key is not None:
+        _TOKENIZER_CACHE[cache_key] = tokenizer
     return tokenizer
 
 

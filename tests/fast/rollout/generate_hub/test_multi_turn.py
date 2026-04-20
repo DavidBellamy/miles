@@ -8,6 +8,8 @@ import pybase64
 import pytest
 from tests.ci.ci_register import register_cuda_ci
 from tests.fast.fixtures.generation_fixtures import GenerateEnv, generation_env, listify, make_sample, run_generate
+
+
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_sglang_server import ProcessResult, ProcessResultMetaInfo
 from miles.utils.test_utils.mock_tools import SAMPLE_TOOLS, ThreeTurnStub, TwoTurnStub
