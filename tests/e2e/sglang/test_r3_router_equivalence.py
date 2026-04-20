@@ -67,7 +67,6 @@ class ModelConfig:
     local_dir: str
     megatron_model_type: str
     reasoning_parser: str | None = None
-    extra_prepare: str | None = None
     num_gpus: int = 1
 
 
@@ -86,10 +85,6 @@ MODEL_REGISTRY: dict[str, ModelConfig] = {
         local_dir="/root/models/GLM-4.7-Flash",
         megatron_model_type="glm4.7-flash",
         reasoning_parser="glm45",
-        extra_prepare=(
-            "pip install git+https://github.com/huggingface/transformers.git@"
-            "76732b4e7120808ff989edbd16401f61fa6a0afa --break-system-packages"
-        ),
         num_gpus=1,
     ),
 }
@@ -104,8 +99,6 @@ def _get_config() -> ModelConfig:
 def prepare() -> None:
     cfg = _get_config()
     U.exec_command("mkdir -p /root/models /root/datasets")
-    if cfg.extra_prepare:
-        U.exec_command(cfg.extra_prepare)
     if not Path(cfg.local_dir).exists():
         U.exec_command(f"hf download {cfg.hf_repo} --local-dir {cfg.local_dir}")
     if not Path(PROMPT_DATA_PATH).exists():
@@ -264,5 +257,3 @@ if __name__ == "__main__":
     for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
         os.environ.pop(proxy_var, None)
     execute()
-    if MODEL_FAMILY == "glm47_flash":
-        U.exec_command("pip install transformers==4.57.1 --break-system-packages")
