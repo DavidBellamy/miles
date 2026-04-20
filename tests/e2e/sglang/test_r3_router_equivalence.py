@@ -54,6 +54,11 @@ PROMPT_DATA_PATH = "/root/datasets/dapo-math-17k/dapo-math-17k.jsonl"
 NUM_PROMPTS = int(os.environ.get("ROUTER_EQ_NUM_PROMPTS", "10"))
 MAX_RESPONSE_LEN = int(os.environ.get("ROUTER_EQ_MAX_RESPONSE_LEN", "256"))
 
+# Repo root (tests/e2e/sglang/test_*.py → parents[3]).  Used to prepend the
+# miles repo onto the Ray actor PYTHONPATH so the custom generate function is
+# importable regardless of where the worktree lives.
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -182,6 +187,7 @@ def _run_variant(cfg: ModelConfig, variant: str) -> None:
         num_gpus_per_node=cfg.num_gpus,
         megatron_model_type=cfg.megatron_model_type,
         extra_env_vars={
+            "PYTHONPATH": "/root/Megatron-LM",
             "MILES_ROUTER_EQ_DUMP_PATH": str(dump_path),
             "MILES_EXPERIMENTAL_ROLLOUT_REFACTOR": "1",
         },
