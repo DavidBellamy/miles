@@ -40,4 +40,9 @@ MODEL_ARGS=(
    --moe-router-group-topk 1
    --moe-router-topk-scaling-factor 2.5
    --moe-router-pre-softmax
+   # DS-v3-style aux-free balancing: disable the default aux_loss which
+   # perturbs router scores with an auxiliary balance term that HF inference
+   # does not apply.
+   --moe-router-load-balancing-type none
+   --moe-aux-loss-coeff 0
 )
