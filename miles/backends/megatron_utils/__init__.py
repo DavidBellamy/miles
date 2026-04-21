@@ -104,6 +104,30 @@ try:
         return _orig_fwd_mlp(self, hidden_states, *args, **kwargs)
 
     _MilesTL._forward_mlp = _miles_fwd_mlp
+
+    # For PP>1: megatron.bridge's param_mapping.broadcast_obj_from_pp_rank
+    # calls torch.distributed.broadcast_object_list with the pp_group.
+    # miles wraps groups in ReloadableProcessGroup (subclass of
+    # torch.distributed.ProcessGroup) which is NOT registered in
+    # torch.distributed._world.pg_group_ranks, so get_group_rank raises
+    # "Group ... is not registered". Unwrap to the inner real group before
+    # the broadcast.
+    from miles.utils.reloadable_process_group import ReloadableProcessGroup as _MilesRPG
+    from megatron.bridge.models.conversion import param_mapping as _MilesBridgeParamMapping
+
+    _orig_broadcast_obj_from_pp_rank = _MilesBridgeParamMapping.MegatronParamMapping.broadcast_obj_from_pp_rank
+
+    def _miles_broadcast_obj_from_pp_rank(self, obj, name=None):
+        if isinstance(self.pp_group, _MilesRPG):
+            _orig_pp = self.pp_group
+            self.pp_group = _orig_pp.group  # inner real torch ProcessGroup
+            try:
+                return _orig_broadcast_obj_from_pp_rank(self, obj, name)
+            finally:
+                self.pp_group = _orig_pp
+        return _orig_broadcast_obj_from_pp_rank(self, obj, name)
+
+    _MilesBridgeParamMapping.MegatronParamMapping.broadcast_obj_from_pp_rank = _miles_broadcast_obj_from_pp_rank
     _miles_sys.stderr.write(">>> miles nemotron_h attn-shim: installed\n")
     _miles_sys.stderr.flush()
 except Exception as _e:  # best-effort shim
