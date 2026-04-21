@@ -128,6 +128,96 @@ try:
         return _orig_broadcast_obj_from_pp_rank(self, obj, name)
 
     _MilesBridgeParamMapping.MegatronParamMapping.broadcast_obj_from_pp_rank = _miles_broadcast_obj_from_pp_rank
+
+    # Extend upstream NemotronHBridge for MoE variants (e.g. Nemotron-3-Nano-30B-A3B,
+    # Super-120B-A12B). The upstream bridge only maps dense Mamba+Attention weights;
+    # MoE checkpoints add `mixer.gate.*`, `mixer.experts.*`, `mixer.shared_experts.*`
+    # under the HF `backbone.layers.*.mixer.*` namespace, and the provider needs
+    # num_moe_experts / moe_router_* fields.
+    from megatron.bridge.models.nemotronh.nemotron_h_bridge import NemotronHBridge as _MilesNHBridge
+    from megatron.bridge.models.conversion.param_mapping import (
+        AutoMapping as _MilesAutoMapping,
+    )
+    from megatron.bridge.models.conversion.mapping_registry import (
+        MegatronMappingRegistry as _MilesMappingRegistry,
+    )
+
+    _orig_nh_provider_bridge = _MilesNHBridge.provider_bridge
+    _orig_nh_mapping_registry = _MilesNHBridge.mapping_registry
+
+    def _miles_nh_provider_bridge(self, hf_pretrained):
+        provider = _orig_nh_provider_bridge(self, hf_pretrained)
+        hf = hf_pretrained.config
+        # Nemotron-H uses DeepSeek-style config naming for MoE (n_routed_experts).
+        n_exp = (
+            getattr(hf, "num_experts", None)
+            or getattr(hf, "n_routed_experts", None)
+            or 0
+        )
+        # Stash HF config on the bridge so mapping_registry() can reach it
+        # (upstream base class only stores hf_pretrained on the parent AutoBridge).
+        self._miles_hf_config = hf
+        self._miles_num_experts = int(n_exp)
+        if n_exp > 0:
+            provider.num_moe_experts = int(n_exp)
+            provider.moe_router_topk = int(hf.num_experts_per_tok)
+            provider.moe_router_score_function = "sigmoid"
+            provider.moe_router_enable_expert_bias = True
+            provider.moe_grouped_gemm = True
+            provider.moe_ffn_hidden_size = int(
+                getattr(hf, "moe_intermediate_size", None) or provider.ffn_hidden_size
+            )
+            shared_size = getattr(hf, "moe_shared_expert_intermediate_size", None)
+            if shared_size is not None:
+                provider.moe_shared_expert_intermediate_size = int(shared_size)
+            elif getattr(hf, "n_shared_experts", 0):
+                provider.moe_shared_expert_intermediate_size = (
+                    int(provider.moe_ffn_hidden_size) * int(hf.n_shared_experts)
+                )
+        return provider
+
+    def _miles_nh_mapping_registry(self):
+        # Always append MoE mappings. For dense nemotron_h models the extra
+        # megatron params (mlp.router.*, mlp.experts.*, mlp.shared_experts.*)
+        # won't exist, so these mappings are unreferenced and harmless. For
+        # MoE variants they enable round-trip HF↔Megatron conversion.
+        registry = _orig_nh_mapping_registry(self)
+
+        extra_mappings = {
+            # Router
+            "decoder.layers.*.mlp.router.weight": "backbone.layers.*.mixer.gate.weight",
+            "decoder.layers.*.mlp.router.expert_bias": (
+                "backbone.layers.*.mixer.gate.e_score_correction_bias"
+            ),
+            # Routed experts (up-only FFN — nemotron_h uses squared_relu, no gate)
+            "decoder.layers.*.mlp.experts.linear_fc1.weight*": (
+                "backbone.layers.*.mixer.experts.*.up_proj.weight"
+            ),
+            "decoder.layers.*.mlp.experts.linear_fc2.weight*": (
+                "backbone.layers.*.mixer.experts.*.down_proj.weight"
+            ),
+            "decoder.layers.*.mlp.experts.local_experts.*.linear_fc1.weight": (
+                "backbone.layers.*.mixer.experts.*.up_proj.weight"
+            ),
+            "decoder.layers.*.mlp.experts.local_experts.*.linear_fc2.weight": (
+                "backbone.layers.*.mixer.experts.*.down_proj.weight"
+            ),
+            # Shared experts
+            "decoder.layers.*.mlp.shared_experts.linear_fc1.weight": (
+                "backbone.layers.*.mixer.shared_experts.up_proj.weight"
+            ),
+            "decoder.layers.*.mlp.shared_experts.linear_fc2.weight": (
+                "backbone.layers.*.mixer.shared_experts.down_proj.weight"
+            ),
+        }
+
+        new_mappings = list(registry.mappings) if hasattr(registry, "mappings") else list(registry._mappings)  # type: ignore
+        for mg, hf_key in extra_mappings.items():
+            new_mappings.append(_MilesAutoMapping(megatron_param=mg, hf_param=hf_key))
+        return _MilesMappingRegistry(*new_mappings)
+
+    _MilesNHBridge.provider_bridge = _miles_nh_provider_bridge
+    _MilesNHBridge.mapping_registry = _miles_nh_mapping_registry
     _miles_sys.stderr.write(">>> miles nemotron_h attn-shim: installed\n")
     _miles_sys.stderr.flush()
 except Exception as _e:  # best-effort shim
