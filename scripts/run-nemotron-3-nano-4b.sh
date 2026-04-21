@@ -56,7 +56,7 @@ ROLLOUT_ARGS=(
 )
 
 EVAL_ARGS=(
-   --eval-interval 1000
+   # no eval for 10-step smoke test
 )
 
 PERF_ARGS=(
@@ -66,9 +66,7 @@ PERF_ARGS=(
    --context-parallel-size 1
    --expert-model-parallel-size 1
    --expert-tensor-parallel-size 1
-   --recompute-granularity full
-   --recompute-method uniform
-   --recompute-num-layers 1
+   # recompute off for 4B to rule out checkpoint wrapper 3-tuple return
    --use-dynamic-batch-size
    --max-tokens-per-gpu 9216
 )
@@ -105,7 +103,7 @@ MISC_ARGS=(
    --hidden-dropout 0.0
    --accumulate-allreduce-grads-in-fp32
    --attention-softmax-in-fp32
-   --attention-backend flash
+   --attention-backend auto
 )
 
 export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
