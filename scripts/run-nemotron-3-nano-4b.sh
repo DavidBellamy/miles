@@ -29,8 +29,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "${SCRIPT_DIR}/models/nemotron-3-nano-4b.sh"
 
 MODEL_DIR=/cluster_public/miles_data/models/NVIDIA-Nemotron-3-Nano-4B-BF16
-# CELL=pp2 (update matrix.md + OUT_DIR when iterating through parallelism grid)
-OUT_DIR=/cluster_personal/zhichen/ckpts/nemotron-3-nano-4b-pp2
+# CELL=tp2pp2 (update matrix.md + OUT_DIR when iterating through parallelism grid)
+OUT_DIR=/cluster_personal/zhichen/ckpts/nemotron-3-nano-4b-tp2pp2
 
 CKPT_ARGS=(
    --hf-checkpoint $MODEL_DIR
@@ -61,7 +61,8 @@ EVAL_ARGS=(
 )
 
 PERF_ARGS=(
-   --tensor-model-parallel-size 1
+   --tensor-model-parallel-size 2
+   --sequence-parallel
    --pipeline-model-parallel-size 2
    --context-parallel-size 1
    --expert-model-parallel-size 1
